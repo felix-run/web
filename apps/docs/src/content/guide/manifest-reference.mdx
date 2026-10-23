@@ -1402,6 +1402,13 @@ facts were wrong:
 Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
 verifier that echoes an item back with a trailing full stop counts as having rewritten it.
 
+Capture does not store what the pool already holds. A topic the agent stored with `remember`
+earlier in the same request is skipped, for that manifest's pool only. The extractor is shown up to
+50 of the pool's current topic-keyed values, fenced as data, and asked not to restate them and to
+reuse their keys; a proposal repeating a known value under the same key (compared after
+normalising) is dropped in code whether or not it listens. A changed value under a known key is still stored. The `verify` pass is not shown
+the known values.
+
 Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
 completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
 all. If that model cannot be built, extraction falls back to the turn's model rather than dropping

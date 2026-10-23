@@ -286,7 +286,10 @@ again (a fired one-shot, a disabled task) once their last run is older than
 `FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30, `0` keeps them). Every job's run history is trimmed
 after each run, not nightly, to its newest `FELIX_JOB_RUNS_KEEP` (200, `0` keeps all); runs of the
 current UTC day that ran are kept until it ends, since a heartbeat's daily cap counts them — see
-[Run history](/guide/management-api/#run-history).
+[Run history](/guide/management-api/#run-history). The same nightly sweep forgets the `task`
+memories an agent wrote (`kind: task`, "the user wants to create notes.txt") once they are
+untouched for `FELIX_MEMORY_TASK_RETENTION_DAYS` (30, `0` keeps them); see
+[Memory](/guide/management-api/#memory).
 
 :::note
 The worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
@@ -642,6 +645,22 @@ embed after a start is slow and needs outbound access to the model hub.
 The default image is built lean, without the `embeddings` extra, so `auto` there means no vector
 channel. Build with `--build-arg FELIX_EXTRAS=embeddings` to turn it on. On an image that has the
 extra, set `FELIX_MEMORY_EMBEDDER=none` to keep full-text-only recall.
+
+A memory stored while no embedder was configured, or while it was down, is stored without a
+vector. The worker's `consolidate_memory` cron (every 15 minutes) embeds those: up to 100 active
+memories a tick, newest first, in one embedder call, across tenants. Turning an embedder on
+therefore covers memories stored before it, a batch at a time. It never overwrites a vector capture
+wrote meanwhile, and it does not spend on an embedder of the wrong width: one whose declared
+dimension disagrees with the column is never called, and one whose first batch comes back the wrong
+width is skipped until the worker restarts, with a warning naming the model. Those rows stay
+vectorless and still recall by full text.
+
+Under Compose, `FELIX_MEMORY_EMBEDDER`, `FELIX_MEMORY_EMBEDDING_MODEL`, `FELIX_MEMORY_EMBEDDING_DIM`
+and `FELIX_MEMORY_TASK_RETENTION_DAYS` in `.env` reach every container; before Felix 0.16.1 the
+base file did not pass them, and setting them there had no effect. Compose sends
+`FELIX_MEMORY_EMBEDDING_MODEL` empty unless you set it, so a hosted embedder uses its provider's
+default model: for `workers_ai` that is `@cf/baai/bge-base-en-v1.5`, 768 wide, which fits the
+column.
 
 ## Hosted workspaces
 

@@ -426,8 +426,14 @@ anonymous, so `assistant` answers `401`; call it with an API key or JWT.
 Recall fuses a full-text channel, topic keys and a vector channel. The vector channel runs when
 `FELIX_MEMORY_EMBEDDER` resolves to an embedder: the default `auto` uses the local
 `bge-base-en-v1.5` model when `felix-harness[embeddings]` is installed and runs without the vector
-channel otherwise. See [Embeddings](/guide/deploy/#embeddings). Semantic session strategies and
-`tools_retrieval` also need the `embeddings` extra.
+channel otherwise. See [Embeddings](/guide/deploy/#embeddings). Memories stored before an
+embedder was configured are embedded later by the worker, a batch every 15 minutes. Semantic
+session strategies and `tools_retrieval` also need the `embeddings` extra.
+
+A `task` memory has no topic key, so no later fact replaces it. The nightly retention sweep forgets
+an agent-written task once it is untouched for `FELIX_MEMORY_TASK_RETENTION_DAYS` (30 days, `0`
+keeps them); it stays restorable, and a task an operator wrote is never expired. See
+[Memory](/guide/management-api/#memory).
 
 ## Durable execution
 
