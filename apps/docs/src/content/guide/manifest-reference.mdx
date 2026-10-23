@@ -836,6 +836,8 @@ spec:
 | `max_bytes` | int \| null | `null` (100,000); up to 5,000,000 |
 | `format` | `text` \| `raw` | `text` — renders HTML to readable text |
 | `fatal` | bool | `false` |
+| `extract_model` | string | `""` — a model route; set, the tool answers a `prompt` instead of returning the page |
+| `extract_max_tokens` | int \| null | `null` (1,024); up to 8,192 |
 
 An entry must set **either** `path_prefix` or `allow_any_host: true`; a manifest that sets
 neither fails validation. Every other outbound ref names a destination you chose, so leaving
@@ -858,6 +860,45 @@ Compiling a manifest that binds a fetch tool without `spec.content_screening.ena
 
 **Not replay-safe.** A resumed run will not re-issue a fetch. The model names the endpoint, and a
 `GET` that changes something is ordinary on the open web.
+
+#### Answering a prompt instead of returning the page
+
+Set `extract_model` to a [model route](/guide/deploy/#model-routes) and the tool takes a `prompt`
+beside the `url`. Felix fetches the page as above, hands its text and the prompt to that model,
+and returns the response header lines followed by the model's answer — not the page. An 80 KB
+page costs the agent a paragraph of context instead of the whole document.
+
+```yaml
+spec:
+  http_tools:
+    - name: web_fetch
+      allow_any_host: true
+      extract_model: claude-haiku
+  content_screening:
+    enabled: true
+```
+
+- The tool's description tells the model it gets an answer, not the page, so ask for exact
+  quotes when wording matters.
+- An error, an empty body, a page with no readable text or a non-text response comes back as it
+  would without extraction, and no model call is made.
+- If the extraction model fails or runs past `FELIX_MODEL_TIMEOUT_SECONDS`, the result says
+  `http_fetch_error: extraction failed (…)`. It never falls back to the page.
+- The call is metered under `kind: web_fetch_extract` and counts against the run's `limits`. The
+  route must be allowed by `auth.outbound.providers`, and priced when `limits.max_cost_usd` is
+  set.
+- An `extract_model` that is not a configured route fails the compile.
+
+<Aside type="caution" title="Extraction saves context, not trust">
+The answer is written from attacker-controlled input, and a page can steer the model that writes
+it. Content screening still applies to the answer. With screening enabled, the injection-marker
+scan also runs over the page as served, and a marked page is refused before the extraction model
+reads it — a paraphrase would otherwise carry the instruction past the markers. The paid
+screening `model`, if you set one, sees only the answer.
+</Aside>
+
+The bundled `deep` agent binds its fetch tool this way, as `web_fetch`. Its route is
+`claude-haiku`; on an install with no Anthropic key, point `extract_model` at a route you have.
 
 ### `spec.github_publish`
 
