@@ -37,8 +37,16 @@ import {
   type RenderContext,
   type ScrollBoxRenderable,
 } from '@opentui/core';
-import { useTimeline } from '@opentui/react';
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useTerminalDimensions } from '@opentui/react';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { handlesByTool, type Spill, sizeLabel } from '../artifacts.js';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
@@ -122,7 +130,7 @@ function frameCodeBlocks(borderColor: ColorInput): MarkdownOptions['renderNode']
 function Prose({ text, streaming, theme }: { text: string; streaming: boolean; theme: Theme }) {
   // Rebuilt only when the border colour does, because `renderNode` changing
   // identity makes the markdown renderable rebuild every block it owns.
-  const renderNode = useMemo(() => frameCodeBlocks(theme.faint), [theme.faint]);
+  const renderNode = useMemo(() => frameCodeBlocks(theme.rule), [theme.rule]);
   if (!text) return null;
   return (
     <markdown
@@ -140,40 +148,74 @@ function Prose({ text, streaming, theme }: { text: string; streaming: boolean; t
  * The only motion in the client. A tool card that has been on `⠿` for thirty
  * seconds and one whose process died look identical; a turning spinner is the
  * difference between "still working" and "nothing is happening", and it costs
- * one timeline shared by every card on screen.
+ * one interval shared by every live card, and nothing once none is.
  */
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SPIN_MS = 800;
 
 /**
- * One timeline, however many cards are running.
+ * One ticker, however many cards are running — and none when nothing is.
  *
- * A timeline per card would be a timer per card and, worse, cards drifting out
- * of phase with each other — which reads as several unrelated things happening
- * rather than one run working.
+ * It used to be `useTimeline` per card, which broke both halves of that. A
+ * timeline per card drifted out of phase with the others, reading as several
+ * unrelated things happening rather than one run working. And the hook
+ * autoplays and registers whether or not the card is live, while a looping
+ * timeline never completes — so every settled card on screen kept the renderer
+ * drawing at frame rate for the rest of the session, an idle client burning a
+ * core. This is a module-level interval that exists only while some card is
+ * subscribed, and a card subscribes only while it is live.
  */
+const ticker = {
+  frame: 0,
+  listeners: new Set<() => void>(),
+  timer: null as ReturnType<typeof setInterval> | null,
+};
+
+function subscribeSpinner(listener: () => void): () => void {
+  ticker.listeners.add(listener);
+  if (ticker.timer === null) {
+    ticker.timer = setInterval(() => {
+      ticker.frame = (ticker.frame + 1) % SPINNER.length;
+      for (const notify of ticker.listeners) notify();
+    }, SPIN_MS / SPINNER.length);
+  }
+  return () => {
+    ticker.listeners.delete(listener);
+    if (ticker.listeners.size === 0 && ticker.timer !== null) {
+      clearInterval(ticker.timer);
+      ticker.timer = null;
+    }
+  };
+}
+
+const stayStill = () => () => {};
+
 function useSpinner(active: boolean): string {
-  const timeline = useTimeline({ duration: SPIN_MS, loop: true });
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    const state = { t: 0 };
-    timeline.add(state, {
-      t: SPINNER.length,
-      duration: SPIN_MS,
-      ease: 'linear',
-      loop: true,
-      onUpdate: () => setFrame(Math.floor(state.t) % SPINNER.length),
-    });
-    return () => timeline.resetItems();
-  }, [active, timeline]);
-
+  const frame = useSyncExternalStore(active ? subscribeSpinner : stayStill, () => ticker.frame);
   return SPINNER[frame] ?? SPINNER[0] ?? '⠋';
 }
 
+/** Whether a spinner is ticking — for tests, which assert the client goes quiet. */
+export function spinnerTicking(): boolean {
+  return ticker.timer !== null;
+}
+
 /**
- * What a tool call did, in at most two dim lines.
+ * The widths a line of trace gets, from the terminal rather than assumed.
+ *
+ * These were constants tuned for eighty columns: at fifty a one-line card
+ * wrapped flush left into four, losing its indent, and at a hundred and sixty
+ * it was still cut at sixty-eight. The offsets are the ones the constants
+ * encoded, so eighty columns draws exactly what it did.
+ */
+function useTraceWidths() {
+  const { width } = useTerminalDimensions();
+  const arg = Math.max(24, width - 12);
+  return { arg, result: arg - 2, planTitle: Math.max(16, width - 24) };
+}
+
+/**
+ * What a tool call did, in at most two lines — dim, unless it went wrong.
  *
  * The second line is the *result*, which this client did not draw at all until
  * now — every tool ran and returned into silence, so a spilled-output marker was
@@ -181,7 +223,8 @@ function useSpinner(active: boolean): string {
  * trace of the run rather than a transcript of it: the full body is a keystroke
  * away when it is worth reading.
  */
-function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
+function ToolCard({ tool, spill, theme }: { tool: ToolCall; spill?: Spill; theme: Theme }) {
+  const widths = useTraceWidths();
   const name = tool.name.replace(/^(client|approval) · /, '');
   const kind = tool.name.startsWith('approval · ')
     ? 'awaiting approval'
@@ -191,7 +234,9 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
   // A `task` call is a child agent's job: named by the agent and what it was
   // handed, and running as that agent. A background child is started, not done.
   const child = subagentOf(tool);
-  const arg = child ? childSummary(child.agent, tool.input) : summarize(tool.input);
+  const arg = child
+    ? childSummary(child.agent, tool.input, widths.arg)
+    : summarize(tool.input, widths.arg);
   const spinner = useSpinner(!tool.done);
   // A spill's preview is the part the harness kept inline; everything else is
   // the output as it stands.
@@ -206,12 +251,19 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
       : child?.state === 'background'
         ? `working in the background${child.taskId ? ` as task ${child.taskId}` : ''}`
         : body,
-    RESULT_WIDTH,
+    widths.result,
   );
+  // A failed or refused call is the one most likely to need someone, so it is
+  // the one card that is not dim: the failed colour and a cross, on both
+  // lines. A denial is not a failure — a person or a rule said no, which is
+  // what approvals are for — so it is the plain foreground, like chat-ui's
+  // neutral `denied`: above the dim trace, below red.
+  const broken = issue && issue.kind !== 'denied';
+  const tone = broken ? { fg: theme.failed } : issue?.kind === 'denied' ? {} : { attributes: DIM };
   return (
     <box>
-      <text attributes={DIM}>
-        {tool.done ? '⎿ ' : `${spinner} `}
+      <text {...tone}>
+        {tool.done ? (broken ? '✗ ' : '⎿ ') : `${spinner} `}
         {name}
         {arg ? ` ${arg}` : ''}
         {kind ? ` · ${kind}` : ''}
@@ -219,7 +271,7 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
         {!tool.done && !child && tool.phase ? ` · ${tool.phase}` : ''}
       </text>
       {tool.done && (result || spill) ? (
-        <text attributes={DIM}>
+        <text {...tone}>
           {'  '}
           {result || '(no output)'}
           {spill ? ` · ${sizeLabel(spill.ref.chars)} more [a${spill.handle}]` : ''}
@@ -229,30 +281,21 @@ function ToolCard({ tool, spill }: { tool: ToolCall; spill?: Spill }) {
   );
 }
 
-/** Room for a tool's arguments beside its name, on an eighty-column terminal. */
-const TOOL_ARG_WIDTH = 68;
-
-/**
- * The result line is indented two columns under the call, so it is a little
- * narrower than the argument line above it.
- */
-const RESULT_WIDTH = 66;
-
 /** A `task` call's line: which agent, and the job it was handed. */
-function childSummary(agent: string, input: unknown): string {
+function childSummary(agent: string, input: unknown, width: number): string {
   const prompt = (input as { prompt?: unknown } | undefined)?.prompt;
-  return oneLine(typeof prompt === 'string' ? `${agent} · ${prompt}` : agent, TOOL_ARG_WIDTH);
+  return oneLine(typeof prompt === 'string' ? `${agent} · ${prompt}` : agent, width);
 }
 
 /** One line of the arguments, because a tool card is a line. */
-function summarize(input: unknown): string {
+function summarize(input: unknown, width: number): string {
   if (input == null) return '';
-  if (typeof input === 'string') return oneLine(input, TOOL_ARG_WIDTH);
+  if (typeof input === 'string') return oneLine(input, width);
   try {
     const obj = input as Record<string, unknown>;
     const first = obj.command ?? obj.path ?? obj.target ?? obj.query;
-    if (typeof first === 'string') return oneLine(first, TOOL_ARG_WIDTH);
-    return oneLine(JSON.stringify(obj), TOOL_ARG_WIDTH);
+    if (typeof first === 'string') return oneLine(first, width);
+    return oneLine(JSON.stringify(obj), width);
   } catch {
     return '';
   }
@@ -310,6 +353,7 @@ function tailLine(text: string, width: number): string {
 function Reasoning({ text, live, theme }: { text: string; live: boolean; theme: Theme }) {
   const spinner = useSpinner(live);
   const elapsed = useElapsed(live);
+  const widths = useTraceWidths();
   const words = countWords(text);
   const count = `${words} word${words === 1 ? '' : 's'}`;
 
@@ -322,14 +366,14 @@ function Reasoning({ text, live, theme }: { text: string; live: boolean; theme: 
             {elapsed === null ? ` · ${count}` : ` · ${formatElapsed(elapsed)} · ${count}`}
           </span>
         </text>
-        <text attributes={DIM_ITALIC}>{`  ${tailLine(text, RESULT_WIDTH)}`}</text>
+        <text attributes={DIM_ITALIC}>{`  ${tailLine(text, widths.result)}`}</text>
       </box>
     );
   }
 
   const measure =
     elapsed === null ? `reasoning · ${count}` : `thought for ${formatElapsed(elapsed)} · ${count}`;
-  const room = TOOL_ARG_WIDTH - measure.length - 3;
+  const room = widths.arg - measure.length - 3;
   return (
     <text attributes={DIM}>
       {measure}
@@ -388,6 +432,7 @@ const STEP_GLYPH: Record<StepState, string> = {
 };
 
 function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
+  const widths = useTraceWidths();
   const done = plan.steps.filter((s) => s.state === 'done').length;
   const tone = (state: StepState) =>
     state === 'running' ? theme.running : state === 'failed' ? theme.failed : undefined;
@@ -399,22 +444,19 @@ function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
         {/* A person changed it by hand: steps the agent did not write never read as its own. */}
         {plan.edited ? <span attributes={DIM}>{' · edited'}</span> : null}
       </text>
-      {plan.goal ? <text attributes={DIM}>{oneLine(plan.goal, RESULT_WIDTH)}</text> : null}
+      {plan.goal ? <text attributes={DIM}>{oneLine(plan.goal, widths.result)}</text> : null}
       {plan.steps.map((step, i) => (
         <text key={step.id} {...(step.state === 'pending' ? { attributes: DIM } : {})}>
           <span fg={tone(step.state) ?? (step.state === 'done' ? theme.ready : undefined)}>
             {`  ${STEP_GLYPH[step.state]} `}
           </span>
-          {oneLine(step.title || `Step ${i + 1}`, PLAN_TITLE_WIDTH)}
+          {oneLine(step.title || `Step ${i + 1}`, widths.planTitle)}
           <span attributes={DIM}>{step.state === 'done' ? '' : ` · ${step.status}`}</span>
         </text>
       ))}
     </box>
   );
 }
-
-/** A step's title beside its glyph and status word, on an eighty-column terminal. */
-const PLAN_TITLE_WIDTH = 56;
 
 function AssistantTurn({
   turn,
@@ -445,6 +487,7 @@ function AssistantTurn({
             <ToolCard
               key={`t${segment.index}`}
               tool={segment.tool}
+              theme={theme}
               {...(handles.get(segment.tool) ? { spill: handles.get(segment.tool) } : {})}
             />
           );
@@ -500,7 +543,7 @@ function NoteTurn({ turn, theme }: { turn: Turn; theme: Theme }) {
       marginBottom={1}
       paddingLeft={1}
       border={['left']}
-      borderColor={theme.faint}
+      borderColor={theme.rule}
     >
       <text attributes={DIM}>{`note · ${role} · ${reach}`}</text>
       {turn.content ? <text>{turn.content}</text> : null}

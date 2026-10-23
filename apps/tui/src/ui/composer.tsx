@@ -211,7 +211,7 @@ export function Composer({
       flexShrink={0}
       border
       borderStyle="rounded"
-      borderColor={active ? theme.ready : theme.faint}
+      borderColor={active ? theme.ready : theme.rule}
       bottomTitle={hint ?? ''}
       bottomTitleAlignment="left"
       paddingLeft={1}

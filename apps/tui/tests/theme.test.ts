@@ -14,7 +14,16 @@ import { resolveTheme } from '../src/theme';
  */
 
 const hex = (c: unknown) => RGBA.prototype.toString.call(c);
-const roles = ['notice', 'blocked', 'danger', 'failed', 'running', 'ready', 'faint'] as const;
+const roles = [
+  'notice',
+  'blocked',
+  'danger',
+  'failed',
+  'running',
+  'ready',
+  'faint',
+  'rule',
+] as const;
 
 describe('resolveTheme', () => {
   it('uses the design palette when the terminal can and we know the scheme', () => {
@@ -34,7 +43,7 @@ describe('resolveTheme', () => {
   it('falls back to the terminal palette when it cannot do true colour', () => {
     const theme = resolveTheme({ themeMode: 'dark', trueColor: false });
     for (const role of roles) {
-      expect((theme[role] as RGBA).intent).toBe('indexed');
+      expect(['indexed', 'default']).toContain((theme[role] as RGBA).intent);
     }
   });
 
@@ -45,7 +54,39 @@ describe('resolveTheme', () => {
   it('falls back when the terminal has not said whether it is light or dark', () => {
     const theme = resolveTheme({ themeMode: null, trueColor: true });
     for (const role of roles) {
-      expect((theme[role] as RGBA).intent).toBe('indexed');
+      expect(['indexed', 'default']).toContain((theme[role] as RGBA).intent);
+    }
+  });
+
+  /**
+   * Amber means a person is being asked to act. "threads refreshed" in amber
+   * spent that on weather, so a notice is the terminal's own foreground.
+   */
+  it('never draws a notice in the blocked colour', () => {
+    for (const inputs of [
+      { themeMode: 'dark' as const, trueColor: true },
+      { themeMode: 'light' as const, trueColor: true },
+      { themeMode: null, trueColor: false },
+    ]) {
+      const theme = resolveTheme(inputs);
+      expect(hex(theme.notice)).not.toBe(hex(theme.blocked));
+      expect((theme.notice as RGBA).intent).toBe('default');
+    }
+  });
+
+  /**
+   * Secondary text is information, so it is held to 4.5:1 — which ANSI 8 is
+   * not on many schemes, and in Solarized Dark is the background itself.
+   */
+  it('keeps faint text off ANSI 8, and frames on it', () => {
+    for (const inputs of [
+      { themeMode: 'dark' as const, trueColor: true },
+      { themeMode: 'light' as const, trueColor: true },
+      { themeMode: null, trueColor: false },
+    ]) {
+      const theme = resolveTheme(inputs);
+      expect(hex(theme.faint)).not.toBe(hex(RGBA.fromIndex(8)));
+      expect(hex(theme.rule)).toBe(hex(RGBA.fromIndex(8)));
     }
   });
 

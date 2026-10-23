@@ -25,6 +25,7 @@
 import {
   DARK,
   LIGHT,
+  NEUTRAL,
   STATE_DARK,
   STATE_LIGHT,
   type StatePalette,
@@ -45,7 +46,12 @@ export const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
  * rather than spread across the components.
  */
 export interface Theme {
-  /** A transient message in the status area. */
+  /**
+   * A transient message in the status area: a confirmation, a listing, `/help`.
+   * The terminal's own foreground, never `blocked` — amber means a person is
+   * being asked to act, and "threads refreshed" in amber taught that amber is
+   * weather. A notice that reports a failure is drawn in `failed` instead.
+   */
   notice: ColorInput;
   /** The run is stopped, waiting on you: an approval, or the agent's question. */
   blocked: ColorInput;
@@ -61,8 +67,18 @@ export interface Theme {
   running: ColorInput;
   /** Ready, yours, or focused — the composer's marker, the rail's border. */
   ready: ColorInput;
-  /** Present but not in play. */
+  /**
+   * Secondary *text* — an unselected tab, a table header. It is information, so
+   * it is held to 4.5:1: ANSI 8 is not, and in Solarized Dark it is the
+   * background itself, which made the inspector's tab names vanish.
+   */
   faint: ColorInput;
+  /**
+   * A frame or rule that only separates — a code block's border, a note's bar,
+   * the idle composer. Decorative, so ANSI 8 is right on both paths: it is the
+   * user's own "dim", and nothing is lost if their scheme makes it faint.
+   */
+  rule: ColorInput;
   /**
    * The one background this client paints, and only because an overlay has to
    * be opaque — the conversation would otherwise show through the gaps between
@@ -81,13 +97,17 @@ export interface Theme {
  * respecting a solarized terminal and painting over it.
  */
 const INDEXED: Theme = {
-  notice: RGBA.fromIndex(3),
+  notice: RGBA.defaultForeground(),
   blocked: RGBA.fromIndex(3),
   danger: RGBA.fromIndex(9),
   failed: RGBA.fromIndex(1),
   running: RGBA.fromIndex(4),
   ready: RGBA.fromIndex(2),
-  faint: RGBA.fromIndex(8),
+  // Not ANSI 8: with no scheme to measure against, the only secondary colour
+  // certain to be legible is the terminal's own foreground. Selection is
+  // carried by `ready` and the strip's underline, not by this.
+  faint: RGBA.defaultForeground(),
+  rule: RGBA.fromIndex(8),
   // The terminal's own background, so an overlay is opaque without introducing
   // a colour the user did not choose.
   surface: RGBA.defaultBackground(),
@@ -95,15 +115,17 @@ const INDEXED: Theme = {
 
 function fromPalette(state: StatePalette, neutral: ThemePalette): Theme {
   return {
-    notice: RGBA.fromHex(state.blocked),
+    notice: RGBA.defaultForeground(),
     blocked: RGBA.fromHex(state.blocked),
     danger: RGBA.fromHex(state.danger),
     failed: RGBA.fromHex(state.failed),
     running: RGBA.fromHex(state.running),
     ready: RGBA.fromHex(state.done),
-    // No design token: the neutral scale's faint values are tuned against a
-    // painted background, and this client paints none.
-    faint: RGBA.fromIndex(8),
+    // Measured against the backgrounds terminals actually ship rather than one
+    // this client paints: light 6.5–7.5:1 (white, stone, Solarized Light), dark
+    // 4.5–8.4:1 (black through a #3b3b3b grey, Solarized Dark, One Dark).
+    faint: RGBA.fromHex(neutral === LIGHT ? NEUTRAL[600] : NEUTRAL[400]),
+    rule: RGBA.fromIndex(8),
     // Offset from the page rather than equal to it, so the picker reads as
     // floating above the conversation instead of cut into it.
     surface: RGBA.fromHex(neutral.bgSubtle),

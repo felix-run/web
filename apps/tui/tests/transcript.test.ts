@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Turn } from '@felix/client';
 import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
 import { createElement } from 'react';
-import { Transcript } from '../src/ui/transcript';
+import { spinnerTicking, Transcript } from '../src/ui/transcript';
 import { hasAttribute, lines, mount, shows, styleOf, testTheme } from './render';
 
 /**
@@ -387,6 +387,143 @@ describe('a tool card', () => {
     } finally {
       ui.stop();
     }
+  });
+});
+
+/**
+ * A failed call is the one card that must not be drawn like the rest. Every
+ * card used to be dim, so `failed: …` read at the rank of a success.
+ */
+describe('a tool card that went wrong', () => {
+  const ended = (output: string): Turn =>
+    ({
+      id: 'a-end',
+      role: 'assistant',
+      content: '',
+      tools: [{ name: 'write_file', input: { path: 'notes.txt' }, output, done: true }],
+    }) as Turn;
+
+  it('draws a failure in the failed colour, with a cross, at full weight', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [ended('[tool error/permission_denied] Errno 13: notes.txt')],
+      }),
+      { width: 80, height: 6 },
+    );
+    try {
+      expect(shows(ui.frame(), '✗ write_file notes.txt')).toBe(true);
+      const call = styleOf(ui.spans(), 'write_file');
+      expect(call?.fg).toEqual(rgb(testTheme.failed));
+      expect(hasAttribute(call?.attributes ?? 0, DIM)).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('draws a denial plainly — above the trace, and not as a failure', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [ended('[approval denied] tool=write_file rule=workspace-write')],
+      }),
+      { width: 80, height: 6 },
+    );
+    try {
+      const frame = ui.frame();
+      expect(shows(frame, '⎿ write_file')).toBe(true);
+      expect(frame).not.toContain('✗');
+      const call = styleOf(ui.spans(), 'write_file');
+      expect(call?.fg).not.toEqual(rgb(testTheme.failed));
+      expect(hasAttribute(call?.attributes ?? 0, DIM)).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+describe('a tool card on a terminal that is not eighty columns', () => {
+  const long = (): Turn =>
+    ({
+      id: 'a-wide',
+      role: 'assistant',
+      content: '',
+      tools: [{ name: 'bash', input: { command: `echo ${'x'.repeat(300)}` }, done: true }],
+    }) as Turn;
+
+  it('uses the room a wide terminal has, and still one line', async () => {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [long()] }), {
+      width: 160,
+      height: 6,
+    });
+    try {
+      const [row = ''] = lines(ui.frame());
+      // 68 was the old cap at any width; a 160-column terminal gets 148.
+      expect(row.trimEnd().length).toBeGreaterThan(140);
+      expect(lines(ui.frame()).length).toBe(1);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('stays on one line at fifty columns instead of wrapping flush left', async () => {
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [long()] }), {
+      width: 50,
+      height: 6,
+    });
+    try {
+      expect(lines(ui.frame()).length).toBe(1);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
+/**
+ * An idle client must be idle. A looping timeline per card kept the renderer
+ * drawing at frame rate once any tool card had been on screen — settled or not.
+ */
+describe('a settled transcript', () => {
+  it('leaves the renderer idle and no spinner ticking', async () => {
+    const turns = [
+      {
+        id: 'a-idle',
+        role: 'assistant',
+        content: 'done',
+        tools: [
+          { name: 'read_file', input: { path: 'a' }, output: 'ok', done: true },
+          { name: 'read_file', input: { path: 'b' }, output: 'ok', done: true },
+        ],
+      } as Turn,
+    ];
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns }), {
+      width: 80,
+      height: 6,
+    });
+    try {
+      await ui.settle();
+      expect(spinnerTicking()).toBe(false);
+      expect(ui.renderer.isRunning).toBe(false);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('ticks while a card is live, and stops once it is gone', async () => {
+    const live = {
+      id: 'a-live',
+      role: 'assistant',
+      content: '',
+      tools: [{ name: 'read_file', input: { path: 'a' }, done: false }],
+    } as Turn;
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [live] }), {
+      width: 80,
+      height: 6,
+    });
+    expect(spinnerTicking()).toBe(true);
+    ui.stop();
+    await ui.until(() => !spinnerTicking()).catch(() => {});
+    expect(spinnerTicking()).toBe(false);
   });
 });
 

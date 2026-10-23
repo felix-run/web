@@ -166,7 +166,10 @@ export function ApprovalPrompt({
               changes what pressing them does. The grant window gets its own
               row: together they wrapped, and a wrapped warning reads as
               filler. */}
-          <text attributes={DIM}>
+          {/* Full intensity: the keys and the deadline are the two facts on
+              this banner a person must read. Only the grant window, which
+              explains, is dim. */}
+          <text>
             y approve · n deny
             {onEdit ? ' · e edit args' : ''}
             {left === null ? '' : ` · auto-denied in ${formatCountdown(left)}`}
@@ -252,7 +255,7 @@ export function UiPrompt({
           onSelect={(_index, option) => onRespond(option?.value ?? '')}
         />
       ) : pending.kind === 'confirm' ? (
-        <text attributes={DIM}>y yes · n no · esc cancel</text>
+        <text>y yes · n no · esc cancel</text>
       ) : (
         // A real editor: a cursor, word motion, undo, and a paste that arrives
         // whole. The version this replaces read single-character key names, so
@@ -307,7 +310,7 @@ export function WritePrompt({
       {/* Their own row, and never a `bottomTitle`: a title too long for the
           border is dropped silently, and the keys that answer this must not be
           the thing that disappears on a narrow terminal. */}
-      <text attributes={DIM}>y allow · n refuse</text>
+      <text>y allow · n refuse</text>
     </box>
   );
 }

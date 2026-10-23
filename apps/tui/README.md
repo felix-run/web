@@ -329,7 +329,7 @@ The kitty keyboard protocol is on by default, because `main.tsx` asks for it: wi
 `escape` is a possible sequence prefix and the parser holds it past the end of the test.
 
 `spans()` keeps colour and attributes where `frame()` flattens them, which is the only way to
-assert that a notice is still yellow or a dim line still dim.
+assert that a failed tool card is still red or a dim line still dim.
 
 ## Notes
 

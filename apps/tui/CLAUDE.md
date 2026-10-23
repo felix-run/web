@@ -166,6 +166,19 @@ browser cannot do rather than about the chat:
   rest of the terminal's code. A harness approval is `blocked` and the local write prompt is
   `danger`, because a server asking permission and this process touching your disk are different
   risks.
+  **Amber is not the notice colour** (2026-10-22): `notice` is the terminal's own foreground, and a
+  notice reporting a failure goes through `failNotice`, which draws it in `failed` — "threads
+  refreshed" in `blocked` taught that amber is weather. **`faint` is text and `rule` is a frame**:
+  ANSI 8 is the background itself in Solarized Dark, which made the inspector's tab names vanish,
+  so `faint` is a measured neutral (≥4.5:1) under true colour and the default foreground
+  otherwise, and only borders keep ANSI 8. A failed or refused tool card is the one card not drawn
+  dim (`✗`, `failed`); a denial is plain foreground, as chat-ui's neutral `denied`. Trace widths
+  follow the terminal (`useTraceWidths`), with eighty columns drawing what the old constants did.
+- **A settled screen does not draw.** The spinner is one module-level interval that exists only
+  while a live card subscribes. It was `useTimeline` per card, which autoplays and registers
+  whether or not the card is live, and a looping timeline never completes — so one tool card on
+  screen kept the renderer at frame rate for the rest of the session. `tests/transcript.test.ts`
+  asserts the renderer is idle over a settled transcript; anything new that animates must keep it so.
 - **`FELIX_DEBUG=1` turns on the renderer's console overlay** (`ctrl+d`), plus `openConsoleOnError`
   so a render failure opens it rather than freezing the frame. `console.log` in a full-screen app
   writes over the drawing; this is the only way to print anything here. The binding is only

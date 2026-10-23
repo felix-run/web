@@ -66,12 +66,13 @@ export function Inspector({
     stripRef.current?.setSelectedIndex(index < 0 ? 0 : index);
   }, [index]);
 
+  const boxWidth = Math.min(Math.max(40, width - 4), 92);
   return (
     <box
       position="absolute"
       left={2}
       top={1}
-      width={Math.min(Math.max(40, width - 4), 92)}
+      width={boxWidth}
       zIndex={10}
       flexDirection="column"
       backgroundColor={theme.surface}
@@ -135,7 +136,8 @@ export function Inspector({
         style={{ height: rows }}
         contentOptions={{ flexDirection: 'column' }}
       >
-        <PanelBody panel={panel} theme={theme} />
+        {/* Two borders, two padding, and a column for the scrollbar. */}
+        <PanelBody panel={panel} theme={theme} room={boxWidth - 5} />
       </scrollbox>
     </box>
   );
@@ -146,11 +148,12 @@ export function Inspector({
  * "nothing to show". A failed read that renders as an empty list says the
  * harness is idle, which is a different and wrong claim.
  */
-function PanelBody({ panel, theme }: { panel: PanelState; theme: Theme }) {
+function PanelBody({ panel, theme, room }: { panel: PanelState; theme: Theme; room: number }) {
   if (panel.error) {
     return (
       <box flexDirection="column">
-        <text fg={theme.failed}>{oneLine(panel.error, 86)}</text>
+        {/* Cut to the box, not to a constant: 86 inside an 80-column box wrapped. */}
+        <text fg={theme.failed}>{oneLine(panel.error, room)}</text>
         <text attributes={DIM}>r to try again</text>
       </box>
     );
