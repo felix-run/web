@@ -1248,7 +1248,7 @@ must be UTF-8 JSON of at most 256 KiB.
 | `413` | `payload_too_large` | |
 | `422` | `invalid_payload` | Not UTF-8 JSON. |
 | `429` | `rate_limited` | The trigger's per-minute limit is spent. Not remembered: a retry may succeed. |
-| `503` | `trigger_unavailable` | The trigger cannot start its run: its secret did not resolve or is too short, its manifest is missing, refuses the trigger's principal, or does not list `trigger_event`; or its workflow is missing, does not parse, declares inputs the trigger does not map, is no longer at the pinned `revision`, or is held by an agent while the trigger pins none. Not kept as the delivery's answer, so a redelivery after the fix runs. |
+| `503` | `trigger_unavailable` | The trigger cannot start its run: its secret did not resolve or is too short, its manifest is missing, refuses the trigger's principal, or does not list `trigger_event`; or its workflow is missing, does not parse, declares inputs the trigger does not map, or is no longer at the trigger's `revision`. Not kept as the delivery's answer, so a redelivery after the fix runs. |
 
 The run's user turn is the trigger's `prompt`. The payload arrives only when the model calls
 `trigger_event`, which returns the event type, delivery id and the body as sent, marked as

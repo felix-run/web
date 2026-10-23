@@ -463,7 +463,8 @@ workflow's inputs by [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901):
 FELIX_TRIGGERS='{
   "gh-issue": {"tenant": "acme", "workflow": "triage", "scheme": "github",
                "secret": "secret:GH_HOOK", "events": ["issues"],
-               "inputs": {"number": "/issue/number", "title": "/issue/title", "kind": "$event"}}
+               "inputs": {"number": "/issue/number", "title": "/issue/title", "kind": "$event"},
+               "revision": "<the revision GET /workflows/triage returns>"}
 }'
 ```
 
@@ -472,12 +473,15 @@ invalid_payload` and starts nothing (checked before the rate limit). `$event` is
 lists; `$delivery` is the delivery id as a short token. The sender's strings, objects and arrays are
 recorded on the run as `untrusted_inputs`, and every agent step of a trigger-started run reads what
 it is given inside a fence made new for each prompt — a convention the model is told to honour, so
-keep inbound screening on the manifests the workflow reaches. Anyone with `workflows:write` can
-change what the trigger's `scopes` reach; pin the workflow with `"revision"` when it grants scopes.
-The API logs a warning at boot for each workflow trigger with no pin. An unpinned trigger refuses
-a workflow an agent [still holds](/guide/manifest-reference/#specworkflow_authoring): `503
-trigger_unavailable`, audited as `workflow_run_refused`, after the rate limit. A redelivery runs once
-the trigger is pinned.
+keep inbound screening on the manifests the workflow reaches.
+
+**`revision` is required.** A workflow trigger without one stops the API and the worker at boot
+(`felix doctor` reports it first). Read the workflow, then copy the `revision` that
+`GET /workflows/{id}` returns. Anyone with `workflows:write`, or an agent saving for its person
+([`spec.workflow_authoring`](/guide/manifest-reference/#specworkflow_authoring)), can save the
+workflow again; the trigger then answers `503 trigger_unavailable` until you pin the new revision,
+so no save changes what a sender starts under the trigger's `scopes`. The pin is checked before the
+payload, so a save that changes an input's type is that 503 too, not a `422`.
 
 ## Slack
 
