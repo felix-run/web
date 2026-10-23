@@ -59,25 +59,39 @@ async function sheet(opts: { at?: string; runs?: unknown[]; linked?: unknown } =
   return mocks;
 }
 
+/**
+ * The Run button, once it can be pressed: it is disabled until the dataset's items arrive, so a
+ * click made as soon as the version field appears can land on a disabled button and send nothing —
+ * which is how this suite flaked on a slow CI runner.
+ */
+async function runButton(name: string | RegExp): Promise<HTMLButtonElement> {
+  return waitFor(() => {
+    const button = screen.getByRole('button', { name }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    return button;
+  });
+}
+
 describe('a run pinned to a version', () => {
   it('runs a stored version when one is named, and says so on the button', async () => {
     const { runEvalDataset } = await sheet();
     const field = await screen.findByLabelText('Version of quick to run');
     fireEvent.change(field, { target: { value: '3' } });
-    const button = screen.getByRole('button', { name: 'Run vs quick v3' });
-    fireEvent.click(button);
+    fireEvent.click(await runButton('Run vs quick v3'));
     await waitFor(() => expect(runEvalDataset).toHaveBeenCalledWith('golden', 'quick', false, 3));
   });
 
   it('runs the active version when the field is blank, and refuses a number that is not one', async () => {
     const { runEvalDataset } = await sheet();
     const field = await screen.findByLabelText('Version of quick to run');
+    // Loaded first, so the disabled button below is refusing the number, not waiting on items.
+    await runButton('Run vs quick');
     fireEvent.change(field, { target: { value: '1.5' } });
     expect(
       (screen.getByRole('button', { name: /^Run vs quick/ }) as HTMLButtonElement).disabled,
     ).toBe(true);
     fireEvent.change(field, { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Run vs quick' }));
+    fireEvent.click(await runButton('Run vs quick'));
     await waitFor(() =>
       expect(runEvalDataset).toHaveBeenCalledWith('golden', 'quick', false, undefined),
     );
