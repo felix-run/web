@@ -240,7 +240,7 @@ writes. The split of who decides what is the control:
 
 | Who | Decides |
 |---|---|
-| The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`. The manifest must bind `notify` or it does not validate. |
+| The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`, `max_firings_per_day`. The manifest must bind `notify` or it does not validate. |
 | The person (`heartbeats:write`) | Only on or off, for themselves: `PUT /heartbeats/{manifest}` with `{enabled}`, `DELETE`, and run now. `GET /heartbeats` (`heartbeats:read`) lists their own and no one else's. |
 
 **It runs as the person.** `enrol` (`jobs/heartbeat.py`) writes an ordinary job,
@@ -284,6 +284,25 @@ the manifest as stored, and `max_turns` only narrows: the firing's `recursion_li
 it and the manifest's own (`DEFAULT_RECURSION`, 10, when unset), and its `max_turns` the lower of it
 and the manifest's `max_turns`.
 
+**It fires at most `max_firings_per_day` times a UTC day** (optional, 1–1440); unset, nothing
+caps it beyond what the schedule fires and `over_daily_cap` returns at once. After
+`keep_schedule_current`, `begin_firing` calls `over_daily_cap`, which counts the job's runs since
+`jobs/store.py:utc_day_start(now)` with `count_runs_since` — one indexed count over
+`idx_job_runs_history`, every status but `skipped` — so a scheduled firing and a `POST
+/heartbeats/{manifest}/run` count alike and a person cannot fire past it by hand. At the cap the
+firing's refusal is `{"status": "skipped", "reason": "daily_cap", "max_firings_per_day": N}`:
+nothing is invoked (no inbound check, no compile, no model call, no notice), `fire_job` records the
+run and the job's `last_status` as `skipped`, and the job stays enabled. The day is UTC whatever
+`FELIX_TIMEZONE` says, so it is the same on every install. Skipped runs do not count, so raising the
+cap mid-day gives that day the difference. A cancelled firing counts too: `fire_job` records a
+run that ends abnormally through `_end_abnormally` — an `error` run, `cancelled` or `execution
+failed` — *before* clearing the `running` mark, so a manual run cannot claim the job in between and
+find one run fewer than happened. A schedule that could fire more often than the cap is allowed
+and the cap binds; `cap_warnings` (via `manifests/governance.py:manifest_warnings`, with
+`schedule.py:most_firings_per_utc_day` — `ceil(day / interval)`, or a cron's busiest of the next
+seven UTC days) returns it as a warning from `PUT /manifests` (`warnings`) and `felix
+validate-manifest`.
+
 **It is unattended**, like every job firing: a tool behind an approval rule without
 `allow_unattended` is refused at once, and nothing waits. It is marked scheduled, so it cannot
 schedule more work.
@@ -310,7 +329,12 @@ arms, matching the prefix literally (`startswith(autoescape=True)`), so a `_` or
 name widens nothing. Newest is by last activity, ties broken by thread id so both arms keep the same
 threads. The person's conversation is excluded by id and never has the prefix. `DELETE
 /heartbeats/{manifest}` removes the job, its run history and every firing thread, and keeps the
-conversation. Job run records are not yet trimmed.
+conversation. Run records are trimmed as every job's are: `record_run` calls `trim_runs` after each
+insert, deleting all but the newest `FELIX_JOB_RUNS_KEEP` (200; `0` keeps all) by `(started_at,
+run_id)`, at most 1,000 rows a call, oldest first — except runs at or after the current UTC day's
+start that are not `skipped`. Those are what the cap counts, so trimming them would let a heartbeat
+fire again; a small `FELIX_JOB_RUNS_KEEP` cannot do that. A failed trim is logged and the run stays
+recorded.
 
 ## Skills
 

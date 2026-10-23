@@ -1115,6 +1115,27 @@ subject. The schedule is not moved, and a **disabled job runs** when asked, sinc
 explicit. It needs `jobs:write`, because whoever may rewrite a job's prompt may already make it
 run. An unknown job is `404`. The call is synchronous and lasts as long as the job's turn does.
 
+### Run history
+
+`GET /jobs/{name}/runs?limit=` (`limit` 1–200, default 20) answers `{items: [...]}`, the job's run
+records newest first, each `{tenant_id, job_name, run_id, status, error, started_at, finished_at,
+result}`. `status` is one of:
+
+| `status` | Meaning |
+|---|---|
+| `ok` | The firing ran and finished. |
+| `error` | The firing failed or was refused; `error` says why. A cancelled firing — a worker shutting down, a caller leaving a manual run — is an `error` run with `error` `cancelled`, and one that fails inside the scheduler is `execution failed`; both are recorded before the job's running mark clears, and both count toward a heartbeat's `max_firings_per_day`. |
+| `skipped` | A limit held the firing and nothing ran: no model call, no tool. Today only a [heartbeat](#heartbeats) over its `max_firings_per_day` (`result.reason: "daily_cap"`). `error` is empty. |
+
+The job's `last_status` carries the same value after each run.
+
+After each run is recorded, every job's history is trimmed to its newest `FELIX_JOB_RUNS_KEEP`
+(default `200`; `0` keeps every run). The exception is runs of the current UTC day that ran (any
+status but `skipped`): they stay until the day ends, because a heartbeat's daily cap counts them, so
+a small `FELIX_JOB_RUNS_KEEP` never hands a heartbeat its firings back. Skipped runs are trimmed
+like any other. One trim deletes at most 1,000 rows, oldest first, so a history from before trimming
+is cut down over a few runs; a failed trim is logged and leaves the run recorded.
+
 ### A job that runs a workflow
 
 A job may name a `workflow_id` instead of a `manifest_id` (never both: `422
@@ -1227,7 +1248,10 @@ was sent, and is theirs to delete.
 **`POST /heartbeats/{manifest}/run`** fires the heartbeat now and waits for it, exactly as a scheduled
 firing runs, and answers with the run record as [Run a job now](#run-a-job-now) does — `trigger:
 "manual"`, `requested_by` the caller — with `result.quiet` and `result.thread_id` beside
-`result.answer`. `409 heartbeat_running` while a firing of it is in flight.
+`result.answer`. `409 heartbeat_running` while a firing of it is in flight. A manual firing counts
+toward `max_firings_per_day`, when set, like a scheduled one; past it the call still answers `200`, with the
+run's `status` `skipped`, `error` empty and `result` `{"status": "skipped", "reason": "daily_cap",
+"max_firings_per_day": N, "trigger": "manual", "requested_by": …}` — no model was called.
 
 `DELETE` and `run` answer `404 {"detail": "not_found"}`, as `/jobs` answers a missing job, for a
 manifest the caller has no heartbeat on, whether or not someone else does — it never says whose a heartbeat is. All four routes need a named person as
@@ -1235,7 +1259,8 @@ manifest the caller has no heartbeat on, whether or not someone else does — it
 
 **What a firing does** — a fresh thread, the manifest's current checklist in a fixed frame,
 `HEARTBEAT_OK` when nothing needs the person or one `notify` when something does, unattended, on the
-heartbeat's `model` and `max_turns`, older firing threads pruned to `keep_threads` — is described
+heartbeat's `model` and `max_turns`, at most `max_firings_per_day` a UTC day when set, older firing threads
+pruned to `keep_threads` — is described
 under [`spec.heartbeat`](/guide/manifest-reference/#specheartbeat). A heartbeat's run records read
 like any job's, through `GET /jobs/{name}/runs`, with `result.quiet` saying whether a notice went.
 Firing transcripts are the tenant's to read, like any job's: each firing thread is an ordinary
