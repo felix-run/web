@@ -1397,6 +1397,7 @@ spec:
     model: claude-haiku        # a model route for firings only; unset runs on spec.model.id
     max_turns: 6               # steps one firing may take; 1–20
     keep_threads: 20           # firing threads kept per person; 1–200
+    # max_firings_per_day: 12  # optional: firings per person per UTC day; 1–1440
 ```
 
 A periodic check-in each person may turn on for themselves. The operator writes all of it — what to
@@ -1413,6 +1414,13 @@ a heartbeat and no `spec.notify` is refused at validation ("heartbeat needs spec
 | `model` | string ≤ 200 | unset | A model route (`FELIX_MODEL_ROUTES`) used for firings only. Unset, firings run on `spec.model.id`. |
 | `max_turns` | int 1–20 | `6` | Steps one firing may take. It only narrows: a firing runs at the lower of this and the manifest's own `recursion_limit` (a react loop; 10 when unset) and `max_turns` (a multi-agent pattern). |
 | `keep_threads` | int 1–200 | `20` | Firing threads kept per person; older ones are deleted after each firing. |
+| `max_firings_per_day` | int 1–1440 | unset | Firings per person per UTC day, scheduled and `POST /heartbeats/{manifest}/run` alike. Unset caps nothing beyond what `schedule` fires. One due past it calls no model and is recorded `skipped` (step 3); the heartbeat stays on. A value below what `schedule` fires in a UTC day is allowed and binds, and is returned as a warning by `PUT /manifests` (`warnings`) and `felix validate-manifest`. |
+
+**Cost.** Every firing calls the model at least once and up to `max_turns` times, and every
+enrolled person's heartbeat fires on its own. `schedule` sets how many firings a day that is: the
+default `every:60m` is 24 a day per person, so 100 people enrolled is at least 2,400 model calls a
+day. Point `model` at a cheaper route for firings and keep `max_turns` low; `max_firings_per_day` is
+an optional ceiling on top of the schedule, which also bounds firings asked for by hand.
 
 **A firing.** Enrolling writes an ordinary [job](/guide/management-api/#jobs) as the person, so each
 firing runs as `cron` on their behalf, with their scopes, through this manifest's inbound auth —
@@ -1429,27 +1437,41 @@ exactly as a [scheduled task](#specscheduling) does. In order:
    slot, so an edit applies from the next firing. The update is conditional on the schedule the
    firing read and touches nothing else, so it never re-creates a heartbeat deleted meanwhile nor
    re-enables one turned off.
-3. The prompt is `checklist` inside a fixed frame: use your tools to check this; if nothing needs the
+3. A heartbeat with `max_firings_per_day` set that has already run that many times in the current UTC day — midnight
+   UTC whatever `FELIX_TIMEZONE` says — runs nothing: no model call, no tool, no notice. The run is
+   recorded with status `skipped` and `result` `{"reason": "daily_cap", "max_firings_per_day": N}`,
+   the job's `last_status` reads `skipped`, and the heartbeat stays on and fires again after UTC
+   midnight. Every run that ran counts, scheduled or asked for with
+   [`POST /heartbeats/{manifest}/run`](/guide/management-api/#heartbeats), so a person cannot fire
+   past it by hand; skipped runs do not count, so an operator raising the cap mid-day gives that day
+   the difference. A cancelled firing (a worker shutting down, a caller leaving a manual run) is
+   recorded as an `error` run and counts. A `schedule` that could fire more often than the cap is
+   allowed: the cap binds, the rest of the day's slots are recorded `skipped`, and `PUT /manifests`
+   (`warnings`) and `felix validate-manifest` warn about it. With the field unset there is no cap
+   and this step does nothing.
+4. The prompt is `checklist` inside a fixed frame: use your tools to check this; if nothing needs the
    person, reply with exactly `HEARTBEAT_OK` and do not call `notify`; if something does, call
    `notify` once with a short title and message, then reply briefly. The job's payload is never read
    for it, so re-saving the job over `PUT /jobs` puts no words in a firing.
-4. The inbound and compile-pin checks judge the manifest as stored; then the firing runs with
+5. The inbound and compile-pin checks judge the manifest as stored; then the firing runs with
    `model` and the narrowed `max_turns` applied.
-5. It runs in a fresh thread (`{tenant}:job:<job name>:<hex>`), unattended: a tool behind an
+6. It runs in a fresh thread (`{tenant}:job:<job name>:<hex>`), unattended: a tool behind an
    [approval](#specapprovals) without `allow_unattended` is refused at once and nothing waits. It
    is scheduled work, so `schedule_task` refuses it (`scheduled_run`).
-6. A `notify` call goes to the person alone, with every `notify` control (redaction, link
+7. A `notify` call goes to the person alone, with every `notify` control (redaction, link
    stripping, screening, `max_per_run`, `max_per_hour`), and the notice is also left in the
    person's heartbeat conversation — `{tenant}:hb-<hex>`, created when they first enrol and titled
    `Heartbeat: <manifest>` in their session list — as an entry no prompt carries.
-7. The run record's `result` carries `quiet` (`true` when the firing let no `notify` call through),
+8. The run record's `result` carries `quiet` (`true` when the firing let no `notify` call through),
    the first 500 characters of the answer, and the firing's `thread_id`. Quiet is counted from
    `notify` calls, not read from the answer text.
-8. All but the newest `keep_threads` firing threads of this person's heartbeat are deleted whole —
+9. All but the newest `keep_threads` firing threads of this person's heartbeat are deleted whole —
    events and metadata, on every store. The heartbeat conversation is never one of them. A failed
    prune is logged and does not fail the run.
 
-Job run records are not trimmed by `keep_threads`.
+Run records are trimmed like every job's, not by `keep_threads`: after each run all but the newest
+`FELIX_JOB_RUNS_KEEP` (200) are deleted, except runs of the current UTC day that ran, which the
+daily cap counts and which stay until the day ends. See [Jobs](/guide/management-api/#run-history).
 
 **Firing transcripts are the tenant's to read.** Each firing thread is an ordinary thread of the
 tenant, like an agent task's or any job's, so whoever may read the tenant's sessions reads what a
