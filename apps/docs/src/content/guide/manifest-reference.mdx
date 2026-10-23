@@ -560,10 +560,13 @@ the address that is used. See [Egress](/internals/governance/#egress).
 `transport: stdio` spawns a subprocess from manifest-supplied argv — arbitrary code execution as the
 API process. It is refused unless the operator names the exact command in
 `FELIX_MCP_STDIO_ALLOWED_COMMANDS` (comma-separated; empty, the default, disables stdio entirely).
-The check runs on manifest **write** (`400`), at compile, and at every spawn. The child inherits only
-`PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's `LOGNAME`, `SHELL`, `TERM`, `USER`, and the declared
-keys. Loader variables such as `LD_PRELOAD`, `PYTHONPATH`, `NODE_OPTIONS` and `BASH_ENV` are
-rejected. The server must speak newline-delimited JSON on stdio, as the protocol specifies.
+The check runs on manifest **write** (`400`), at compile, and at every spawn. A bare name is resolved
+on the API's own `PATH` and spawned by absolute path. The child inherits only the API's `PATH`
+(absolute entries only), `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's `LOGNAME`, `SHELL`, `TERM`,
+`USER`, and the declared keys. `PATH` and loader variables such as `LD_PRELOAD`, `PYTHONPATH`,
+`NODE_OPTIONS` and `BASH_ENV` are rejected. Allowlisting an interpreter or package runner (`uvx`,
+`npx`) lets a manifest run anything through its arguments. The server must speak newline-delimited
+JSON on stdio, as the protocol specifies.
 :::
 
 ## `spec.peers`
