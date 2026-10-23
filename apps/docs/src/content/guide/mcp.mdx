@@ -173,9 +173,31 @@ and each call.
 - **The rest of the environment** is scrubbed: `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's own short
   list of non-secret variables (`LOGNAME`, `SHELL`, `TERM`, `USER`), and the keys the manifest
   declares. Its stderr is discarded.
+- **A declared key that runs code is refused**, case-insensitively. Saving the manifest fails with
+  `400` naming it. A manifest already stored with one is not failed at compile; that one server binds
+  no tools instead. The refused keys:
+  - loaders: `LD_*`, `DYLD_*`, `GCONV_PATH`
+  - shells: `BASH_FUNC_*`, `BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`, `PS4`, `PROMPT_COMMAND`, `IFS`
+  - interpreters: `JAVA_TOOL_OPTIONS` and its siblings, `NODE_OPTIONS`, `NODE_PATH`, the `PYTHON*`
+    paths and hooks including `PYTHONWARNINGS`, `BROWSER`, `PERL5*`, `RUBYOPT`, `RUBYLIB`, `HGRCPATH`
+  - git: `GIT_CONFIG_*`, `GIT_TRACE*`, `GIT_ALLOW_PROTOCOL`, and the variables naming a program
+    (`GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_EXTERNAL_DIFF`, …)
+
+  A server's ordinary settings pass: its own token, `NODE_ENV`, `GIT_AUTHOR_NAME`.
+- **The child's git is disarmed** as the shell tool's is, so a repository the server is pointed at
+  cannot make its `.git/config` run a program through those keys:
+  - hooks, `core.fsmonitor`, pager, editor, `core.sshCommand`, `core.askPass`, the credential helper
+    and the signing programs are pinned
+  - `ext::` URLs are refused, and git never prompts
+
+  That needs git 2.31 or later. A git server cannot use a credential helper; give it its token through
+  a `secret:` env key it reads, never in a URL.
 
 Allowlisting an interpreter or package runner (`uvx`, `npx`, `node`, `python`) lets a manifest run
-anything through its arguments. The allowlist decides which binary runs, not what it runs.
+anything through its arguments. The allowlist decides which binary runs, not what it runs, and the
+env rules only mean something for a fixed server binary. They are the known keys that need no file
+of an attacker's on the host, not every key: what they leave open is listed in the harness's
+`deploy/GOVERNANCE.md`.
 
 <Aside type="caution">
 stdio speaks the protocol's newline-delimited JSON. A server that only understands LSP-style
