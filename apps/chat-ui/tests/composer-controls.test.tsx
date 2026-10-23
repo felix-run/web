@@ -201,8 +201,8 @@ describe('the agent picker, fed by the harness', () => {
             JSON.stringify({
               object: 'list',
               data: [
-                { id: 'default', felix: { providerModel: 'gpt-5-mini' } },
-                { id: 'cowork', felix: { providerModel: null } },
+                { id: 'default', felix: { providerModel: 'fast', wireModel: 'gpt-5-mini' } },
+                { id: 'cowork', felix: { providerModel: 'claude-sonnet-4', wireModel: null } },
               ],
             }),
             { status: 200 },

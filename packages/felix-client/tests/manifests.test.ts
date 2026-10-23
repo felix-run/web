@@ -33,10 +33,21 @@ const MODELS = {
     {
       id: 'cowork',
       object: 'model',
-      felix: { providerModel: 'claude-sonnet-4-5', contextWindow: 200000 },
+      // The route's name is a label; the wire model is what it serves.
+      felix: {
+        providerModel: 'claude-sonnet-4',
+        wireModel: 'claude-sonnet-5',
+        contextWindow: 200000,
+      },
     },
-    // `providerModel: null` is the harness saying "same as the name".
-    { id: 'claude-opus-4', object: 'model', felix: { providerModel: null, contextWindow: 0 } },
+    // A wire model that is the name says nothing the name does not.
+    {
+      id: 'claude-opus-5',
+      object: 'model',
+      felix: { providerModel: 'claude-opus-5', wireModel: 'claude-opus-5', contextWindow: 0 },
+    },
+    // A harness older than `felix-run/felix#675` sends only the route name, which is not shown.
+    { id: 'legacy', object: 'model', felix: { providerModel: 'claude-sonnet-4' } },
     // An older harness, or anything else OpenAI-shaped: no `felix` block at all.
     { id: 'plain', object: 'model' },
   ],
@@ -160,11 +171,12 @@ describe('output styles', () => {
 });
 
 describe('listManifestEntries', () => {
-  it('keeps the provider model where it differs from the name, in the harness order', async () => {
+  it('keeps the wire model where it differs from the name, in the harness order', async () => {
     const { client, urls } = serve(MODELS);
     expect(await client.listManifestEntries()).toEqual([
-      { id: 'cowork', providerModel: 'claude-sonnet-4-5', contextWindow: 200000 },
-      { id: 'claude-opus-4' },
+      { id: 'cowork', wireModel: 'claude-sonnet-5', contextWindow: 200000 },
+      { id: 'claude-opus-5' },
+      { id: 'legacy' },
       { id: 'plain' },
     ]);
     expect(urls).toEqual(['http://localhost:8080/v1/models']);
@@ -172,14 +184,14 @@ describe('listManifestEntries', () => {
 
   it('leaves listManifests returning names only, for the callers that want no more', async () => {
     const { client } = serve(MODELS);
-    expect(await client.listManifests()).toEqual(['cowork', 'claude-opus-4', 'plain']);
+    expect(await client.listManifests()).toEqual(['cowork', 'claude-opus-5', 'legacy', 'plain']);
   });
 
   it('still lists names when called detached from the client', async () => {
     // chat-ui binds these, but a caller that destructures must not lose `this`.
     const { client } = serve(MODELS);
     const { listManifests } = client;
-    expect(await listManifests()).toEqual(['cowork', 'claude-opus-4', 'plain']);
+    expect(await listManifests()).toEqual(['cowork', 'claude-opus-5', 'legacy', 'plain']);
   });
 });
 
