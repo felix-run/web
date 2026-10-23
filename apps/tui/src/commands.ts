@@ -53,19 +53,31 @@ const SEARCH_LIMIT = 5;
  * `BINDINGS`, which `tests/keys.test.ts` ties to every `Action` the router can
  * return, and the inspector's sections come from `SECTIONS`, which had grown to
  * eight while this string still named six.
+ *
+ * Every row is the keys' shape — a label in an 11-column gutter, then what it
+ * covers — and stays under eighty columns: a notice is plain text, so a long
+ * row wraps flush left and its tail reads as a group of its own.
  */
+const COMMANDS: ReadonlyArray<[label: string, commands: string]> = [
+  ['thread', '/new /clear /rename <name> /fork /compact /export [file]'],
+  ['run', '/continue /think <level> /plan /style [name] /ask <question>'],
+  ['agent', '/manifest [name] /start <n>'],
+  ['history', '/rewind [n] /version <n> /search <text> /open <n|thread-id>'],
+  ['$PAGER', '/artifact <n> [file] · /skills /skill <name> (read-only)'],
+  ['client', '/refresh the thread list · /quit'],
+];
+
+const row = (label: string, what: string) => `  ${label.padEnd(11)}${what}`;
+
 export const HELP = [
-  '/new /clear /continue /think <level> /plan /style [name] /ask <question> /manifest [name] /start <n> /quit',
-  '/rename <name> /fork /compact /export [file] /rewind [n] /version <n>',
-  '/search <text> /open <n|thread-id> /artifact <n> [file] /refresh',
-  '/skills /skill <name>   the skill library, read-only, in $PAGER',
+  'commands:',
+  ...COMMANDS.map(([label, commands]) => row(label, commands)),
   ...(['chat', 'threads', 'inspector'] as const).flatMap((where) => [
     '',
     `${where}:`,
-    ...BINDINGS.filter((b) => b.where === where).map((b) => `  ${b.keys.padEnd(11)}${b.what}`),
+    ...BINDINGS.filter((b) => b.where === where).map((b) => row(b.keys, b.what)),
   ]),
-  '',
-  `the inspector's sections: ${SECTIONS.map((s) => s.name.toLowerCase()).join(', ')}`,
+  row('sections', SECTIONS.map((s) => s.name.toLowerCase()).join(', ')),
 ].join('\n');
 
 /** How much of a side question's answer a notice shows; the rest is said, not dropped silently. */

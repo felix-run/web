@@ -241,6 +241,17 @@ describe('the help', () => {
   it('names the new commands', () => {
     expect(HELP).toContain('/skills /skill <name>');
   });
+
+  it('fits eighty columns, since a notice wraps a long row flush left', () => {
+    for (const line of HELP.split('\n')) expect(line.length).toBeLessThanOrEqual(80);
+  });
+
+  it('names every command the switch handles', async () => {
+    const source = await Bun.file(new URL('../src/commands.ts', import.meta.url)).text();
+    const cases = [...source.matchAll(/^ {4}case '([a-z]+)':/gm)].map((m) => m[1]);
+    expect(cases.length).toBeGreaterThan(20);
+    for (const name of cases) expect(HELP).toMatch(new RegExp(`/${name}\\b`));
+  });
 });
 
 describe('the reports', () => {

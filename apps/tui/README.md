@@ -79,9 +79,12 @@ harness serves, and a command is the only thing that exposes one here — so a v
 `case` in `command()` is a verb this client does not have:
 
 ```
-/new /clear /continue /think <level> /manifest [name] /quit
-/rename <name> /fork /compact /export [file] /rewind [n] /version <n>
-/search <text> /open <n|thread-id> /refresh
+thread     /new /clear /rename <name> /fork /compact /export [file]
+run        /continue /think <level> /plan /style [name] /ask <question>
+agent      /manifest [name] /start <n>
+history    /rewind [n] /version <n> /search <text> /open <n|thread-id>
+$PAGER     /artifact <n> [file] · /skills /skill <name> (read-only)
+client     /refresh the thread list · /quit
 ```
 
 ## The shape of the screen
