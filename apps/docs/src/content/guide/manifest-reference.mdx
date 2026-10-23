@@ -563,8 +563,12 @@ API process. It is refused unless the operator names the exact command in
 The check runs on manifest **write** (`400`), at compile, and at every spawn. A bare name is resolved
 on the API's own `PATH` and spawned by absolute path. The child inherits only the API's `PATH`
 (absolute entries only), `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's `LOGNAME`, `SHELL`, `TERM`,
-`USER`, and the declared keys. `PATH` and loader variables such as `LD_PRELOAD`, `PYTHONPATH`,
-`NODE_OPTIONS` and `BASH_ENV` are rejected. Allowlisting an interpreter or package runner (`uvx`,
+`USER`, and the declared keys. A declared key that runs code is rejected: `PATH`, the loaders
+(`LD_*`, `DYLD_*`), bash's exported functions and hooks, interpreter options and paths
+(`JAVA_TOOL_OPTIONS`, `NODE_OPTIONS`, `PYTHONPATH`, `PYTHONWARNINGS`, …), and git's program and
+config variables (`GIT_CONFIG_*`, `GIT_SSH_COMMAND`, `GIT_TRACE*`, …). Saving such a manifest is a
+`400`; a stored one binds no tools for that server. The child's git is disarmed, so a credential
+helper is unavailable ([details](/guide/mcp/#felix-as-an-mcp-client)). Allowlisting an interpreter or package runner (`uvx`,
 `npx`) lets a manifest run anything through its arguments. The server must speak newline-delimited
 JSON on stdio, as the protocol specifies.
 :::
