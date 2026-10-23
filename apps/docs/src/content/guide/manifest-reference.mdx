@@ -1954,6 +1954,7 @@ spec:
     manifests: [quick, deep]   # steps may name these; empty means this manifest only
     max_workflows: 10
     max_active_runs: 3
+    run_approval: auto         # auto | always | never
 ```
 
 | Field | Type | Default | Meaning |
@@ -1964,6 +1965,7 @@ spec:
 | `kinds` | list | `[agent_turn, tool_call, approval, branch]` | The step kinds it may use. An allowlist: a kind a plugin registers later is closed to the agent until it is named here. |
 | `max_active_runs` | int 1–20 | `3` | Runs one person may have going at once from the workflows this agent holds for them (`too_many_runs`). |
 | `approval` | bool | `true` | Hold every `save_workflow` call for that person's approval. |
+| `run_approval` | `auto` \| `always` \| `never` | `auto` | When `run_workflow` waits for that person's approval: `auto` when the call's inputs can reach a tool that changes things, `always` on every run, `never` not at all (below). |
 
 | Tool | Scope | Does |
 |---|---|---|
@@ -2011,8 +2013,35 @@ checks run before anyone is asked, so a save it would refuse never reaches an ap
 - a manifest whose inbound rules refuse the person (`not_permitted`);
 - `max_workflows`.
 
-**What runs.** `run_workflow` asks no one: once a workflow's shape is approved, the agent may start
-it with any inputs. Each run starts as the person, and every manifest a step names is checked
+**What runs, and when a run is approved.** A saved workflow's shape is approved, but the inputs of each
+run are chosen by the model. `run_approval` decides when the person is asked about a run:
+
+| `run_approval` | `run_workflow` waits for approval | Rule id |
+|---|---|---|
+| `auto` (default) | When an input the call supplies can reach a `tool_call` step, through any chain of edges, whose tool can change something | `workflow_authoring.run_workflow.auto` |
+| `always` | On every call | `workflow_authoring.run_workflow` |
+| `never` | Never. This is the behaviour before Felix 0.17.0 | none |
+
+- **What counts as changing something.** Any tool not marked `read_only` in the manifest the step
+  names, compiled as the person. A peer (`task`, an A2A agent) always counts, since it acts on what
+  it is told. So does a tool that manifest no longer binds, or a manifest that does not compile.
+  Inputs that reach only `agent_turn` steps ask no one: an agent step reads its inputs fenced as data.
+  A call the tool would refuse now still counts as needing approval under `auto`, but its preview
+  refuses it before anyone is asked.
+- **Who is asked.** The person the run is for. The rule is one-shot and bound to them, and the grant
+  is bound to the workflow's revision at the time, so an approval of one revision starts no other.
+  The approver reads the workflow's name, id and revision, the inputs as the agent chose them (escaped
+  JSON), and every `tool_call` step those inputs reach, with whether its tool changes things.
+- **Your own rule wins.** Under `auto`, any rule in [`spec.approvals`](#specapprovals) whose `tools`
+  match `run_workflow`, a glob or one with `when_args` included, keeps the call as it was and no rule
+  is added. Under `always`, a rule naming `run_workflow` literally with no `when_args` replaces it.
+- **A permission mode may waive it.** Unlike the save's approval, `bypass` (where the manifest allows
+  it and the caller holds `approvals:bypass`) waives a run's approval, because a run starts now, in front of the person, while a save outlives the turn.
+- **Upgrading.** A manifest that already sets `spec.workflow_authoring` now asks before a run whose
+  inputs reach a writing tool, because `auto` is the default. Set `run_approval: never` to keep the
+  earlier behaviour.
+
+Each run starts as the person, and every manifest a step names is checked
 against them again. Every input counts as untrusted, so each agent step reads the inputs fenced as
 data. A `tool_call` step receives its inputs as tool arguments, governed only by that manifest's own
 policies, screening and approvals.
