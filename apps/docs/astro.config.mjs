@@ -98,11 +98,12 @@ export default defineConfig({
           label: 'Reference',
           items: [
             // Every route, one line each, linking to where it is explained — the
-            // way into the three below when you know the route but not the page.
+            // way into the four below when you know the route but not the page.
             { label: 'Route index', slug: 'guide/routes' },
             { label: 'Manifest reference', slug: 'guide/manifest-reference' },
             { label: 'REST API', slug: 'guide/rest-api' },
             { label: 'Management API', slug: 'guide/management-api' },
+            { label: 'MCP', slug: 'guide/mcp' },
             // Scalar over the spec of the release api.felix.run runs (src/pages/reference.astro).
             // The harness's own /docs needs its credential, so a link there is a 401.
             // Named for what it is: it has request schemas and a request builder, and

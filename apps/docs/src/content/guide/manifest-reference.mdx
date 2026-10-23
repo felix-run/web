@@ -523,7 +523,9 @@ The self-build `contributor` manifest enables authoring in `draft` mode; `govern
 
 ## `spec.mcp_servers`
 
-Each entry becomes one tool per remote tool, namespaced `{name}__{tool}`.
+Each entry becomes one tool per remote tool, namespaced `{name}__{tool}`. The client is the official
+MCP Python SDK's, on either protocol era; how discovery, calls, failures and timeouts behave is on
+the [MCP](/guide/mcp/#felix-as-an-mcp-client) page.
 
 ```yaml
 spec:
@@ -543,7 +545,9 @@ spec:
 | `cwd` | string | `""` | |
 | `env` | map[string,string] | `{}` | |
 | `auth` | string | `""` | Literal token or `secret:NAME`. |
-| `transport` | `http` \| `sse` \| `stdio` | `sse` | |
+| `transport` | `http` \| `sse` \| `stdio` | `sse` | `http` and `sse` are both Streamable HTTP. |
+| `timeout_ms` | int | 30 000 | Per request, at most the integration ceiling. A whole session (handshake, listing, call) is bounded at three times this. |
+| `use_instructions` | bool | `false` | Use the server's `instructions` as one line of tool guidance in the system prompt: collapsed, capped at 1000 characters, dropped if the injection markers flag it. |
 | `tools` | string[] | `[]` | Glob patterns over the **remote** tool names (`issue_write`, not `github__issue_write`). Empty binds every tool the server lists. Non-empty binds only matches, which is what lets an approval or policy rule enumerate a server's write tools rather than gate whatever it served on the day; a pattern that matches nothing is logged at bind time, not refused. |
 
 Outbound URLs pass an SSRF guard. Parsing checks what needs no lookup — scheme, plain `http`
@@ -556,9 +560,10 @@ the address that is used. See [Egress](/internals/governance/#egress).
 `transport: stdio` spawns a subprocess from manifest-supplied argv — arbitrary code execution as the
 API process. It is refused unless the operator names the exact command in
 `FELIX_MCP_STDIO_ALLOWED_COMMANDS` (comma-separated; empty, the default, disables stdio entirely).
-The check runs on manifest **write** (`400`), at compile, and at spawn. The child inherits only
-`PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ` plus declared keys, and loader variables such as `LD_PRELOAD`,
-`PYTHONPATH`, `NODE_OPTIONS` and `BASH_ENV` are rejected.
+The check runs on manifest **write** (`400`), at compile, and at every spawn. The child inherits only
+`PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's `LOGNAME`, `SHELL`, `TERM`, `USER`, and the declared
+keys. Loader variables such as `LD_PRELOAD`, `PYTHONPATH`, `NODE_OPTIONS` and `BASH_ENV` are
+rejected. The server must speak newline-delimited JSON on stdio, as the protocol specifies.
 :::
 
 ## `spec.peers`
