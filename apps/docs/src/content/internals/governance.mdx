@@ -189,12 +189,15 @@ screened or undelivered call still counts.
 
 **A notice is also left in the conversation it links to, for the person only.** A scheduled task's
 firing links its notice to the chat thread the task was scheduled from, read off
-`payload.scheduled_by`, a record only `schedule_task` writes: `PUT /jobs` ignores one in the body
+`payload.scheduled_by`, a record only `schedule_task` and heartbeat enrolment
+(`jobs/heartbeat.py:enrol`, below) write: `PUT /jobs` ignores one in the body
 (`routes/jobs.py:_payload_to_store`), so a job written there cannot name somebody else's
 conversation. It carries the stored record forward only when the job's own writer (`acting_for` ==
 the stored `created_by`) re-saves it, so pausing or resuming a task keeps it a task; re-saved by
 anyone else it becomes an ordinary job, since carrying the record would let them write into its
-writer's conversation. The record is used only for a task the notified person wrote,
+writer's conversation. A record counts only while it names the manifest the job runs
+(`jobs/store.py:scheduled_by`), so a task its writer moves to another `manifest_id` is an ordinary
+job too. The record is used only for a task or heartbeat the notified person wrote,
 and only for a chat thread of the tenant's own — a suffix in plain id characters with no `:`, which
 no chat client can create and every thread the harness mints for itself (`job:`, `channel:`, `a2a:`,
 `workflow:`, `fiber:`) has. The same cleaned text is appended there before the push goes
@@ -228,6 +231,86 @@ pending rows for the run's thread and **rebuilds** the frame, gated on `approval
 rather than bridging is deliberate: a pub/sub bridge is at-most-once and here the message *is* the
 prompt, so a dropped one costs a decision rather than latency. The same reasoning is why the
 transcript tail reads the session log instead of forwarding display events.
+
+## Heartbeats
+
+A heartbeat ([`spec.heartbeat`](/guide/manifest-reference/#specheartbeat),
+[`/heartbeats`](/guide/management-api/#heartbeats)) is a job a person enrols in and an operator
+writes. The split of who decides what is the control:
+
+| Who | Decides |
+|---|---|
+| The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`. The manifest must bind `notify` or it does not validate. |
+| The person (`heartbeats:write`) | Only on or off, for themselves: `PUT /heartbeats/{manifest}` with `{enabled}`, `DELETE`, and run now. `GET /heartbeats` (`heartbeats:read`) lists their own and no one else's. |
+
+**It runs as the person.** `enrol` (`jobs/heartbeat.py`) writes an ordinary job,
+`hb-<manifest>-<sha256(person)[:12]>`, with `created_by` the person and `created_auth` their authority
+as `creator_auth` records any job writer's, so each firing runs as `cron` on their behalf through
+`scheduler.job_auth` and the manifest's inbound auth. The same check runs at enrolment, as the
+firing's own caller, right after the manifest resolves (`404 unknown_manifest` otherwise) and
+*before* `422 no_heartbeat`, so a heartbeat that could never run is refused at once with the same
+written message, and a caller the manifest refuses cannot tell whether it offers one. Enrolling needs a named person —
+`tools/refusal.py:require_person`, shared with `schedule_task` and `notify` — so anonymous, a
+sub-less API key and the shared subjects are refused (`403 no_caller` / `shared_subject`). The
+person is hashed into the job name, so no subject's characters reach a URL path segment.
+
+**How long it lasts depends on the credential that enrolled it.** `scheduler.rechecks_at_firing`
+is true for an API key and for a Felix sign-in (Google, GitHub, GitHub Actions) whose grant for the
+tenant is configured here: each firing re-checks those as every job firing does — scopes cut to
+what the key or grant holds today, none left refuses the run — so the heartbeat records no expiry.
+For anything else — a token from another issuer, a sign-in to a personal tenant — there is nothing
+to re-check against, so `enrol` records `created_auth.expires_at` from the token's `exp`
+(`auth/recorded.py:token_expiry_ms`; a token with no `exp` records none). `fire_job` refuses the
+first firing at or past it before invoking anything, records the error "the credential that
+turned this heartbeat on has expired; turn it on again", and disables the job, as for an expired
+task. `GET /heartbeats` shows it as `expires_at`.
+
+**Nobody writes its instructions but the operator.** `scheduler._invoke_job_manifest` recognises a
+heartbeat job by `payload.scheduled_by.tool == "heartbeat"` naming the manifest the job runs, and
+builds the prompt from the manifest's *current* `checklist` (`firing_prompt`), inside a fixed
+frame; the payload is never read for it. A holder of `jobs:write` re-saving the job puts no words in
+a firing, and `PUT /jobs` strips a `scheduled_by` from anyone but the job's writer. A record counts
+only while it names the manifest the job runs (`jobs/store.py:scheduled_by`, the one reader), so a
+task or heartbeat its own writer moves to another `manifest_id` is an ordinary job: no prompt
+override, no notice link. `keep_schedule_current` moves a stored schedule that differs from the
+manifest's to the manifest's next slot through `jobs_store.set_schedule` — one conditional
+`UPDATE … WHERE schedule = <what the firing read>`, never an upsert, touching neither `enabled` nor
+the writer — so it never re-creates a heartbeat deleted meanwhile, re-enables one turned off, or
+overwrites a concurrent re-save. A manifest that no longer resolves (`manifest_missing`) or no
+longer defines a heartbeat (`begin_firing`) disables the job, before the run is recorded so an
+overlapping sweep does not fire it again, and records the run as an error. `for_firing` applies
+`model` and `max_turns` only *after* `prepare_tenant_invoke`, so the inbound and pin checks judge
+the manifest as stored, and `max_turns` only narrows: the firing's `recursion_limit` is the lower of
+it and the manifest's own (`DEFAULT_RECURSION`, 10, when unset), and its `max_turns` the lower of it
+and the manifest's `max_turns`.
+
+**It is unattended**, like every job firing: a tool behind an approval rule without
+`allow_unattended` is refused at once, and nothing waits. It is marked scheduled, so it cannot
+schedule more work.
+
+**It speaks only through `notify`**, with every `notify` control above. The notice links to and is
+left in the person's heartbeat conversation (`{tenant}:hb-<hex>`, created at enrolment through
+`claim_thread`, insert-if-absent, and titled `Heartbeat: <manifest>`): a chat thread id, so
+`_openable_thread` accepts it, and `created_by` is the notified person, so the record is honoured.
+Each run record says whether the firing was `quiet` — `SENT_THIS_RUN_EXTRA`, the count of `notify`
+calls the tool let through on the firing's context, delivered or not, was zero — and keeps the
+first 500 characters of its answer. Nothing parses the answer for `HEARTBEAT_OK`.
+
+**Firing transcripts are the tenant's to read**, like an agent task's and any job's: each firing
+thread (`{tenant}:job:hb-…:<hex>`) is an ordinary thread of the tenant, so whoever may read the
+tenant's sessions reads what a heartbeat checked on the person's behalf. The notice goes to the
+person alone; the checklist should be written with that in mind.
+
+**Retention.** Each firing runs in a fresh thread (`fresh_thread`), and in a `finally` after it
+(`Firing.after`), `prune_firing_threads` deletes all but the newest `keep_threads` threads under
+`{tenant}:job:<name>:` whose suffix is a firing's 16 hex characters — another job named
+`<name>:x` shares the prefix and is not touched — through `session/prune.py`, which deletes whole
+threads (events, metadata row, this process's leaf and head, the twin's search index) on both store
+arms, matching the prefix literally (`startswith(autoescape=True)`), so a `_` or `%` in a manifest
+name widens nothing. Newest is by last activity, ties broken by thread id so both arms keep the same
+threads. The person's conversation is excluded by id and never has the prefix. `DELETE
+/heartbeats/{manifest}` removes the job, its run history and every firing thread, and keeps the
+conversation. Job run records are not yet trimmed.
 
 ## Skills
 
@@ -438,10 +521,24 @@ and never displaces a stricter literal rule.
 scopes". Several contexts carry an empty scope set by construction, and in those a policied
 tool always denies:
 
-- scheduled jobs (`cron`) and `felix eval`
+- `felix eval`
+- a **scheduled job with no recorded writer** — one written before jobs recorded who wrote them
+  (no `created_by` / `created_auth`); it logs `job_has_no_recorded_writer` and runs as `cron`
+  holding nothing until it is re-saved
 - `FELIX_AUTH_MODE=none`, which is what `make dev` sets
 - a **durable fiber with no recorded caller** — one enqueued outside a request context, or
   before fibers began recording authority
+
+Any other job is not in that list. `scheduler.job_auth` runs a firing as `cron` acting for the
+job's last writer (`acting_for`), with the scopes recorded at the write and never widened. For an
+API-key writer those scopes are cut at each firing to what the key holds now; for a writer who
+signed in through Felix (GitHub, Google, GitHub Actions) they are cut to what that sign-in grants
+now. If nothing is left, the run is refused. A writer whose token another issuer signed keeps
+the grant recorded at the write (`scheduler.rechecks_at_firing` is false for it). A job written
+that way has no end, but a [scheduled task](/guide/manifest-reference/#specscheduling) and a
+[heartbeat](#heartbeats) enrolled with such a token record its `exp` and are refused, and disabled,
+from then on. Tasks and heartbeats are jobs, so the same rules apply to them, and a policied tool in
+their firing passes when the writer still holds its scope.
 
 A durable fiber started *from a request* is not in that list: `start_durable_chat` records the
 caller's scopes on the row and the resume rebuilds an `AuthContext` from them, so `spec.policies`

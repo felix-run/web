@@ -1,6 +1,6 @@
 ---
 title: "Management API"
-description: "Tenant-scoped management endpoints — audit, approvals, plans, memory, documents, artifacts, files, skills, the skill library, jobs, manifests, eval, usage — with scope requirements and curl examples."
+description: "Tenant-scoped management endpoints — audit, approvals, plans, memory, documents, artifacts, files, skills, the skill library, jobs, heartbeats, manifests, eval, usage — with scope requirements and curl examples."
 sidebar:
   order: 5
 ---
@@ -23,6 +23,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `approvals:read` / `approvals:write` | read requests / decide them; `approvals:read` also covers every `/push` route |
 | `plans:read` / `plans:write` | read plans / upsert and delete |
 | `jobs:read` / `jobs:write` | read jobs and runs / upsert, delete and run now |
+| `heartbeats:read` / `heartbeats:write` | list the caller's own [heartbeats](#heartbeats) / turn theirs on or off, remove it, run it now |
 | `manifests:read` / `manifests:write` | read manifests / publish, canary, rollback |
 | `eval:read` / `eval:write` | read datasets and runs / write and run them |
 | `usage:read` | `/usage` |
@@ -1137,7 +1138,10 @@ that — on schedule or through Run now — is refused, recorded as an `error` r
 "the credential that scheduled this task has expired; schedule it again", and the job disabled.
 Re-saving a task with `PUT` records the new writer, as for any job, and no expiry. When the task's
 own writer re-saves it — pausing or resuming it from the jobs page re-sends the whole job — the
-stored `scheduled_by` is kept, so it stays a task. Re-saved by anyone else it becomes an ordinary
+stored `scheduled_by` is kept, so it stays a task, unless they move it to another `manifest_id`: a
+record counts only while it names the manifest the job runs, so a task moved elsewhere is an
+ordinary job, and a `notify` from its firing is neither linked to nor left in the conversation it
+was scheduled from. Re-saved by anyone else it becomes an ordinary
 job, since carrying the record would let them write into its writer's conversation:
 `list_scheduled` no longer lists it, the retention sweep below leaves it, and a `notify` from its
 firing links to the job's own thread rather than the conversation it was scheduled from, and is not
@@ -1146,6 +1150,108 @@ sweep deletes tasks that will not run again — a one-shot that has fired, or a 
 one disabled when its credential expired — with their runs, once the last run is older than
 `FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30; `0` keeps them). An enabled recurring task, a task that
 has never run, and any job written through this API are never swept.
+
+## Heartbeats
+
+A person's own periodic check-in, on a manifest whose operator defined one
+([`spec.heartbeat`](/guide/manifest-reference/#specheartbeat)). The operator decides what a firing
+checks, how often, on which model and how far it may go; the caller decides only whether theirs is
+on. Every route acts on the caller's heartbeat and no one else's.
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/heartbeats` | `heartbeats:read` |
+| `PUT` | `/heartbeats/{manifest}` | `heartbeats:write` |
+| `DELETE` | `/heartbeats/{manifest}` | `heartbeats:write` |
+| `POST` | `/heartbeats/{manifest}/run` | `heartbeats:write` |
+
+`heartbeats:*` is its own grant rather than part of `jobs:write`: it writes a job only of the
+operator's design, for the caller alone, so an operator can hand it to people who may not write
+arbitrary jobs.
+
+```bash
+curl -s -X PUT "$BASE_URL/heartbeats/assistant" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"enabled":true}'
+```
+
+```json
+{ "manifest": "assistant", "name": "hb-assistant-3f9a1c0b7e21", "enabled": true,
+  "schedule": "every:60m", "thread_id": "acme:hb-5c1e…", "next_run_at": 1790003600000,
+  "last_run_at": null, "last_status": null, "expires_at": null }
+```
+
+**`PUT /heartbeats/{manifest}`** turns the caller's heartbeat on, or off with `{"enabled": false}`
+(keeping it and its conversation). The body is `{enabled}` (default `true`) and nothing else; any
+other field — a `schedule`, a prompt — is a `422`. It writes the job
+`hb-<manifest>-<first 12 hex of sha256(caller)>`, one per person per manifest, recorded as written by
+the caller with their scopes, exactly as a [job](#jobs) write records its writer. The first firing
+waits for the schedule's next slot; turning it on does not run it. On first enrolment it creates the
+caller's heartbeat conversation (`{tenant}:hb-<hex>`, titled `Heartbeat: <manifest>` in
+`GET /chat/sessions`), and a later `PUT` keeps the same one while it exists. The answer is the
+heartbeat as below.
+
+An API key, or a Felix sign-in (Google, GitHub, GitHub Actions) whose grant for the tenant is
+configured on this deployment, is re-checked at every firing, so the heartbeat records no expiry and
+`expires_at` is `null`. Any other credential — a token from another issuer, a sign-in to a personal
+tenant — cannot be re-checked, so the heartbeat records the token's `exp` and `expires_at` shows it
+(ISO 8601, UTC). The first firing past it is an `error` run ("the credential that turned this
+heartbeat on has expired; turn it on again") and the heartbeat is turned off; a `PUT` with a fresh
+credential turns it on again.
+
+Refusals, in the order they are checked:
+
+| Status | `error` | When |
+|---|---|---|
+| `403` | — | Missing `heartbeats:write` (`missing scopes: …`). |
+| `403` | `no_caller` | No signed-in person — every request under `FELIX_AUTH_MODE=none`. |
+| `403` | `shared_subject` | The credential names no person: an API key with no `sub`, a trigger's or a machine actor's subject. |
+| `404` | `unknown_manifest` | No manifest of that name. |
+| `401` / `403` | — | The manifest's inbound rules would refuse the caller at the firing — checked now, as the firing's own caller (`cron` for them, with their scopes), with the same written message. Checked before `no_heartbeat`, so a caller the manifest refuses gets the same answer whether or not it offers a heartbeat. |
+| `422` | `no_heartbeat` | The manifest defines no `spec.heartbeat`. |
+| `503` | `conversation_unavailable` | The heartbeat conversation could not be created. |
+
+The `error` codes arrive as `{"detail": {"error": <code>, "detail": <message>}}`; the inbound
+refusal's `detail` is the written message as a string.
+
+**`GET /heartbeats`** answers `{items: [...]}`, the caller's heartbeats on every manifest, each
+`{manifest, name, enabled, schedule, thread_id, next_run_at, last_run_at, last_status,
+expires_at}`, where `thread_id` is the heartbeat conversation and `expires_at` is when it stops for
+good (above), or `null`. Nobody else's are listed, an operator's included; an
+operator sees every heartbeat's job through `GET /jobs`.
+
+**`DELETE /heartbeats/{manifest}`** removes the job, its run history and its firing threads, and
+answers `{"status": "deleted"}`. The heartbeat conversation stays: it holds the notices the person
+was sent, and is theirs to delete.
+
+**`POST /heartbeats/{manifest}/run`** fires the heartbeat now and waits for it, exactly as a scheduled
+firing runs, and answers with the run record as [Run a job now](#run-a-job-now) does — `trigger:
+"manual"`, `requested_by` the caller — with `result.quiet` and `result.thread_id` beside
+`result.answer`. `409 heartbeat_running` while a firing of it is in flight.
+
+`DELETE` and `run` answer `404 {"detail": "not_found"}`, as `/jobs` answers a missing job, for a
+manifest the caller has no heartbeat on, whether or not someone else does — it never says whose a heartbeat is. All four routes need a named person as
+`PUT` does (`403 no_caller` / `shared_subject`).
+
+**What a firing does** — a fresh thread, the manifest's current checklist in a fixed frame,
+`HEARTBEAT_OK` when nothing needs the person or one `notify` when something does, unattended, on the
+heartbeat's `model` and `max_turns`, older firing threads pruned to `keep_threads` — is described
+under [`spec.heartbeat`](/guide/manifest-reference/#specheartbeat). A heartbeat's run records read
+like any job's, through `GET /jobs/{name}/runs`, with `result.quiet` saying whether a notice went.
+Firing transcripts are the tenant's to read, like any job's: each firing thread is an ordinary
+thread of the tenant, so whoever may read the tenant's sessions reads what a heartbeat checked on
+the person's behalf. The notice goes to the person alone.
+
+**As a job.** The job is listed, read and run under `/jobs` like any other and marked by
+`payload.scheduled_by` (`{tool: "heartbeat", manifest, thread_id}`) and `payload.fresh_thread: true`.
+Its payload is never read for a firing's prompt, and its stored schedule is moved back to the
+manifest's at the next firing, so re-saving it over `PUT /jobs` changes neither. That move is
+conditional on the schedule the firing read and changes nothing else, so it never re-creates a
+heartbeat deleted meanwhile nor re-enables one turned off. Re-saved there by anyone but its person,
+or by its person onto another `manifest_id`, it stops being a heartbeat, as a
+[task](#tasks-an-agent-scheduled) does, and becomes an ordinary job that `/heartbeats` no longer
+lists. A manifest that is deleted, or drops its heartbeat, turns every enrolled one off at its next
+firing (an `error` run, the job disabled).
 
 ## Workflows
 

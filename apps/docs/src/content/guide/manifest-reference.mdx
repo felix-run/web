@@ -1241,7 +1241,8 @@ that already has a tool of one of these names fails the compile.
 A task's firing has nobody reading its thread. To have it tell its writer what it found, give the
 manifest [`spec.notify`](#specnotify) as well: a notice sent from a firing reaches the person who
 scheduled the task, opens the conversation it was scheduled from, and is left in that conversation
-for them to read.
+for them to read. For a recurring check-in whose instructions the operator writes and each person
+only turns on or off, use [`spec.heartbeat`](#specheartbeat) instead.
 
 ## `spec.notify`
 
@@ -1298,18 +1299,22 @@ anything leaves, in order:
 The push payload is `{kind: "notice", title, body, thread_id}`, encrypted end to end to the browser
 (RFC 8291), so the push service relays ciphertext. It may still show on the person's lock screen.
 `thread_id` is the run's own thread. For a scheduled task's firing it is the chat thread the task
-was scheduled from (`payload.scheduled_by.thread_id`), but only when the task's writer is the person
+was scheduled from (`payload.scheduled_by.thread_id`) — for a [heartbeat](#specheartbeat)'s firing,
+the person's heartbeat conversation — but only when the task's writer is the person
 being notified and the id is a chat thread of the tenant's own: a suffix of plain id characters with
 no `:`. A chat client cannot create a thread with a `:` in it, and every thread the harness makes for
 itself has one (`job:`, `channel:`, `a2a:`, `workflow:`, `fiber:`), so a recorded origin naming one
-of those is neither linked nor written to. Only `schedule_task` writes `scheduled_by`:
+of those is neither linked nor written to. Only `schedule_task` and heartbeat enrolment
+(`PUT /heartbeats/{manifest}`) write `scheduled_by`:
 [`PUT /jobs`](/guide/management-api/#jobs) ignores one in the body, so a job written there cannot
 name somebody else's conversation. A task re-saved there by its own writer keeps its stored record;
-re-saved by anyone else it becomes an ordinary job. Anything else falls back to the run's thread. The push service
+re-saved by anyone else, or by its writer onto another `manifest_id`, it becomes an ordinary job: a
+record counts only while it names the manifest the job runs. Anything else falls back to the run's thread. The push service
 holds an undelivered notice for 12 hours.
 
 **In the conversation.** When the notice links to a thread other than the run's own — a scheduled
-task's firing, pointing at the conversation it was scheduled from — the same cleaned text is also
+task's firing, pointing at the conversation it was scheduled from, or a heartbeat's, pointing at the
+person's heartbeat conversation — the same cleaned text is also
 left in that thread, before the push goes, so it is there when the person opens it, even when no
 browser took the push. It is an entry for the person, never for the model: a `custom` entry, role
 `assistant`, content `"{title}\n\n{message}"` as plain text, metadata
@@ -1374,6 +1379,88 @@ rule asked for it** — as for `schedule_task`.
 not read-only, so plan mode refuses it. Each sent call is audited as
 [`notify.sent`](/internals/observability/#notices) — never with its text. A manifest that already
 has a tool named `notify` fails the compile.
+
+## `spec.heartbeat`
+
+```yaml
+spec:
+  pattern: react
+  notify: {}                   # required beside a heartbeat
+  heartbeat:
+    checklist: |               # what to check; required, 1–4,000 characters
+      Look at my open pull requests and the nightly build.
+    schedule: every:60m        # recurring only, in the job schedule grammar
+    min_interval_minutes: 30   # the shortest gap `schedule` may fire at; ≥ 15
+    model: claude-haiku        # a model route for firings only; unset runs on spec.model.id
+    max_turns: 6               # steps one firing may take; 1–20
+    keep_threads: 20           # firing threads kept per person; 1–200
+```
+
+A periodic check-in each person may turn on for themselves. The operator writes all of it — what to
+check, how often, on which model, how far a firing may go; a person holding `heartbeats:write` only
+turns theirs on or off, through [`/heartbeats`](/guide/management-api/#heartbeats). Unset, nobody can
+enrol. Binds no tool of its own: a firing speaks through [`notify`](#specnotify), so a manifest with
+a heartbeat and no `spec.notify` is refused at validation ("heartbeat needs spec.notify").
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `checklist` | string 1–4,000 | required | The operator's instructions for each firing. Whitespace only is refused. |
+| `schedule` | string ≤ 200 | `every:60m` | The [job schedule grammar](/guide/management-api/#jobs), recurring only: an `at:` one-shot and an empty (manual-only) schedule are refused. |
+| `min_interval_minutes` | int ≥ 15 | `30` | The shortest gap `schedule` may fire at. As for [`spec.scheduling`](#specscheduling), a cron's next 200 firings are walked and the smallest gap taken. |
+| `model` | string ≤ 200 | unset | A model route (`FELIX_MODEL_ROUTES`) used for firings only. Unset, firings run on `spec.model.id`. |
+| `max_turns` | int 1–20 | `6` | Steps one firing may take. It only narrows: a firing runs at the lower of this and the manifest's own `recursion_limit` (a react loop; 10 when unset) and `max_turns` (a multi-agent pattern). |
+| `keep_threads` | int 1–200 | `20` | Firing threads kept per person; older ones are deleted after each firing. |
+
+**A firing.** Enrolling writes an ordinary [job](/guide/management-api/#jobs) as the person, so each
+firing runs as `cron` on their behalf, with their scopes, through this manifest's inbound auth —
+exactly as a [scheduled task](#specscheduling) does. In order:
+
+1. A heartbeat whose enrolling credential carried an expiry (below) and has passed it is refused:
+   an `error` run ("the credential that turned this heartbeat on has expired; turn it on again"),
+   the job disabled, no model called.
+2. The heartbeat is read from the manifest as stored *now*. A manifest that no longer exists, or
+   no longer defines a heartbeat, turns it off: the run is recorded as an `error` ("this
+   heartbeat's manifest no longer exists; it has been turned off" / "this manifest no longer
+   defines a heartbeat; it has been turned off"), the job is disabled, and no model is called. When
+   the job's stored schedule differs from `schedule`, it is moved to `schedule`, due at its next
+   slot, so an edit applies from the next firing. The update is conditional on the schedule the
+   firing read and touches nothing else, so it never re-creates a heartbeat deleted meanwhile nor
+   re-enables one turned off.
+3. The prompt is `checklist` inside a fixed frame: use your tools to check this; if nothing needs the
+   person, reply with exactly `HEARTBEAT_OK` and do not call `notify`; if something does, call
+   `notify` once with a short title and message, then reply briefly. The job's payload is never read
+   for it, so re-saving the job over `PUT /jobs` puts no words in a firing.
+4. The inbound and compile-pin checks judge the manifest as stored; then the firing runs with
+   `model` and the narrowed `max_turns` applied.
+5. It runs in a fresh thread (`{tenant}:job:<job name>:<hex>`), unattended: a tool behind an
+   [approval](#specapprovals) without `allow_unattended` is refused at once and nothing waits. It
+   is scheduled work, so `schedule_task` refuses it (`scheduled_run`).
+6. A `notify` call goes to the person alone, with every `notify` control (redaction, link
+   stripping, screening, `max_per_run`, `max_per_hour`), and the notice is also left in the
+   person's heartbeat conversation — `{tenant}:hb-<hex>`, created when they first enrol and titled
+   `Heartbeat: <manifest>` in their session list — as an entry no prompt carries.
+7. The run record's `result` carries `quiet` (`true` when the firing let no `notify` call through),
+   the first 500 characters of the answer, and the firing's `thread_id`. Quiet is counted from
+   `notify` calls, not read from the answer text.
+8. All but the newest `keep_threads` firing threads of this person's heartbeat are deleted whole —
+   events and metadata, on every store. The heartbeat conversation is never one of them. A failed
+   prune is logged and does not fail the run.
+
+Job run records are not trimmed by `keep_threads`.
+
+**Firing transcripts are the tenant's to read.** Each firing thread is an ordinary thread of the
+tenant, like an agent task's or any job's, so whoever may read the tenant's sessions reads what a
+heartbeat checked on the person's behalf. Write the checklist with that in mind; the notice itself
+goes to the person alone.
+
+**How long it lasts depends on the credential that enrolled it.** An API key, and a Felix sign-in
+(Google, GitHub, GitHub Actions) whose grant for the tenant is configured on this deployment, are
+re-checked at every firing as every [job](/guide/management-api/#run-a-job-now) firing's are — the
+scopes cut to what the key or grant holds today, none left refuses the run — so the heartbeat
+records no expiry and runs until turned off. Any other credential — a token from another issuer, a
+sign-in to a personal tenant — leaves Felix nothing to re-check, so enrolment records the token's
+`exp` and the heartbeat stops there (step 1). The person turns it on again with a fresh
+credential. [`GET /heartbeats`](/guide/management-api/#heartbeats) shows that end as `expires_at`.
 
 ## `spec.max_turns` and `spec.recursion_limit`
 
