@@ -358,7 +358,7 @@ minted from their stored connection; no route returns a GitHub token.
 - **Publishing is as the person.** `github_publish: {auth: person, branch_prefix: …}` publishes to
   the thread's repository with the opener's token, behind its approval as always.
 - **Bounded.** A repository over `FELIX_REPO_CLONE_MAX_MB` (500) is refused before cloning; a
-  checkout unused for `FELIX_REPO_CHECKOUT_TTL_DAYS` (14) is removed by the worker.
+  checkout unused for `FELIX_REPO_CHECKOUT_TTL_DAYS` (14) is removed by the Worker.
 - **Under the [hosted backend](/guide/deploy/#hosted-workspaces) the checkout is the thread's
   sandbox.** It is cloned there (into an empty workspace only), listed and published from there,
   and destroyed with it on removal or expiry. Nothing of the repository is on the harness host.

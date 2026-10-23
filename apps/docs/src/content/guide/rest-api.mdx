@@ -305,13 +305,13 @@ curl -s "$BASE_URL/chat/runs/$RESUME_TOKEN" -H "authorization: Bearer $FELIX_KEY
 
 `GET /chat/runs/{resume_token}` returns `{status, fiber_id, resume_token, expires_at, final, error,
 manifest_id}`, plus `webhooks: {<id>: "pending" | "delivered" | "dead"}` when the run named any, or
-`404 run_not_found`. Fibers checkpoint in Postgres and are resumed by the worker's `fiber_scheduler`
+`404 run_not_found`. Fibers checkpoint in Postgres and are resumed by the Worker's `fiber_scheduler`
 cron — so **`felix-scheduler` must be running**.
 
 #### Completion webhooks
 
 A durable manifest with `spec.execution.webhooks: [ops]` is announced to each named endpoint when
-the run reaches `completed`, `failed`, `expired` or `dead`. The worker's `webhook_delivery` cron
+the run reaches `completed`, `failed`, `expired` or `dead`. The Worker's `webhook_delivery` cron
 sends it within about a minute of the run ending:
 
 ```http
@@ -407,7 +407,7 @@ data: [DONE]
 ```
 
 **Completed messages only — never token deltas.** The fiber runs the agent to completion in the
-worker and only whole messages are ever persisted, so a durable run reports tool cards and finished
+Worker and only whole messages are ever persisted, so a durable run reports tool cards and finished
 assistant turns and nothing finer. That is the right trade for the mode whose point is that nobody
 is watching; a client that wants token-by-token output wants a transient manifest.
 
@@ -419,7 +419,7 @@ A run that fails or expires says so in an `event: error` frame rather than closi
 the events that already landed are delivered first.
 
 **`run_expired:<token>` is the stream's deadline, not proof the run stopped.** The stream closes
-at the run's `expires_at` with that message whether or not the worker has finished the step it is
+at the run's `expires_at` with that message whether or not the Worker has finished the step it is
 on, so treat it as "stop watching here" and poll
 [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) until the status is terminal:
 `completed`, `failed`, `expired` or `dead`. Only `completed` carries an answer, and `expired`
@@ -442,7 +442,7 @@ stream (a reload, a dropped connection), and its client tool requests and approv
 announced only there. [`GET /chat/stream/{thread_id}`](#get-chatstreamthread_id) now announces the
 thread's pending `tool_request` frames, and its `approval_required` frames for a caller with
 `approvals:read`, each once per stream. It also stays open while a durable run is in flight. The
-durable stream itself stays open past `expires_at` while a worker still holds the run. Since one
+durable stream itself stays open past `expires_at` while a Worker still holds the run. Since one
 gate can arrive on more than one stream, **dedupe by id**: a client that runs a `tool_request`
 twice runs the tool twice. The web client holds a reattach open for as long as it polls a
 durable run, and takes each request id once.
@@ -727,7 +727,7 @@ ended.
 
 ### Approvals on a durable run
 
-A durable run's agent is in the worker while its stream is served by the API, so the in-process side
+A durable run's agent is in the Worker while its stream is served by the API, so the in-process side
 event cannot cross. Since **felix#246** the durable stream announces gates anyway — it reads the
 pending rows for the run's thread and **rebuilds** `approval_required` from them, rather than
 forwarding a message over a bus. (A bus would be at-most-once, and here the message *is* the prompt:
@@ -947,7 +947,7 @@ deliberately:
 
 `phase` is one of `idle`, `turn`, `compaction`, `branch_summary`, `retry`, `aborted`. An `idle`
 phase with pending tool calls is reported as `turn`. A durable run writes no phase — its agent is
-in the worker — so the thread reads `idle` while one works; `activeRun` is that run, or `null`.
+in the Worker — so the thread reads `idle` while one works; `activeRun` is that run, or `null`.
 Its `resumeToken` is what [`GET /chat/runs/{resume_token}`](#get-chatrunsresume_token) takes.
 
 Session event kinds: `message`, `tool_call`, `tool_result`, `thinking`, `audit`, `compaction`,

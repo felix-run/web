@@ -118,7 +118,7 @@ see every socket a page opens (WebRTC over TCP, WebTransport in a worker, workle
 so a list it enforced would look like a control and not be one. Every check runs before anything resolves, since a
 lookup of a refused name is itself a leak to that name's nameserver. Matching uses the request's
 ASCII `raw_host`, the form patterns are written in. The bound is a plain value: a background
-`task` child is compiled in the worker with none of its parents on the stack, so their lists ride
+`task` child is compiled in the Worker with none of its parents on the stack, so their lists ride
 its durable run (`egress_ceilings`), are re-validated onto the run's context, and seed the root of
 that compile once.
 
@@ -209,7 +209,7 @@ parented on the leaf the store holds. It is never written into a thread that doe
 notice creates no conversation), nor while a run is going on in it — a turn that marked itself
 (`workspace_notes.run_active`, from before its first append to after its last) or a durable run not
 yet finished — since an entry landing inside a run would sit between a message and its reply.
-Without Redis the turn's mark is per process, so a firing on the worker cannot see a turn running
+Without Redis the turn's mark is per process, so a firing on the Worker cannot see a turn running
 in the API. An exclusive lease is not a run: a client holds one while the person has the thread
 open. The run's own thread gets nothing. In every case the push still goes; the result's `thread`
 says what happened there (`appended`, `run_live`, `missing`, `failed`, `not_eligible`) and
@@ -218,10 +218,10 @@ says what happened there (`appended`, `run_live`, `missing`, `failed`, `not_elig
 **Reaching the human.** Step 2 emits `approval_required` as a *side event* — a per-thread
 in-process `asyncio.Queue` — which the react loop drains into the stream. That works when the agent
 and the stream are in one process, and a **durable** run is exactly when they are not: the agent is
-in the worker, the stream is served by the API. Two things follow, and they are the whole shape of
+in the Worker, the stream is served by the API. Two things follow, and they are the whole shape of
 the problem:
 
-- The queue is not the API↔worker channel. Both ends of it are already in the worker.
+- The queue is not the API↔Worker channel. Both ends of it are already in the Worker.
 - A fiber calls `agent.invoke`, which runs the loop with `emit_events=False`, so the drain never
   executes at all.
 
@@ -443,7 +443,7 @@ digests) passes through — so a field added later is redacted unless someone de
 ### Feedback cannot start a rewrite
 
 Feedback changes nothing: it waits as `pending` until a person decides it. **An agent's feedback
-cannot start a rewrite.** Only a person's accept with `improve` lets the worker rewrite the skill,
+cannot start a rewrite.** Only a person's accept with `improve` lets the Worker rewrite the skill,
 and **every rewrite lands as a draft** (`source: agent`, author `skill-improver`) in the review
 queue, published only through the same gate as any other draft. The improvement model is handed the
 current SKILL.md, the feedback and any suggested patch, each fenced as untrusted data in a region it
@@ -469,7 +469,7 @@ rerunning cannot shop for a kinder set.
 
 ### Skill jobs are bounded
 
-The worker's improvements and evaluations (`skill_jobs`) are not a manifest's run, so `spec.limits`
+The Worker's improvements and evaluations (`skill_jobs`) are not a manifest's run, so `spec.limits`
 does not apply. Every model call is metered to the skill's tenant. What bounds them:
 
 | Bound | Value |
@@ -479,10 +479,10 @@ does not apply. Every model call is metered to the skill's tenant. What bounds t
 | Wall clock per job | `FELIX_SKILL_JOB_DEADLINE_SECONDS` (1200); past it the job is `failed` |
 | Attempts per job | three claims; the next fails it `attempts_exhausted` |
 | Per tenant | `FELIX_SKILL_JOBS_MAX_QUEUED` (20) queued or running, `FELIX_SKILL_JOBS_DAILY_LIMIT` (200) created per UTC day; `429 skill_jobs_cap_reached` past either |
-| Per sweep | one sweep at a time across every worker, at most five jobs of each kind |
+| Per sweep | one sweep at a time across every Worker, at most five jobs of each kind |
 
 A job heartbeats its claim between model calls and stops as soon as the heartbeat does not land, so
-a worker whose claim lapsed (no heartbeat for ten minutes) and was taken over cannot write over the
+a Worker whose claim lapsed (no heartbeat for ten minutes) and was taken over cannot write over the
 one that took it. Claims are fair across tenants: the next job is the oldest due job of the tenant
 whose last claim is oldest, so a tenant with a deep queue cannot starve one with a single job.
 
@@ -568,7 +568,7 @@ A durable fiber started *from a request* is not in that list: `start_durable_cha
 caller's scopes on the row and the resume rebuilds an `AuthContext` from them, so `spec.policies`
 and `execution.mode: durable` do work together. The principal stays `fiber` rather than the person
 — `on_behalf_of` carries who it is for — so an audit row never claims a human took an action a
-worker took. Authority in durable state is bounded three ways: never wider than the caller's own
+Worker took. Authority in durable state is bounded three ways: never wider than the caller's own
 scope set, never outliving the run's `expires_at`, and clamped to the token's `exp` where it has
 one. See `deploy/GOVERNANCE.md` in the harness repo for the table.
 

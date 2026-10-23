@@ -56,6 +56,8 @@ Path-scoped instructions, loaded only when matching files are in play.
 - `git-workflow.md` (`**/*`) — branch + PR discipline, no stacked PRs.
 - `protocol-parity.md` (client + worker files) — the three duplicated contracts and the
   `StreamEvent` hole.
+- `docs-terminology.md` (`apps/docs/**`) — "Worker" is the compose worker, "Cloudflare Worker" is
+  the workspace gateway and the chat-ui proxy.
 
 ## Hooks — `hooks/`, wired in `settings.json`
 

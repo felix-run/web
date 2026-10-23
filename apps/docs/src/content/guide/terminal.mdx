@@ -73,7 +73,7 @@ otherwise cross the network in the clear — the mirror of the harness's own ref
 
 <Aside type="note">
 There is no proxy and no shared key here. The browser client needs both because a page cannot call
-the harness directly — no CORS, no static assets — so a Worker holds the credential and the SPA
+the harness directly — no CORS, no static assets — so a Cloudflare Worker holds the credential and the SPA
 sends `x-chat-key` to reach it. This process has no such restriction: it calls `FELIX_ORIGIN` itself
 and sends `Authorization: Bearer`. With no key configured it sends no header at all, which is
 correct against a harness running `FELIX_AUTH_MODE=none`.
@@ -282,7 +282,7 @@ Three frames pause a run until something answers, and all three take the keyboar
   second after the tool card appears, while the run is still blocked; an older one delivered it
   *after* the decision it was asking for
   ([felix-run/felix#210](https://github.com/felix-run/felix/pull/210)). Either way the client polls
-  `GET /approvals` as well, and needs to. A **durable** run's agent is in the worker while its
+  `GET /approvals` as well, and needs to. A **durable** run's agent is in the Worker while its
   stream is served by the API, and side events are an in-process queue, so no *side event* can
   cross; since
   [felix-run/felix#246](https://github.com/felix-run/felix/pull/246) the durable stream rebuilds

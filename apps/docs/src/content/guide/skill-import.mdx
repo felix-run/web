@@ -487,25 +487,25 @@ ref, the listing and the periodic check all write that record (`skill_upstream`)
 
 ### Periodic checks
 
-`FELIX_SKILL_IMPORT_CHECK_HOURS` (0–168, default `0` = off) has the worker check every imported
+`FELIX_SKILL_IMPORT_CHECK_HOURS` (0–168, default `0` = off) has the Worker check every imported
 skill on that cadence, so the cooldown clock of an update starts without anyone asking and the
 listing's `refresh=false` stays current.
 
-- The worker's `skill_upstream_checks` task runs every ten minutes and tries up to 50 skills whose
+- The Worker's `skill_upstream_checks` task runs every ten minutes and tries up to 50 skills whose
   last check is at least that many hours old, never-checked first, then the oldest check, across
   every tenant. Within a tick, one tenant's skills from one repository and ref resolve once. One sweep runs at
-  a time across workers, held by its own `skill_job_lease` row. It needs `felix-scheduler`.
+  a time across Workers, held by its own `skill_job_lease` row. It needs `felix-scheduler`.
 - It charges the same tenant and deployment buckets as people do, but stops at **half** of each, so
   the rest of the hour stays for people asking. It is fair across tenants: a tenant past its half is
   left out of the rest of the tick and the due skills are read again without it, so one tenant's
   backlog cannot fill the batch and leave every other tenant unchecked. The deployment's half, or
-  GitHub's own rate limit on the shared token, ends the tick. It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a worker without Redis spends
+  GitHub's own rate limit on the shared token, ends the tick. It shares the API's buckets only through Redis (`FELIX_REDIS_URL`); a Worker without Redis spends
   a budget of its own.
 - A refused check records its code as `error` and keeps the last good state. A folder past the
   import caps is recorded as `source_too_large` rather than offered as an update no import could
   take. A skill whose newest version is no longer an import is recorded as `not_imported`, and
   checked again once it is one.
-- **The sweep runs on the worker's environment.** Give the worker the same
+- **The sweep runs on the Worker's environment.** Give the Worker the same
   `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API, or it judges
   origins against another allowlist and reads GitHub with another token, or none. With
   `FELIX_SKILL_IMPORT_CHECK_HOURS` set, `felix doctor` prints a note saying so, plus one when this
@@ -540,8 +540,8 @@ endpoint bound only to another. The process refuses to boot on:
 | An id `FELIX_WEBHOOK_ENDPOINTS` does not hold, or whose `tenants` leave this tenant out | `FELIX_SKILL_UPDATE_WEBHOOKS: <tenant>=<id>: no FELIX_WEBHOOK_ENDPOINTS endpoint '<id>' registered for '<tenant>'` |
 | A tenant that is not a usable tenant id | `FELIX_SKILL_UPDATE_WEBHOOKS (<tenant>) is not a usable tenant id: …` |
 
-Checks run on the API (a check of one skill, the listing) and on the worker (the periodic sweep),
-and only the worker delivers, so give both the same `FELIX_SKILL_UPDATE_WEBHOOKS` and
+Checks run on the API (a check of one skill, the listing) and on the Worker (the periodic sweep),
+and only the Worker delivers, so give both the same `FELIX_SKILL_UPDATE_WEBHOOKS` and
 `FELIX_WEBHOOK_ENDPOINTS`. Both are read again at send time: an endpoint unbound from the tenant,
 removed from the registry, or no longer open to the tenant goes `dead` for that event without a
 request.
@@ -555,7 +555,7 @@ that queued what is there replaces nothing.
 - A `?ref=` check is a what-if: it is never recorded, so it never notifies.
 - An import or update records the digest it imported and never queues, since that digest is the
   newest version's own. It can only supersede an event queued before it.
-- Queuing is all a check does. The worker's `skill_update_notifications` task sends the event, so
+- Queuing is all a check does. The Worker's `skill_update_notifications` task sends the event, so
   no check, listing or import waits on a receiver or fails because of one.
 - An event changes nothing on its own: it does not import, publish, or start a cooldown the check
   had not already started.
@@ -634,7 +634,7 @@ endpoint took it, `dead` when none is left pending and any did not. The state li
 `felix_webhook_delivery{kind="skill_update", outcome="dead"}`.
 
 **Fairness.** The `skill_update_notifications` task runs every minute, one sweep at a time across
-workers (its own `skill_job_lease` row). Each tick claims at most 50 due events, earliest due first,
+Workers (its own `skill_job_lease` row). Each tick claims at most 50 due events, earliest due first,
 and **at most 10 of one tenant's**, so one tenant's backlog or slow receiver cannot hold every other
 tenant's events behind it. Each claim lasts 120 seconds, so a sweep that dies mid-batch leaves its
 events to the next; no endpoint is tried after the first 60 seconds of a tick, and what is left

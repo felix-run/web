@@ -59,7 +59,7 @@ Keys carry their scopes in `FELIX_AUTH_API_KEYS`:
 
 Every governed action writes an audit row. Audit events are buffered in the process that emits them
 and flushed to Postgres on a timer (`FELIX_AUDIT_FLUSH_SECONDS`, default 5 s) plus a drain on
-shutdown. The agent loop runs in the API process, so the API flushes too — not only the worker.
+shutdown. The agent loop runs in the API process, so the API flushes too — not only the Worker.
 
 ### `GET /audit`
 
@@ -601,7 +601,7 @@ store raised).
 :::note
 The 600 KiB per-file cap sits below the 1 MiB request body limit because base64 inflates by a third.
 Uploads are kept forever by default; `FELIX_ATTACHMENT_RETENTION_DAYS` (default `0`) sets a
-retention window swept by the worker's retention task, which deletes an image a live thread may still
+retention window swept by the Worker's retention task, which deletes an image a live thread may still
 reference.
 :::
 
@@ -850,20 +850,20 @@ files it as `source: human`, `status: pending`. An agent files the same with `su
 | `status` | Means |
 |---|---|
 | `pending` | waiting for a person |
-| `accepted` | accepted; with `improve`, waiting for the worker, otherwise final |
-| `applied` | the worker saved a rewrite as draft `result_version`, now in the review queue |
+| `accepted` | accepted; with `improve`, waiting for the Worker, otherwise final |
+| `applied` | the Worker saved a rewrite as draft `result_version`, now in the review queue |
 | `failed` | the rewrite failed; `error` says why (`parent_changed` if the skill moved past `target_version`) |
 | `rejected` | final |
 
 `…/accept` takes an optional `{improve, note}`; `improve` defaults to `true`, which queues an AI
 rewrite as a skill job. `…/reject` requires `{note}`. Deciding feedback that was already decided is
 `409 feedback_conflict`. A feedback row also carries `model`, `claimed_at`, `heartbeat_at` and
-`attempts` for the worker's run.
+`attempts` for the Worker's run.
 
 ### Evaluations
 
 `POST …/versions/{version}/eval` queues an evaluation and returns it `queued` with `202`. The
-worker's `skill_jobs` sweep runs it within a minute; poll `GET /{name}/evals/{eval_id}`. A version
+Worker's `skill_jobs` sweep runs it within a minute; poll `GET /{name}/evals/{eval_id}`. A version
 holds one queued or running evaluation at a time (`409 eval_in_progress`).
 
 An evaluation is `{id, name, version, status, scenario_source, scenarios, baseline_score,
@@ -1034,7 +1034,7 @@ refusals that come before a library is resolved — `no_personal_library`, `pers
 
 ## Jobs
 
-Scheduled agent runs. The worker's `run_scheduled_jobs` cron sweeps due rows every minute — which
+Scheduled agent runs. The Worker's `run_scheduled_jobs` cron sweeps due rows every minute — which
 means **`felix-scheduler` must be running alongside `felix-worker`**, or nothing ever fires.
 
 | Method | Path | Scope |
@@ -1130,7 +1130,7 @@ result}`. `status` is one of:
 | `status` | Meaning |
 |---|---|
 | `ok` | The firing ran and finished. |
-| `error` | The firing failed or was refused; `error` says why. A cancelled firing — a worker shutting down, a caller leaving a manual run — is an `error` run with `error` `cancelled`, and one that fails inside the scheduler is `execution failed`; both are recorded before the job's running mark clears, and both count toward a heartbeat's `max_firings_per_day`. |
+| `error` | The firing failed or was refused; `error` says why. A cancelled firing — a Worker shutting down, a caller leaving a manual run — is an `error` run with `error` `cancelled`, and one that fails inside the scheduler is `execution failed`; both are recorded before the job's running mark clears, and both count toward a heartbeat's `max_firings_per_day`. |
 | `skipped` | A limit held the firing and nothing ran: no model call, no tool. Today only a [heartbeat](#heartbeats) over its `max_firings_per_day` (`result.reason: "daily_cap"`). `error` is empty. |
 
 The job's `last_status` carries the same value after each run.

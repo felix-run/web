@@ -50,7 +50,7 @@ deploy shape, see [Deploy](/guide/deploy/).
    make up
    ```
 
-   Brings up **api** (`:8080`), **worker**, **scheduler**, Postgres+pgvector, and Valkey. A one-shot
+   Brings up `api` (`:8080`), `worker`, `scheduler`, Postgres+pgvector, and Valkey. A one-shot
    `migrate` service applies the schema before the others start, so there is no separate
    migration step. Object store defaults to `fs` under `/data` (no MinIO required).
 

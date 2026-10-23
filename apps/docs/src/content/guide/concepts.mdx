@@ -312,7 +312,7 @@ surface.
 
 ### Evaluations and feedback
 
-An **evaluation** asks whether answers get better with the skill. The worker answers each scenario
+An **evaluation** asks whether answers get better with the skill. The Worker answers each scenario
 twice with `FELIX_SKILL_EVAL_MODEL`, without the skill and with its body fenced as untrusted
 reference; `FELIX_SKILL_EVAL_JUDGE_MODEL` scores both 0–100, and uplift is with-skill minus
 baseline. Scenarios come from the bundle's `evals/`, else are generated from the SKILL.md, else are
@@ -324,8 +324,8 @@ counts, because generated and default scenarios are written from the agent's own
 
 **Feedback** is filed by an agent (`submit_skill_feedback`) or an operator, on one version, and waits
 as `pending`. Only a person decides it. Accepting with `improve` (the default) queues an AI rewrite:
-the worker asks `FELIX_SKILL_IMPROVE_MODEL` for a revised SKILL.md and saves it as a **draft** for
-review. Nothing in the loop publishes. Evaluations and improvements run in the worker's `skill_jobs`
+the Worker asks `FELIX_SKILL_IMPROVE_MODEL` for a revised SKILL.md and saves it as a **draft** for
+review. Nothing in the loop publishes. Evaluations and improvements run in the Worker's `skill_jobs`
 task, so they need `felix-worker` and `felix-scheduler` running.
 
 chat-ui's Skills page is the operator surface over all of this: the library list, a review queue and
@@ -430,7 +430,7 @@ Recall fuses a full-text channel, topic keys and a vector channel. The vector ch
 `FELIX_MEMORY_EMBEDDER` resolves to an embedder: the default `auto` uses the local
 `bge-base-en-v1.5` model when `felix-harness[embeddings]` is installed and runs without the vector
 channel otherwise. See [Embeddings](/guide/deploy/#embeddings). Memories stored before an
-embedder was configured are embedded later by the worker, a batch every 15 minutes. Semantic
+embedder was configured are embedded later by the Worker, a batch every 15 minutes. Semantic
 session strategies and `tools_retrieval` also need the `embeddings` extra.
 
 A `task` memory has no topic key, so no later fact replaces it. The nightly retention sweep forgets
@@ -442,10 +442,10 @@ keeps them); it stays restorable, and a task an operator wrote is never expired.
 
 By default a run lives and dies with the request. With `spec.execution.mode: durable`, `POST /chat`
 enqueues a **fiber** and returns `202` with a `resume_token`; the fiber checkpoints into Postgres and
-a worker picks it up within about a second and resumes it after any restart, so a process restart
+a Worker picks it up within about a second and resumes it after any restart, so a process restart
 does not lose the run. Poll
 `GET /chat/runs/{resume_token}` for the result, or name endpoints in `spec.execution.webhooks` and
-the worker POSTs the finished run to them, signed.
+the Worker POSTs the finished run to them, signed.
 
 `POST /chat/stream` on a durable manifest streams the run — `run_accepted`, `run_status`, `final` —
 and a dropped client reattaches with the resume token rather than losing the run.
@@ -509,7 +509,7 @@ Details in [Auth](/internals/auth/).
 Prometheus metrics at `GET /metrics`, counters prefixed `felix_*`. Audit rows are buffered by the
 process that emits them and flushed
 to Postgres on a timer plus a drain on shutdown — the agent loop runs in the API process, so the API
-flushes too, not only the worker. Optional OTLP tracing with `FELIX_OTEL_ENABLED`, and an optional
+flushes too, not only the Worker. Optional OTLP tracing with `FELIX_OTEL_ENABLED`, and an optional
 append-only analytics spill (`FELIX_WAREHOUSE`: DuckDB, ClickHouse or Doris).
 
 See [Observability](/internals/observability/).
