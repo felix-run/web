@@ -1334,6 +1334,15 @@ The workflow's inputs are the outputs of the node `trigger`. Every step has the 
 `when`. A step runs once everything it reads from has finished, and is skipped when a source was
 skipped or none of its `when` ports fired. A failed step fails the run.
 
+**Who made it.** Each workflow carries `created_by` and `authored_via`, in the list too.
+- A save through these routes records the caller as `created_by` when it creates the workflow and
+  leaves `authored_via` empty.
+- An agent with [`spec.workflow_authoring`](/guide/manifest-reference/#specworkflow_authoring) records
+  the person's issuer-qualified key and `agent:<manifest>`.
+- Your save over an agent's workflow takes it over. If it was made for you it becomes
+  `owner:agent:<manifest>`, which that agent may still run but no longer change. Anyone else's save
+  clears it.
+
 **Saves are conditional.** Every response carries the revision as its `ETag`. `If-Match:
 "<revision>"` saves only over that revision and `If-None-Match: *` only where none exists; a miss
 is `412` with the workflow as it stands. A workflow and each `GET /workflows` item carry
