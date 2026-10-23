@@ -35,6 +35,7 @@ import {
   type MarkdownOptions,
   type Renderable,
   type RenderContext,
+  RGBA,
   type ScrollBoxRenderable,
 } from '@opentui/core';
 import { useTerminalDimensions } from '@opentui/react';
@@ -134,6 +135,10 @@ function Prose({ text, streaming, theme }: { text: string; streaming: boolean; t
   if (!text) return null;
   return (
     <markdown
+      // The terminal's own text colour, for prose and for every block the
+      // markdown builds itself — a fence, a table — which the intrinsics in
+      // `theme.ts` do not reach.
+      fg={RGBA.defaultForeground()}
       content={text}
       syntaxStyle={syntaxStyle()}
       streaming={streaming}

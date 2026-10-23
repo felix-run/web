@@ -174,6 +174,19 @@ browser cannot do rather than about the chat:
   otherwise, and only borders keep ANSI 8. A failed or refused tool card is the one card not drawn
   dim (`✗`, `failed`); a denial is plain foreground, as chat-ui's neutral `denied`. Trace widths
   follow the terminal (`useTraceWidths`), with eighty columns drawing what the old constants did.
+- **The library's defaults are literal colours, so `theme.ts` replaces the intrinsics**
+  (2026-10-22). Every OpenTUI renderable that draws text defaults to the literal white
+  (`TextBufferRenderable`'s `fg` is `RGBA.fromValues(1, 1, 1, 1)`, a textarea's `textColor`
+  `"#FFFFFF"`), and a literal is true-colour — so every uncoloured `<text>`, the whole
+  conversation and the composer, reached the terminal as `ESC[38;2;255;255;255m`, white on white on
+  a light terminal. `theme.ts` registers `text`, `textarea` and `input` subclasses through
+  `extend()` that default to `RGBA.defaultForeground()` (and keep it as the setter's fallback, or a
+  row losing its selection turns white). `<markdown>`, `<text-table>`, `<diff>` and `<select>` take
+  their colours at the call site, because the markdown builds its own blocks and the diff and the
+  select need the theme. **A new renderable type must have its colour defaults checked** — read its
+  `defaults`/`_defaultOptions` in `@opentui/core` — and `tests/terminal-colours.test.tsx` reads the
+  *intent* off captured spans (`default` / `indexed` / `rgb`), which is how a regression shows up
+  without someone running a light theme.
 - **A settled screen does not draw.** The spinner is one module-level interval that exists only
   while a live card subscribes. It was `useTimeline` per card, which autoplays and registers
   whether or not the card is live, and a looping timeline never completes — so one tool card on

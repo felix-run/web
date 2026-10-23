@@ -31,8 +31,17 @@ import {
   type StatePalette,
   type ThemePalette,
 } from '@felix/design/tokens';
-import { type CliRenderer, type ColorInput, createTextAttributes, RGBA } from '@opentui/core';
-import { useRenderer } from '@opentui/react';
+import {
+  type CliRenderer,
+  type ColorInput,
+  createTextAttributes,
+  InputRenderable,
+  type RenderContext,
+  RGBA,
+  TextareaRenderable,
+  TextRenderable,
+} from '@opentui/core';
+import { extend, useRenderer } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';
 
 /** Text attributes, declared once instead of in four files. */
@@ -87,6 +96,14 @@ export interface Theme {
    * transparency or image the user has set behind it.
    */
   surface: ColorInput;
+  /**
+   * A write approval's patch. The renderable's own defaults are dark-theme
+   * literals — `#1a4d1a` / `#4d1a1a` rows under the terminal's text — which
+   * measured 1.1–2.2:1 on a light terminal, on the evidence for the one
+   * decision here that writes to your disk. The `+`/`-` sign carries which is
+   * which; the row tint only helps the eye find the runs.
+   */
+  diff: { addedBg: ColorInput; removedBg: ColorInput; added: ColorInput; removed: ColorInput };
 }
 
 /**
@@ -111,7 +128,24 @@ const INDEXED: Theme = {
   // The terminal's own background, so an overlay is opaque without introducing
   // a colour the user did not choose.
   surface: RGBA.defaultBackground(),
+  // No tint: any background is a colour the user did not choose. The signs
+  // are their own green and red.
+  diff: {
+    addedBg: 'transparent',
+    removedBg: 'transparent',
+    added: RGBA.fromIndex(2),
+    removed: RGBA.fromIndex(1),
+  },
 };
+
+/** `state` laid over `base` at `amount` — a row tint that stays a tint. */
+function tint(state: string, base: string, amount: number): RGBA {
+  const channel = (hex: string, i: number) => Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const mixed = [0, 1, 2].map((i) =>
+    Math.round(channel(state, i) * amount + channel(base, i) * (1 - amount)),
+  );
+  return RGBA.fromInts(mixed[0] ?? 0, mixed[1] ?? 0, mixed[2] ?? 0, 255);
+}
 
 function fromPalette(state: StatePalette, neutral: ThemePalette): Theme {
   return {
@@ -129,8 +163,67 @@ function fromPalette(state: StatePalette, neutral: ThemePalette): Theme {
     // Offset from the page rather than equal to it, so the picker reads as
     // floating above the conversation instead of cut into it.
     surface: RGBA.fromHex(neutral.bgSubtle),
+    // 12% over the scheme's ground: light #e0ece9 / #f4e0e1 keep 8.9–17:1 under
+    // dark text, dark #233129 / #362423 13.6–14.7:1 under white, and the signs
+    // stay ≥6:1 against their own row.
+    diff: {
+      addedBg: tint(state.done, neutral.bg, 0.12),
+      removedBg: tint(state.failed, neutral.bg, 0.12),
+      added: RGBA.fromHex(state.done),
+      removed: RGBA.fromHex(state.failed),
+    },
   };
 }
+
+/**
+ * Text that is the terminal's own colour unless it is told otherwise.
+ *
+ * Every OpenTUI renderable that draws text defaults to the *literal* white —
+ * `TextBufferRenderable`'s `fg` is `RGBA.fromValues(1, 1, 1, 1)`, a textarea's
+ * `textColor` is `"#FFFFFF"` — and a literal is true-colour, not a reference to
+ * the user's palette. So every `<text>` this client left uncoloured, which is
+ * the whole conversation, reached the terminal as `ESC[38;2;255;255;255m`:
+ * white on white on a light terminal, the composer included. The rule above —
+ * override only when certain — held for every colour this file chose and for
+ * none of the ones the library chose instead.
+ *
+ * Replacing the intrinsics fixes it in one place rather than at every `<text>`,
+ * and covers the one nobody has written yet. The text fallback is replaced as
+ * well as the initial value, because the `fg` setter falls back to it when a
+ * prop goes from a colour back to `undefined` — a thread row losing selection
+ * would otherwise turn white. Registered here, at module load, because every
+ * component imports this file and the test bench mounts without `main.tsx`;
+ * `tests/theme.test.ts` fails if a plain `<text>` stops reporting the default
+ * intent, so this cannot be tidied away quietly.
+ */
+class TerminalText extends TextRenderable {
+  constructor(ctx: RenderContext, options: ConstructorParameters<typeof TextRenderable>[1]) {
+    super(ctx, { ...options, fg: options.fg ?? RGBA.defaultForeground() });
+    this._defaultOptions = { ...this._defaultOptions, fg: RGBA.defaultForeground() };
+  }
+}
+
+class TerminalTextarea extends TextareaRenderable {
+  constructor(ctx: RenderContext, options: ConstructorParameters<typeof TextareaRenderable>[1]) {
+    super(ctx, {
+      ...options,
+      textColor: options.textColor ?? RGBA.defaultForeground(),
+      focusedTextColor: options.focusedTextColor ?? RGBA.defaultForeground(),
+    });
+  }
+}
+
+class TerminalInput extends InputRenderable {
+  constructor(ctx: RenderContext, options: ConstructorParameters<typeof InputRenderable>[1]) {
+    super(ctx, {
+      ...options,
+      textColor: options.textColor ?? RGBA.defaultForeground(),
+      focusedTextColor: options.focusedTextColor ?? RGBA.defaultForeground(),
+    });
+  }
+}
+
+extend({ text: TerminalText, textarea: TerminalTextarea, input: TerminalInput });
 
 /** The renderer facts this needs, so a test does not need a terminal. */
 export interface ThemeInputs {

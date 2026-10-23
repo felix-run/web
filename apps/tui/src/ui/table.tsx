@@ -23,6 +23,7 @@
 import {
   type ColorInput,
   fg,
+  RGBA,
   stringToStyledText,
   type TextChunk,
   TextTableRenderable,
@@ -69,6 +70,8 @@ export function Table({
   ];
   return (
     <text-table
+      // The cells' default is literal white otherwise — invisible on a light terminal.
+      fg={RGBA.defaultForeground()}
       content={content}
       wrapMode="none"
       columnWidthMode="full"
