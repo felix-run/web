@@ -314,7 +314,11 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
   .route-tags li {
     margin: 0;
   }
+  /* Padded to 24px tall, the AA target size: at the line's own 18px, with rows
+     4px apart, a thumb on a phone took the group above or below. */
   .route-tags a {
+    display: inline-block;
+    padding-block: 0.1875rem;
     color: var(--sl-color-white);
     text-underline-offset: 0.2em;
   }
@@ -353,7 +357,9 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
     width: 100%;
     box-sizing: border-box;
     padding: 0.4rem 0.6rem;
-    border: 1px solid var(--sl-color-gray-4);
+    /* The border is the only thing that says "field", so it clears the 3:1 a
+       control's edge needs (gray-4 alone was 2.35:1 dark, 2.45:1 light). */
+    border: 1px solid color-mix(in srgb, var(--sl-color-gray-3) 75%, var(--sl-color-black));
     border-radius: 0.5rem;
     background: var(--sl-color-black);
     color: var(--sl-color-white);
@@ -449,7 +455,15 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
         if (match) shown++;
       }
       for (const group of groups) {
-        group.hidden = !group.querySelector('[data-route]:not([hidden])');
+        const left = group.querySelectorAll('[data-route]:not([hidden])').length;
+        group.hidden = left === 0;
+        // The jump list follows the filter: a link to a hidden group went nowhere.
+        const id = group.querySelector('h2')?.id;
+        const tag = id ? document.querySelector(`.route-tags a[href="#${id}"]`) : null;
+        const item = tag?.closest('li');
+        const count = item?.querySelector('span');
+        if (item) item.hidden = left === 0;
+        if (count) count.textContent = String(left);
       }
       status.textContent = terms.length
         ? shown === 0

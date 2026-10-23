@@ -34,8 +34,12 @@ const rows: Row[] = [
     text: 'You approve, deny, or approve with edited arguments.',
   },
   { event: 'tool_end', state: 'done', text: 'The tool returns its output.' },
-  { event: 'on_chain_end', state: 'done', text: "Carries the turn's token usage." },
-  { event: 'done', state: 'done', text: 'Final message and stop_reason.' },
+  {
+    event: 'on_chain_end',
+    state: 'done',
+    text: 'The turn ends. Its output is a Python repr, nothing for a client to read.',
+  },
+  { event: 'done', state: 'done', text: 'Final message, stop_reason and token usage.' },
 ];
 ---
 
@@ -117,12 +121,13 @@ const rows: Row[] = [
     height: 0.5rem;
     border-radius: 999px;
     background-color: var(--hue);
-    /* Punches the rail out behind the dot, so the line reads as joining them. */
-    box-shadow: 0 0 0 3px var(--sl-color-black);
+    /* Punches the rail out behind the dot, so the line reads as joining them. A
+       ring in the row's ground, drawn as an outline: the docs author no shadow. */
+    outline: 3px solid var(--sl-color-black);
   }
 
   .row--blocked .dot {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hue) 7%, var(--sl-color-black));
+    outline-color: color-mix(in srgb, var(--hue) 7%, var(--sl-color-black));
   }
 
   /* The decision is not a frame: a hollow dot, set in from the rail. */

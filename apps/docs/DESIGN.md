@@ -345,7 +345,8 @@ the guide section (read from the guides' route headings and table rows) or its e
 harness docstring, then the spec's generated title with its acronyms fixed. Every row has an
 anchor (`#get-chat-stream-thread_id`) so one route can be linked. A filter box narrows the rows as
 you type; a jump list of tags replaces the table of contents, which cannot see headings a
-component renders. Group headings are 18px — they label a list, not a page section.
+component renders, and follows the filter — a group with no match drops out and each count
+is what is left. Its links are padded to 24px tall, the AA target size. Group headings are 18px — they label a list, not a page section.
 
 Verbs stay neutral here although the explorer colours them: that colour is Scalar's convention,
 mapped onto the ramp only so it passes contrast, and the State-Only Hue Rule gives hue no job in a
@@ -354,7 +355,8 @@ list of routes.
 ### Product screenshot (`.product-shot`, top of Concepts)
 
 A real capture of chat-ui, never a mock: a `<figure>` through Astro's `Image` (passthrough
-service: shipped as authored, with its dimensions set), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
+service: shipped as authored, with its dimensions set — so it is committed as lossless WebP, about a
+third of the PNG it was encoded from), a 1px hairline frame at 8px so a dark capture keeps an edge on the dark page, the
 image shown at its own pixel size and never enlarged — a full window scaled to the column was
 ~6px UI text, so the figure is a crop that reads at 1:1, linking the full capture — and a faint
 caption held to 30rem that says what the image shows and where it came from. Code in a caption
