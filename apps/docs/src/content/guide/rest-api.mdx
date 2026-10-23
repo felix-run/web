@@ -11,8 +11,10 @@ The public surface of a running harness. Management endpoints (`/audit`, `/appro
 `/jobs`, `/heartbeats`, `/manifests`, `/eval`, `/usage`, `/memory`, `/documents`, `/artifacts`) are in the
 [Management API](/guide/management-api/).
 
-The full endpoint reference is at **[/reference/](/reference/)**, rendered from the OpenAPI
-document of the release `api.felix.run` runs — every release attaches its `openapi.json`. Your own
+The **[OpenAPI explorer](/reference/)** has every route's request schema and a request builder,
+rendered from the OpenAPI document of the release `api.felix.run` runs — every release attaches its
+`openapi.json`. Response bodies are documented here and in the Management API, not there: every
+harness route returns a plain object, which the spec cannot describe. Your own
 harness serves the same thing for the version you run: **`GET /openapi.json`**, rendered at
 **`/docs`** (Scalar). Both are behind auth in `api_key` and `jwt` modes unless the operator sets
 `FELIX_DOCS_PUBLIC=true`.
@@ -578,78 +580,90 @@ present, else `data.text` or `data.delta`, else `""`.
 
 ### Events
 
+Each event links to itself (`#event-<name>`). The dot is the run's state while that frame is the
+newest, as on the [home page](/): in flight, waiting on someone, finished, failed. Events with no
+dot do not change it.
+
 <dl class="event-list">
-  <dt>`session_progress`</dt>
+  <dt id="event-session_progress" data-state="running">[`session_progress`](#event-session_progress)</dt>
   <dd>Three shapes. A turn started on a thread:</dd>
   <dd class="event-data">`{"phase":"turn"}`</dd>
   <dd>Compaction fired mid-loop:</dd>
   <dd class="event-data">`{"phase":"compaction","reason":"after_turn"}`</dd>
   <dd>Paired with each `text_delta`:</dd>
   <dd class="event-data">`{"progress":{"type":"assistant_delta","kind":"text","delta":str}}`</dd>
-  <dt>`text_delta`</dt>
+  <dt id="event-text_delta" data-state="running">[`text_delta`](#event-text_delta)</dt>
   <dd>A model token chunk</dd>
   <dd class="event-data">`{"chunk":{"content":str},"delta":str}`</dd>
-  <dt>`on_chat_model_stream`</dt>
-  <dd>**Legacy — no longer emitted.** A harness older than `felix-run/felix#603` sent each chunk of a composite pattern's streamed answer (`parallel`, `plan_execute`) a second time under this name, beside the `text_delta`. A client that reads both should ignore it once a `text_delta` has arrived, or draw the answer twice</dd>
-  <dd class="event-data">`{"chunk":{"content":str}}`</dd>
-  <dt>`tool_start`</dt>
+  <dt id="event-tool_start" data-state="running">[`tool_start`](#event-tool_start)</dt>
   <dd>Before a tool runs</dd>
   <dd class="event-data">`{"name":str,"input":dict,"id":str}`</dd>
-  <dt>`tool_execution_update`</dt>
+  <dt id="event-tool_execution_update" data-state="running">[`tool_execution_update`](#event-tool_execution_update)</dt>
   <dd>Right after `tool_start`</dd>
   <dd class="event-data">`{"name":str,"id":str,"status":"running"}`</dd>
-  <dt>`tool_end`</dt>
+  <dt id="event-tool_end" data-state="done">[`tool_end`](#event-tool_end)</dt>
   <dd>A tool returned. `attachments` is present only when it returned images, each a stored `felix-file://` reference to fetch from `GET /files/{id}` (felix-run/felix#500)</dd>
   <dd class="event-data">`{"name":str,"output":str,"id":str,"attachments"?:[{"url","media_type"}]}`</dd>
-  <dt>`tool_execution_update`</dt>
+  <dt id="event-tool_execution_update-complete" data-state="done">[`tool_execution_update`](#event-tool_execution_update-complete)</dt>
   <dd>Right after `tool_end`</dd>
   <dd class="event-data">`{"name":str,"id":str,"status":"complete"}`</dd>
-  <dt>`tool_request`</dt>
+  <dt id="event-tool_request" data-state="blocked">[`tool_request`](#event-tool_request)</dt>
   <dd>**The client must run this tool**</dd>
   <dd class="event-data">`{"id","name","args","thread_id","transport":"client"}`</dd>
-  <dt>`approval_required`</dt>
+  <dt id="event-approval_required" data-state="blocked">[`approval_required`](#event-approval_required)</dt>
   <dd>A gated tool is waiting on a human</dd>
   <dd class="event-data">`{"approval_id","tool_name","args","rule_id","reason"?,"thread_id","tool_call_id"}`</dd>
-  <dt>`ui_request`</dt>
+  <dt id="event-ui_request" data-state="blocked">[`ui_request`](#event-ui_request)</dt>
   <dd>The agent is asking the user something</dd>
   <dd class="event-data">`{"request_id","kind","prompt","default","thread_id","options":[…],"metadata":{}}`</dd>
-  <dt>`steer`</dt>
+  <dt id="event-steer">[`steer`](#event-steer)</dt>
   <dd>A queued steer was drained into the loop</dd>
   <dd class="event-data">`{"content":str}`</dd>
-  <dt>`follow_up`</dt>
+  <dt id="event-follow_up">[`follow_up`](#event-follow_up)</dt>
   <dd>A queued follow-up was drained after idle</dd>
   <dd class="event-data">`{"content":str}`</dd>
-  <dt>`workspace_note`</dt>
+  <dt id="event-workspace_note">[`workspace_note`](#event-workspace_note)</dt>
   <dd>A run put an operator's workspace edit in front of the model before its next call</dd>
   <dd class="event-data">`{"path","op","bytes","to_path"?}`</dd>
-  <dt>`todo_updated`</dt>
+  <dt id="event-todo_updated">[`todo_updated`](#event-todo_updated)</dt>
   <dd>The agent rewrote its checklist (`todo_write`). Sent from inside the call, before its `tool_end`, and only for a write the harness accepted; the list is also the call's arguments, and the snapshot's `todos` holds the current one</dd>
   <dd class="event-data">`{"todos":[{"id","content","status","active_form"}]}`</dd>
-  <dt>`subagent_start`</dt>
+  <dt id="event-subagent_start">[`subagent_start`](#event-subagent_start)</dt>
   <dd>A `task` call handed a job to a child agent. A background child (`background: true`) runs as a durable run on a thread of its own and sends no `subagent_end`. Neither frame carries the call id</dd>
   <dd class="event-data">`{"agent","background","task_id"?,"thread_id"?}`</dd>
-  <dt>`subagent_end`</dt>
+  <dt id="event-subagent_end">[`subagent_end`](#event-subagent_end)</dt>
   <dd>A foreground child agent finished</dd>
   <dd class="event-data">`{"agent","outcome":"ok"|"error"}`</dd>
-  <dt>`permission_mode_changed`</dt>
+  <dt id="event-permission_mode_changed">[`permission_mode_changed`](#event-permission_mode_changed)</dt>
   <dd>An approved `exit_plan_mode` moved the thread out of plan mode mid-run. `POST /chat/mode` emits none; the snapshot's `permissionMode` carries it</dd>
   <dd class="event-data">`{"mode"}`</dd>
-  <dt>`max_turns`</dt>
+  <dt id="event-max_turns">[`max_turns`](#event-max_turns)</dt>
   <dd>A `react` loop ran out of `spec.recursion_limit` steps with tool calls still pending. The session is recorded `truncated` and `done` says `stop_reason: max_turns`; this frame is the one that carries the limit</dd>
   <dd class="event-data">`{"limit":int}`</dd>
-  <dt>`aborted`</dt>
+  <dt id="event-aborted">[`aborted`](#event-aborted)</dt>
   <dd>`POST /chat/abort` was observed</dd>
   <dd class="event-data">`{"thread_id":str}`</dd>
-  <dt>`on_error`</dt>
+  <dt id="event-on_error" data-state="failed">[`on_error`](#event-on_error)</dt>
   <dd>The run failed mid-stream. Not terminal — the stream still ends with `done`/`[DONE]`, so a client that ignores it reports success</dd>
   <dd class="event-data">`{"message":str}`</dd>
-  <dt>`on_chain_end`</dt>
+  <dt id="event-on_chain_end">[`on_chain_end`](#event-on_chain_end)</dt>
   <dd>Penultimate frame. Its `output` is the harness's in-process result object and reaches the wire as a Python `repr` string: there is nothing in it for a client to read. Usage rides on `done`</dd>
   <dd class="event-data">`{"output": str}`</dd>
-  <dt>`done`</dt>
+  <dt id="event-done" data-state="done">[`done`](#event-done)</dt>
   <dd>Final frame before `[DONE]`. `stop_reason` is how the run ended — `end_turn`, `tool_use`, `max_tokens`, `max_turns`, `stop_sequence`, `pause_turn`, `refusal`, `unknown` — and is what `/v1` maps to `finish_reason`. `usage` is the **final model call's** block, absent when the provider reported none (and on a harness older than `felix-run/felix#399`). `input` excludes cached tokens, so the prompt is `input + cacheRead + cacheWrite`. Because that call's prompt was the whole active branch, `totalTokens` is also how full the context window is</dd>
   <dd class="event-data">`{"final": ChatMessage, "messages":[…], "stop_reason": str, "usage"?: {"input": int, "output": int, "cacheRead": int, "cacheWrite": int, "totalTokens": int, "cost": {…}}}`</dd>
 </dl>
+
+<details>
+<summary>No longer emitted: `on_chat_model_stream`</summary>
+
+<dl class="event-list">
+  <dt id="event-on_chat_model_stream">[`on_chat_model_stream`](#event-on_chat_model_stream)</dt>
+  <dd>A harness older than `felix-run/felix#603` sent each chunk of a composite pattern's streamed answer (`parallel`, `plan_execute`) a second time under this name, beside the `text_delta`. A client that reads both should ignore it once a `text_delta` has arrived, or draw the answer twice</dd>
+  <dd class="event-data">`{"chunk":{"content":str}}`</dd>
+</dl>
+
+</details>
 
 :::note
 `tool_request`, `approval_required` and `ui_request` are **side-channel** frames: the blocked tool

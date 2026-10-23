@@ -1,8 +1,9 @@
 ---
 /*
  * Header nav — the top-level link a site with a marketing homepage would put
- * in its header. It goes to the API explorer (`/reference/`), labelled "API" —
- * the word a reader scans the header for. The route index stays in the sidebar.
+ * in its header. It goes to the OpenAPI explorer (`/reference/`), under the same name
+ * the sidebar and the explorer's own tab use — "API" alone was a third name for
+ * it. The route index stays in the sidebar.
  * Starlight has no config for header links, and its `Header`
  * has one slot-bearing component on the right of the bar, so the link is added
  * by overriding `SocialIcons` (wired in `astro.config.mjs`) rather than by
@@ -24,7 +25,7 @@
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 ---
 
-<a class="header-link" href="/reference/">API</a>
+<a class="header-link" href="/reference/">OpenAPI explorer</a>
 <Default><slot /></Default>
 
 <style>

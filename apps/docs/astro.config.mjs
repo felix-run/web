@@ -1,13 +1,14 @@
 // Felix docs — Starlight over MDX in src/content/.
 // Static output only; deployed as a Workers static-assets site (wrangler.jsonc).
 import starlight from '@astrojs/starlight';
+import { codeTheme } from '@felix/design/tokens';
 import { defineConfig, passthroughImageService } from 'astro/config';
 
 export default defineConfig({
   site: 'https://docs.felix.run',
   // Images ship as authored, without a transform step. The default service needs
   // `sharp`, a native dependency the docs do not declare — it resolved locally by
-  // accident and failed in CI. The one image (a ~100 KB PNG screenshot) does not
+  // accident and failed in CI. The screenshots (lossless WebP, ~75 KB each) do not
   // need it; `<Image>` still sets width and height, so it takes no layout shift.
   image: { service: passthroughImageService() },
   integrations: [
@@ -22,7 +23,7 @@ export default defineConfig({
         alt: '',
       },
       description:
-        'Felix — self-hostable managed agents harness: manifests, patterns, sessions, and governance.',
+        'Felix runs the agents you describe: a self-hosted agents harness that compiles a YAML manifest into a governed, durable runtime.',
       // Starlight runs its Markdown transforms (`:::note` asides, heading anchor
       // links) only on files under src/content/docs/ unless told otherwise. Prose
       // lives one level up (see content.config.ts), so without this every aside
@@ -32,7 +33,18 @@ export default defineConfig({
       // a block has a title. The default picks a macOS terminal window for
       // shell languages — three dots and an empty title bar on every curl, and
       // an sr-only "Terminal window" read out before each one.
-      expressiveCode: { defaultProps: { frame: 'code' } },
+      //
+      // The highlighting is Felix's own (`codeTheme` in @felix/design): the neutral
+      // scale plus one near-grey accent for strings. Expressive Code's default, Night
+      // Owl, drew strings red in light and literals pink-red in dark — the failed
+      // colour, on a site where hue means state — so a credential in a curl read as
+      // an error. Built from the tokens at build time, so it cannot drift from them;
+      // the frame and background are Starlight's, which theme.css already fills.
+      expressiveCode: {
+        themes: [codeTheme('dark'), codeTheme('light')],
+        useStarlightUiThemeColors: true,
+        defaultProps: { frame: 'code' },
+      },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/felix-run/felix' }],
       // Header nav. Starlight has no config for header links, so the "API
       // reference" link rides an override of the one slot-bearing component in

@@ -79,12 +79,16 @@ for (const [path, item] of Object.entries(spec?.paths ?? {})) {
   }
 }
 
-/** GitHub-style heading slug — Starlight's, and docs-links.test.ts's. */
+/**
+ * GitHub-style heading slug, as Starlight generates it: punctuation goes, `_` and
+ * `-` stay. It used to drop `_` too, and so linked `/chat/stream/{thread_id}` to
+ * `#get-chatstreamthreadid`, an anchor no page has.
+ */
 function slug(heading: string): string {
   return heading
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .replace(/\s/g, '-');
 }
 
