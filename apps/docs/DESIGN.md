@@ -262,7 +262,9 @@ prose held to 48rem so it reads at the same line as a docs page.
 From 72rem the content sits against the sidebar and the table of contents follows it, with the
 spare width falling to the far right. Starlight's default centres content and TOC together, which
 at 48rem put a ~150px gap between the sidebar and the text. The header's search box follows the
-content edge.
+content edge. A page without a TOC (the Route index) sits against the sidebar too, at the full
+column, so every page with a sidebar starts its text at the same x. Pages with none (home, 404)
+stay centred.
 
 Breakpoints are Starlight's (50rem, where the header's links appear; 72rem, where the sidebar and
 table of contents sit beside the content) plus three of the docs' own, each chosen by content: the
