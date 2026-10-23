@@ -59,6 +59,7 @@ function context(client: Partial<FelixClient>, spills: Spill[] = []) {
     manifest: 'quick',
     setManifest: () => {},
     setNotice: (t: string | null) => notices.push(t),
+    failNotice: (t: string) => notices.push(t),
     threadId: () => 't1',
     threads: () => [],
     hits: { current: [] },

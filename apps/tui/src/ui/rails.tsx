@@ -290,7 +290,14 @@ export function StatusLine({
           what landed rather than a reply still being written. */}
       {reattaching ? <text fg={theme.running}>rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
-        <text attributes={DIM} fg={connection === 'ok' ? undefined : theme.failed}>
+        {/* Dim only while all is well. `key rejected` is a failure waiting will
+            not cure, so it is red; `unreachable` usually means the harness is
+            not running yet, which passes, so it is the plain foreground —
+            undimmed, so it still stands out from the row it replaced. */}
+        <text
+          {...(connection === 'ok' ? { attributes: DIM } : {})}
+          {...(connection === 'rejected' ? { fg: theme.failed } : {})}
+        >
           {left}
         </text>
         {keys ? <text attributes={DIM}>{keys}</text> : null}

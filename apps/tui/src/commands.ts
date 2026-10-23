@@ -96,6 +96,8 @@ export interface CommandContext {
   manifest: string;
   setManifest(name: string): void;
   setNotice(text: string | null): void;
+  /** The same line, in the failed colour: for a notice that reports something went wrong. */
+  failNotice(text: string): void;
   /** Read through a function, so a refresh does not rebuild the caller. */
   threadId(): string;
   threads(): ThreadMeta[];
@@ -286,7 +288,7 @@ export function runCommand(ctx: CommandContext, line: string): void {
         void client
           .listManifests()
           .then((names) => setNotice(`manifests: ${names.join(' ')}`))
-          .catch(() => setNotice('could not list manifests'));
+          .catch(() => ctx.failNotice('could not list manifests'));
         return;
       }
       setManifest(arg);

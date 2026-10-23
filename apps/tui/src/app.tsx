@@ -139,6 +139,17 @@ export function App({
   const [railFilter, setRailFilter] = useState('');
   const [uiResolving, setUiResolving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * The notice that reports a failure, if the current one does. Kept as the
+   * text rather than a flag beside it, so any later `setNotice` — a
+   * confirmation, a clear — drops the failure colour without having to know
+   * it was there.
+   */
+  const [failedNotice, setFailedNotice] = useState<string | null>(null);
+  const failNotice = useCallback((text: string) => {
+    setFailedNotice(text);
+    setNotice(text);
+  }, []);
   const [quitArmed, setQuitArmed] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => history.entries());
 
@@ -521,14 +532,14 @@ export function App({
         renderer.suspend();
         edited = await openEditor({ value, cwd: root });
       } catch (err) {
-        setNotice(`editor: ${err instanceof Error ? err.message : String(err)}`);
+        failNotice(`editor: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
       } finally {
         renderer.resume();
       }
       return edited;
     },
-    [renderer, root],
+    [failNotice, renderer, root],
   );
 
   /**
@@ -554,11 +565,11 @@ export function App({
       if (parsed.status === 'invalid') {
         // Deliberately not a decision: a malformed edit must not become an
         // approval of the original call.
-        setNotice(`those arguments were not usable — ${parsed.error}. Nothing was decided.`);
+        failNotice(`those arguments were not usable — ${parsed.error}. Nothing was decided.`);
         return;
       }
       if (msUntilDecision(approval) === 0) {
-        setNotice('the harness stopped waiting while the editor was open — it denied this itself');
+        failNotice('the harness stopped waiting while the editor was open — it denied this itself');
         engine.shiftApproval();
         return;
       }
@@ -578,7 +589,7 @@ export function App({
       );
       engine.shiftApproval();
     },
-    [client, config, editPrompt, engine],
+    [client, config, editPrompt, engine, failNotice],
   );
 
   /**
@@ -599,12 +610,12 @@ export function App({
         const { path } = page(body, name);
         setNotice(`${name} shown; a copy is at ${path}`);
       } catch (err) {
-        setNotice(`pager: ${err instanceof Error ? err.message : String(err)}`);
+        failNotice(`pager: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         renderer.resume();
       }
     },
-    [renderer],
+    [failNotice, renderer],
   );
 
   const command = useCallback(
@@ -619,6 +630,7 @@ export function App({
           manifest,
           setManifest,
           setNotice,
+          failNotice,
           threadId: () => threadIdRef.current,
           threads: () => threads,
           hits: hitsRef,
@@ -647,6 +659,7 @@ export function App({
       engine,
       entry,
       exit,
+      failNotice,
       fill,
       hydrate,
       manifest,
@@ -963,7 +976,7 @@ export function App({
       ) : null}
 
       {notice ? (
-        <text fg={theme.notice} flexShrink={0}>
+        <text fg={notice === failedNotice ? theme.failed : theme.notice} flexShrink={0}>
           {notice}
         </text>
       ) : null}
