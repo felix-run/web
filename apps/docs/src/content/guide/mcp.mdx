@@ -163,9 +163,19 @@ of the session. See [Egress](/internals/governance/#egress).
 
 **stdio.** The command must be named exactly in `FELIX_MCP_STDIO_ALLOWED_COMMANDS`; empty, the
 default, disables stdio. It is checked on manifest write, at compile, and at every spawn — discovery
-and each call. The child gets a scrubbed environment: `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`, plus
-the SDK's own short list of non-secret variables (`LOGNAME`, `SHELL`, `TERM`, `USER`), plus the keys
-the manifest declares. Its stderr is discarded.
+and each call.
+
+- **Which binary runs** is decided by the operator's environment. A bare name is resolved on the
+  API's own `PATH` and spawned by that absolute path. A manifest path that matched the list only
+  through its realpath spawns that realpath.
+- **The child's `PATH`** is the API's, with relative entries dropped, and a manifest may not set it,
+  so an interpreter a server starts through `#!/usr/bin/env` comes from the operator's directories.
+- **The rest of the environment** is scrubbed: `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's own short
+  list of non-secret variables (`LOGNAME`, `SHELL`, `TERM`, `USER`), and the keys the manifest
+  declares. Its stderr is discarded.
+
+Allowlisting an interpreter or package runner (`uvx`, `npx`, `node`, `python`) lets a manifest run
+anything through its arguments. The allowlist decides which binary runs, not what it runs.
 
 <Aside type="caution">
 stdio speaks the protocol's newline-delimited JSON. A server that only understands LSP-style
