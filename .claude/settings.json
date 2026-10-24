@@ -168,7 +168,11 @@
       "Read(./.dev.vars)",
       "Read(./.secrets/**)",
       "Read(./apps/*/.dev.vars)",
-      "Read(./apps/*/.dev.vars.*)"
+      "Read(./apps/*/.dev.vars.local)",
+      "Read(./apps/*/.dev.vars.development)",
+      "Read(./apps/*/.dev.vars.preview)",
+      "Read(./apps/*/.dev.vars.staging)",
+      "Read(./apps/*/.dev.vars.production)"
     ]
   }
 }
