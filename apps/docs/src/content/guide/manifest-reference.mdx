@@ -107,8 +107,11 @@ legacy aliases onto the current model in the same tier, and `llama-3-pro` / `lla
 onto GLM-5.3 and GLM-5.3 Flash; prefer the current ids.
 Providers are `anthropic`, `openai`, `workers_ai`, `groq`, `together`, `deepseek`,
 `cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any registered through
-`register_model_provider`. Note that `limits.max_cost_usd` is refused at compile when the resolved
-model has no known rates — supply them with `spec.model.price`. See
+`register_model_provider`. Note that `limits.max_cost_usd` is refused at compile when a model the
+manifest routes to has no known rates. `spec.model.price` supplies them for the model, its fallbacks
+and the routes built from it (vision, escalation, plan/execute, heartbeat, memory capture), but not for judges,
+screening, the reflect verifier, memory consolidation or fetch extraction, which must route to a
+priced model. See
 [Model client](/internals/model-client/).
 
 `confidence_escalation` retries with a stronger model when the answer looks hedged:
@@ -2116,7 +2119,7 @@ spec:
 | `inbound.schemes` | string[] | `[]` | Enforced. The scheme the caller authenticated with (`api_key`, or the JWT verifier scheme) must be listed; `jwt` is an umbrella for every configured JWT scheme. Mismatch → `403`. |
 | `inbound.required_scopes` | string[] | `[]` | Enforced. Missing scopes → `403`. |
 | `inbound.allow_anonymous` | bool | `false` | Enforced. Anonymous callers get `401` unless true. |
-| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider for the primary model and every fallback must be listed, or the build fails — not the first model call. |
+| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider of every model route the manifest names must be listed, or the build fails — not the first model call. That is the primary model and its fallbacks, `vision_model` (or `FELIX_DEFAULT_VISION_MODEL_ID` when the primary is text-only and none is named), `confidence_escalation.escalate_to`, the plan/execute models, `heartbeat.model`, `reflect.verifier_model`, each judge's `model`, `http_tools[].extract_model`, and, when their feature is enabled, the content-screening and image-screening models and the memory capture and consolidation models. A request's `model` override and `spec.decider` are not yet checked. |
 
 ### `spec.a2a` and `spec.observability`
 
