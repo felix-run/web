@@ -225,7 +225,7 @@ Request (`extra: forbid`):
 | `manifest` | string | required | Manifest name. |
 | `messages` | object[] | `[]` | OpenAI-shaped message dicts. |
 | `thread_id` | string \| null | `null` | Suffix only. |
-| `model` | string \| null | `null` | Mid-session override; allowlisted. |
+| `model` | string \| null | `null` | Mid-session override; allowlisted, and held to the manifest's provider pin and cost cap. |
 | `template` | string \| null | `null` | Named template from `spec.prompts`. |
 | `template_args` | string[] | `[]` | |
 
@@ -234,7 +234,11 @@ replaced by that prompt's expansion ([slash commands](/guide/manifest-reference/
 
 Either `messages` or `template` must produce a message, else `400
 messages_or_template_required`. An empty `manifest` is `400 manifest_required`. A `model` outside the
-allowlist is `400 model_not_allowlisted:<id>`.
+allowlist is `400 model_not_allowlisted:<id>`. A `model` the manifest's own rules refuse is `400
+model_provider_not_allowed:<id>` (its provider is not in `spec.auth.outbound.providers`),
+`model_unpriced:<id>` (a declared `limits.max_cost_usd` and no known rates), or
+`model_not_priced_by_manifest:<id>` (`spec.model.price` is set, and the route is not one the
+manifest names). Each sub-agent the override reaches is checked against its own manifest the same way.
 
 ### Message content
 
