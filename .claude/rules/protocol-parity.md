@@ -33,8 +33,8 @@ must be listed rather than trusted.
 the harness. They cannot be one module — different runtimes, different config — so if they drift,
 dev and production behave differently and nothing reports it.
 
-In the Worker specifically: `x-chat-key` is deleted before the upstream fetch, the gate comparison
-stays constant-time, and the response body is passed through untouched (`duplex: 'half'`) so SSE and
+In the Worker specifically: it attaches no credential of its own (the dev proxy injects the dev key
+on purpose — the one deliberate difference), and the response body is passed through untouched (`duplex: 'half'`) so SSE and
 `x-manifest-variant` survive. The cross-site write refusal (`crossSiteWrite`) has a copy in each:
 the Worker's, and the `refuseCrossSiteWrites` middleware in `vite.config.ts`.
 

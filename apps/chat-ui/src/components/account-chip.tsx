@@ -1,6 +1,6 @@
 /**
  * Who this browser is signed in as, when it signed in with GitHub or Google. Nothing at
- * all under the shared access key, which names no one.
+ * all when it is not signed in — an open deployment, or `vite dev`.
  *
  * Quiet by design: a face and a login at the end of the header, so the person
  * and the tenant are findable without being a thing the eye keeps landing on.

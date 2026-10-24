@@ -1,10 +1,8 @@
 // Copy to wrangler.jsonc (gitignored) and adjust for your deployment.
 //
 // `vars` is PUBLIC — it ships in the Worker config and is readable by anyone
-// with access to the account. Only FELIX_ORIGIN belongs here. The gate key and
-// the upstream bearer token are secrets:
-//   pnpm --filter @felix/chat-ui exec wrangler secret put CHAT_UI_KEY
-//   pnpm --filter @felix/chat-ui exec wrangler secret put FELIX_API_KEY   # optional
+// with access to the account. Only FELIX_ORIGIN belongs here. The Worker takes
+// no secrets: browsers sign in to the harness and their bearer passes through.
 {
   "name": "felix-chat-ui",
   "main": "worker/index.ts",

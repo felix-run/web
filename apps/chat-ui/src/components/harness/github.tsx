@@ -98,7 +98,9 @@ export function GitHubPage({ docs }: { docs: string }) {
   // The connection's own login, not the sign-in's: it is the account the token acts as.
   const login = connection?.connection?.github_login ?? session?.login;
   const value = !signedIn
-    ? 'shared access key'
+    ? session
+      ? 'signed in with Google'
+      : 'not signed in'
     : connection === null
       ? undefined
       : connection.connected
@@ -129,7 +131,7 @@ export function GitHubPage({ docs }: { docs: string }) {
             <p className="max-w-prose text-sm text-muted-foreground">
               {session
                 ? 'This browser is signed in with Google, which carries no GitHub account.'
-                : 'This browser is signed in with the shared access key, which names no one.'}{' '}
+                : 'This browser is not signed in.'}{' '}
               Your GitHub connection and repositories need a GitHub sign-in.
             </p>
             <SignInWithGitHub label="Sign in with GitHub" />
@@ -195,8 +197,7 @@ export function GitHubPage({ docs }: { docs: string }) {
           </PageSection>
         )}
         {connection?.connected && repos && <Repositories repos={repos} />}
-        {/* A person's, not the shared key's: the key names no one, and this page asks
-            nothing under it. */}
+        {/* A GitHub sign-in's only: without one this page asks nothing. */}
         {signedIn && <TenantConnections own={connection?.connection?.github_user_id ?? null} />}
       </PanelBody>
     </Panel>
@@ -302,11 +303,11 @@ function Repositories({ repos }: { repos: GitHubRepos }) {
 /**
  * The way to the sign-in the page needs, drawn where it says one is needed. The gate's two flows,
  * chosen as the gate chooses: by redirect when the harness offers it (coming back to this page),
- * else the device code in place. Offered only while the harness verifies a bearer — otherwise the
- * Worker would not honour the token, and a sign-in that changes nothing is worse than a sentence
- * saying none is on offer.
+ * else the device code in place. Offered only while the harness verifies a bearer — otherwise it
+ * would not check the token, and a sign-in that changes nothing is worse than a sentence saying
+ * none is on offer.
  *
- * A sign-in from the shared key or from Google can land in another tenant, where the thread this
+ * A sign-in made while signed out, or over a Google one, can land in another tenant, where the thread this
  * tab remembers does not exist, so it forgets that thread and reloads this page — the account
  * chip does the same on a tenant change. Signing in again as a GitHub account of the same tenant
  * only stores the new session, and the page re-reads the connection it made.

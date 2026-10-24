@@ -5,8 +5,8 @@ Split out of the root `CLAUDE.md`, which holds the wire protocol and run flows t
 `apps/tui` is the same conversation without a browser, and the differences are all about what a
 browser cannot do rather than about the chat:
 
-- **No proxy, no shared key.** `/api/*` and `x-chat-key` exist because a page cannot reach the
-  harness (no CORS, no static assets). This process calls `FELIX_ORIGIN` directly with
+- **No proxy, no sign-in.** `/api/*` and the browser's sign-in exist because a page cannot reach
+  the harness (no CORS, no static assets). This process calls `FELIX_ORIGIN` directly with
   `Authorization: Bearer`, resolved by `src/config.ts` narrowest first: flag, environment, the
   checkout's `apps/chat-ui/.dev.vars`, then `~/.config/felix/config.json`. `.dev.vars` is in that
   list on purpose — it is the repo's *one* local secrets file, and a second client ignoring it made

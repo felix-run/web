@@ -8,7 +8,7 @@ currently implement, in `apps/chat-ui/src/{api,types}.ts`.
 
 All calls are same-origin under `/api/*`. The `/api` prefix is stripped by the proxy (the Vite dev
 proxy in development, `worker/index.ts` in production) before the request reaches the harness.
-`apiFetch` attaches the `x-chat-key` header and clears the stored key on 401.
+`apiFetch` attaches the session's bearer and clears the stored session on 401.
 
 ## SSE — `POST /chat/stream`
 
@@ -61,8 +61,7 @@ accepted by the compiler and ignored at runtime.
 
 | Header | Direction | Notes |
 |---|---|---|
-| `x-chat-key` | browser → proxy | Shared gate key; **stripped** by the Worker before upstream |
-| `Authorization: Bearer …` | proxy → harness | Injected from `FELIX_API_KEY` when configured |
+| `Authorization: Bearer …` | browser → harness | The harness sign-in's session, passed through the Worker untouched (the dev proxy injects the dev key instead) |
 | `x-manifest-variant` | harness → browser | `stable` \| `canary`; must survive the proxy |
 
 ## Conventions

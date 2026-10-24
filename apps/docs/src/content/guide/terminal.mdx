@@ -72,9 +72,9 @@ otherwise cross the network in the clear — the mirror of the harness's own ref
 `FELIX_AUTH_MODE=none` on a bind reachable off-host. `--insecure` overrides that.
 
 <Aside type="note">
-There is no proxy and no shared key here. The browser client needs both because a page cannot call
-the harness directly — no CORS, no static assets — so a Cloudflare Worker holds the credential and the SPA
-sends `x-chat-key` to reach it. This process has no such restriction: it calls `FELIX_ORIGIN` itself
+There is no proxy and no sign-in here. The browser client needs both because a page cannot call
+the harness directly — no CORS, no static assets — so a Cloudflare Worker forwards it, and the page
+signs in to the harness to have a bearer to send. This process has no such restriction: it calls `FELIX_ORIGIN` itself
 and sends `Authorization: Bearer`. With no key configured it sends no header at all, which is
 correct against a harness running `FELIX_AUTH_MODE=none`.
 </Aside>

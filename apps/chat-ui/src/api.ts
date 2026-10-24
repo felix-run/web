@@ -6,7 +6,7 @@
  * read-only inspector reads — audit, usage, memory, plans, artifacts — both live
  * in `@felix/client`, which is origin- and credential-agnostic so a terminal
  * client can ask the same questions; this module supplies the browser's half of
- * the arrangement (the `/api` prefix, the shared key, the reachability signal,
+ * the arrangement (the `/api` prefix, the sign-in's bearer, the reachability signal,
  * the 401 reset) and re-exports the result under the names the components
  * already import.
  *
@@ -63,8 +63,8 @@ import type {
  * The one client every chat call goes through.
  *
  * `/api` rather than the harness origin because a browser cannot reach the
- * harness at all — no CORS, no static assets — so the proxy Worker forwards it
- * and swaps `x-chat-key` for the upstream credential. The three callbacks are
+ * harness at all — no CORS, no static assets — so the proxy Worker forwards it,
+ * with the sign-in's bearer untouched. The three callbacks are
  * this app's own concerns, which is exactly why the package takes them rather
  * than assuming them.
  */
@@ -227,8 +227,8 @@ export const listSkillEvals = felix.listSkillEvals.bind(felix);
 export type { StreamArgs, StreamHandlers } from '@felix/client';
 
 /**
- * `fetch` for the management routes below, with the shared-key header attached.
- * A 401 means the key is missing/wrong/rotated — drop it and re-prompt
+ * `fetch` for the management routes below, with the sign-in's bearer attached.
+ * A 401 means the session is missing or has ended — drop it and re-prompt
  * (handleUnauthorized) before the caller's own error handling runs.
  */
 async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {

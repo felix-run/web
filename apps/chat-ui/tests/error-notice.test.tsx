@@ -40,6 +40,6 @@ describe('ErrorNotice', () => {
 
   it('translates an auth rejection into an instruction', () => {
     render(<ErrorNotice error={new Error('manifests: 401')} doing="activate v13 of quick" />);
-    expect(screen.getByRole('alert').textContent).toContain('access key was rejected');
+    expect(screen.getByRole('alert').textContent).toContain('sign-in was refused');
   });
 });

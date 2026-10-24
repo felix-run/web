@@ -2,32 +2,47 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Gate } from '../src/components/gate';
-import { clearApiKey, getApiKey, handleUnauthorized, setApiKey } from '../src/lib/auth';
+import { clearSession, getSession, handleUnauthorized, setSession } from '../src/lib/auth';
 
 /**
- * The Gate is what stands between a browser and the proxy Worker's `/api/*`.
- * It is not user authentication — one shared key, stored in localStorage — but
- * it does decide when the app is usable, and it has to re-prompt when a key is
- * rotated out from under it. The 401 path is the one that matters: without it,
- * a rotated key leaves the user staring at a wall of failing requests.
+ * The Gate is what stands between a browser and `/api/*`. The proxy Worker holds no credential,
+ * so the gate opens on a session the harness accepts — or on nothing at all, when the harness
+ * asks for none — and it has to re-prompt when a session ends under it. The 401 path is the one
+ * that matters: without it, an ended session leaves the person staring at a wall of failing
+ * requests.
  */
 
 const unlocked = () => new Response('{"data":[]}', { status: 200 });
-// The Worker's own refusal, which names its gate: that is what tells the page a
-// key would open it.
-const rejected = () => new Response('{"error":"unauthorized","gate":"chat_key"}', { status: 401 });
+const refused = () => new Response('{"error":"unauthorized"}', { status: 401 });
+const methods = (body: object) => () => Response.json(body);
 
-/** A Worker that opens for `key` and refuses everything else, as a gated deployment does. */
-const keyed = (key: string) => async (_url: string, init?: RequestInit) =>
-  (init?.headers as Record<string, string> | undefined)?.['x-chat-key'] === key
-    ? unlocked()
-    : rejected();
+/** A session that will not lapse during a test. */
+const session = (token = 'stored-jwt') => ({
+  token,
+  expiresAt: Date.now() + 3_600_000,
+  login: 'octo',
+  tenant: 'acme',
+  scopes: ['chat'],
+});
+
+/**
+ * A harness that requires sign-in: it opens for `token` and refuses everything else, and offers
+ * GitHub's device flow. Every other route is a 404.
+ */
+const harness =
+  (token: string, offer: object = { github_device: true, bearer_required: true }) =>
+  async (url: string, init?: RequestInit) => {
+    if (url === '/api/auth/methods') return methods(offer)();
+    if (url !== '/api/v1/models') return new Response('{}', { status: 404 });
+    const auth = (init?.headers as Record<string, string> | undefined)?.authorization;
+    return auth === `Bearer ${token}` ? unlocked() : refused();
+  };
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   localStorage.clear();
-  clearApiKey();
+  clearSession();
   fetchMock = vi.fn(async () => unlocked());
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -45,6 +60,10 @@ const renderGate = () =>
     </Gate>,
   );
 
+/** The probes of `/api/v1/models`, which is where the gate checks a credential. */
+const probes = () =>
+  fetchMock.mock.calls.filter(([url]) => url === '/api/v1/models') as [string, RequestInit][];
+
 /**
  * Resolves once the locked gate is listening for `type`. The card is committed before the effect
  * that attaches its listeners runs, so waiting on the card alone and then dispatching can lose the
@@ -57,40 +76,53 @@ function listeningFor(type: string): () => Promise<void> {
 }
 
 describe('Gate', () => {
-  it('prompts for a key when none is stored and the Worker gates on one', async () => {
-    fetchMock.mockResolvedValue(rejected());
+  it('offers sign-in when nothing is stored and the harness requires it', async () => {
+    fetchMock.mockImplementation(harness('nobody'));
     renderGate();
-    await waitFor(() => expect(screen.getByPlaceholderText('Access key')).toBeTruthy());
+    await screen.findByRole('button', { name: /continue with github/i });
     expect(screen.queryByText('chat is open')).toBeNull();
   });
 
-  // A deployment with no key and an injected upstream credential answers an
-  // uncredentialed request; there is nothing to ask for.
-  it('opens without asking when the deployment answers with nothing stored', async () => {
+  // A harness running FELIX_AUTH_MODE=none answers an uncredentialed request; there is nothing
+  // to ask for.
+  it('opens without asking when the harness answers with nothing stored', async () => {
     renderGate();
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
   });
 
-  // The harness refusing is not the Worker refusing: no key would answer it, so
-  // offering the key field would be a dead end that looks like a typo.
-  it('offers no key field when the refusal is the harness’s, not the Worker’s', async () => {
-    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }));
+  // The shared access key is retired: no deployment can be answered by one, so none is offered.
+  it('offers no access key, and says when there is no way in at all', async () => {
+    fetchMock.mockImplementation(harness('nobody', {}));
     renderGate();
     await waitFor(() => expect(screen.getByText(/offers no way to sign in/i)).toBeTruthy());
-    expect(screen.queryByPlaceholderText('Access key')).toBeNull();
+    expect(screen.queryByText(/access key/i)).toBeNull();
+    expect(screen.queryByText(/CHAT_UI_KEY/)).toBeNull();
+    expect(document.querySelector('input')).toBeNull();
   });
 
-  // The flash: a stored key used to be checked *behind* the key prompt, so every
-  // returning visitor saw the login screen for one round trip before the chat
-  // replaced it. While the check is in flight the gate must draw neither.
-  it('shows neither the prompt nor the app while a stored key is being checked', async () => {
-    setApiKey('stored-key');
+  // A browser that stored the key before it was retired still holds it. It is a secret nothing
+  // reads any more, so it goes, and it is never sent.
+  it('drops a stored access key and never sends one', async () => {
+    localStorage.setItem('felix.apiKey', 'old-key');
+    fetchMock.mockImplementation(harness('nobody'));
+    renderGate();
+    await screen.findByRole('button', { name: /continue with github/i });
+    expect(localStorage.getItem('felix.apiKey')).toBeNull();
+    for (const [, init] of fetchMock.mock.calls as [string, RequestInit | undefined][]) {
+      expect((init?.headers as Record<string, string> | undefined)?.['x-chat-key']).toBeUndefined();
+    }
+  });
+
+  // The flash: a stored credential used to be checked *behind* the prompt, so every returning
+  // visitor saw the login screen for one round trip before the chat replaced it. While the check
+  // is in flight the gate must draw neither.
+  it('shows neither the prompt nor the app while a stored session is being checked', async () => {
+    setSession(session());
     let settle!: (r: Response) => void;
     fetchMock.mockReturnValue(new Promise<Response>((r) => (settle = r)));
     renderGate();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByPlaceholderText('Access key')).toBeNull();
-    expect(screen.queryByText(/access key/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /github/i })).toBeNull();
     expect(screen.queryByText('chat is open')).toBeNull();
     await act(async () => settle(unlocked()));
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
@@ -101,7 +133,7 @@ describe('Gate', () => {
   it('shows a spinner only once the check has run long', async () => {
     vi.useFakeTimers();
     try {
-      setApiKey('stored-key');
+      setSession(session());
       fetchMock.mockReturnValue(new Promise<Response>(() => {}));
       renderGate();
       expect(screen.queryByRole('status')).toBeNull();
@@ -118,189 +150,75 @@ describe('Gate', () => {
     }
   });
 
-  it('verifies a stored key and opens on success', async () => {
-    setApiKey('stored-key');
+  it('verifies a stored session and opens on success', async () => {
+    setSession(session());
     renderGate();
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
     // Verification goes through the cheapest authenticated route.
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/v1/models');
-    expect((init.headers as Record<string, string>)['x-chat-key']).toBe('stored-key');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer stored-jwt');
   });
 
-  it('stays locked when the stored key is rejected', async () => {
-    setApiKey('stale-key');
-    fetchMock.mockResolvedValue(rejected());
+  it('forgets a stored session the harness refuses, and says the sign-in ended', async () => {
+    setSession(session('stale-jwt'));
+    fetchMock.mockImplementation(harness('fresh-jwt'));
     renderGate();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(/sign-in has ended/i)).toBeTruthy());
     expect(screen.queryByText('chat is open')).toBeNull();
+    expect(getSession()).toBeNull();
+    // Refused once is enough: asking again with nothing would only hear it twice.
+    expect(probes()).toHaveLength(1);
   });
 
-  it('stays locked when the check cannot reach the network', async () => {
-    setApiKey('some-key');
-    fetchMock.mockRejectedValue(new Error('offline'));
-    renderGate();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText('chat is open')).toBeNull();
-  });
-
-  it('accepts a key typed into the prompt and stores it', async () => {
-    fetchMock.mockImplementation(keyed('typed-key'));
-    renderGate();
-    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
-    const form = input.closest('form') as HTMLFormElement;
-
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
-        input,
-        'typed-key',
-      );
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await act(async () => {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-
-    await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
-    expect(getApiKey()).toBe('typed-key');
-  });
-
-  it('stays locked and shows an error when the Worker rejects a typed key', async () => {
-    fetchMock.mockResolvedValue(rejected());
-    renderGate();
-    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
-    const form = input.closest('form') as HTMLFormElement;
-
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
-        input,
-        'wrong-key',
-      );
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await act(async () => {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText('chat is open')).toBeNull();
-    expect(screen.getByText(/rejected/i)).toBeTruthy();
-    // submit() stores the key before verifying it; a rejection takes it back out,
-    // so nothing keeps a key the Worker has already refused.
-    expect(getApiKey()).toBeNull();
-  });
-
-  it('forgets a stored key that fails its check on load', async () => {
-    setApiKey('stale-key');
-    fetchMock.mockResolvedValue(rejected());
-    renderGate();
-    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
-    expect(getApiKey()).toBeNull();
-  });
-
-  // Offline says nothing about the key, so it must survive: a laptop that wakes
-  // without a network would otherwise be asked for a key that was fine.
-  it('keeps a stored key when the check cannot reach the server', async () => {
-    setApiKey('good-key');
+  // Offline says nothing about the session, so it must survive: a laptop that wakes
+  // without a network would otherwise be asked to sign in again for nothing.
+  it('keeps a stored session when the check cannot reach the server', async () => {
+    setSession(session());
     fetchMock.mockRejectedValue(new Error('offline'));
     renderGate();
     await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
-    expect(getApiKey()).toBe('good-key');
+    expect(screen.queryByText('chat is open')).toBeNull();
+    expect(screen.queryByText(/sign-in has ended/i)).toBeNull();
+    expect(getSession()?.token).toBe('stored-jwt');
   });
 
-  // The rotation path: any 401 anywhere in the app drops the key and re-prompts,
-  // rather than leaving the user with an app that silently fails every request.
+  // Any 401 anywhere in the app drops the session and re-prompts, rather than leaving the person
+  // with an app that silently fails every request.
   it('re-locks when a later request comes back 401', async () => {
-    setApiKey('good-for-now');
+    setSession(session());
     renderGate();
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
 
-    fetchMock.mockResolvedValue(rejected());
+    fetchMock.mockImplementation(harness('nobody'));
     act(() => handleUnauthorized());
 
     await waitFor(() => expect(screen.queryByText('chat is open')).toBeNull());
-    expect(getApiKey()).toBeNull();
+    expect(getSession()).toBeNull();
   });
 
   it('stops listening for 401s once unmounted', async () => {
-    setApiKey('good');
+    setSession(session());
     const { unmount } = renderGate();
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
     unmount();
     // Must not throw or try to set state on an unmounted component.
     expect(() => handleUnauthorized()).not.toThrow();
   });
-  // A failed check carries a reason now. Offline and rejected are different
-  // problems with different fixes, and the old boolean probe showed neither.
-  it('explains an unreachable server rather than blaming the key', async () => {
-    setApiKey('some-key');
-    fetchMock.mockRejectedValue(new Error('offline'));
-    renderGate();
-    await waitFor(() => expect(screen.getByText(/could not reach the server/i)).toBeTruthy());
-    expect(screen.queryByText(/rejected/i)).toBeNull();
-  });
 
-  it('names an unconfigured proxy, which no key can fix', async () => {
-    setApiKey('some-key');
+  it('names an unconfigured proxy, which no sign-in can fix', async () => {
+    setSession(session());
     fetchMock.mockResolvedValue(new Response('{"error":"felix_origin_unset"}', { status: 502 }));
     renderGate();
     await waitFor(() => expect(screen.getByText(/FELIX_ORIGIN is unset/i)).toBeTruthy());
-    expect(screen.queryByText(/rejected/i)).toBeNull();
+    expect(screen.queryByText(/sign-in has ended/i)).toBeNull();
   });
 
   it('reports an unexpected status with its code', async () => {
-    setApiKey('some-key');
+    setSession(session());
     fetchMock.mockResolvedValue(new Response('nope', { status: 503 }));
     renderGate();
     await waitFor(() => expect(screen.getByText(/\(503\)/)).toBeTruthy());
-  });
-
-  // `autoFocus` only fires at mount, and the field is already mounted through
-  // the checking phase — so the one moment the user has to type into it was
-  // the one moment it was not focused.
-  it('focuses the field when a stored key fails its check', async () => {
-    setApiKey('stale-key');
-    fetchMock.mockResolvedValue(rejected());
-    renderGate();
-    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
-    // Awaited, not asserted straight after the text. The field is focused from an
-    // effect keyed on `checking`, and the error message renders in the same commit
-    // that flips it — so the text can be on screen a tick before effects flush.
-    // Asserting synchronously passed on a warm machine and failed on a cold CI
-    // runner, where `document.activeElement` was still `<body>`.
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByPlaceholderText('Access key')),
-    );
-  });
-  // A screen reader names the field from its label, not its placeholder, which is gone after
-  // the first keystroke; and a password manager offers to fill it only when it says what it is.
-  it('labels the key field as a password a manager can fill', async () => {
-    fetchMock.mockResolvedValue(rejected());
-    renderGate();
-    const input = await screen.findByLabelText('Access key');
-    expect(input.getAttribute('type')).toBe('password');
-    expect(input.getAttribute('autocomplete')).toBe('current-password');
-  });
-
-  // The field used to be disabled while a key was checked, which blurs it: a rejected key then
-  // left focus on the page, and retyping meant tabbing back from the top.
-  it('hands focus back to the field when a typed key is rejected', async () => {
-    fetchMock.mockResolvedValue(rejected());
-    renderGate();
-    const input = (await screen.findByPlaceholderText('Access key')) as HTMLInputElement;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
-        input,
-        'wrong-key',
-      );
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    input.blur();
-    await act(async () => {
-      input.form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    await waitFor(() => expect(screen.getByText(/rejected/i)).toBeTruthy());
-    await waitFor(() => expect(document.activeElement).toBe(input));
   });
 });
 
@@ -308,7 +226,7 @@ describe('Gate, when the world changes under a locked prompt', () => {
   // A server that took the request and never answered is not a dropped network, and saying
   // "check your connection" sends the person to the wrong place.
   it('says the server sat on the check, and gives the check a deadline', async () => {
-    setApiKey('stored-key');
+    setSession(session());
     fetchMock.mockRejectedValue(new DOMException('timed out', 'TimeoutError'));
     renderGate();
     await waitFor(() => expect(screen.getByText(/did not answer in time/i)).toBeTruthy());
@@ -330,20 +248,21 @@ describe('Gate, when the world changes under a locked prompt', () => {
 
   // Signing in in one tab writes the credential every other tab's gate is asking for.
   it('opens when another tab stores a credential', async () => {
-    fetchMock.mockImplementation(keyed('k'));
+    fetchMock.mockImplementation(harness('other-tab-jwt'));
     const listening = listeningFor('storage');
     renderGate();
-    await waitFor(() => expect(screen.getByPlaceholderText('Access key')).toBeTruthy());
+    await screen.findByRole('button', { name: /continue with github/i });
     await listening();
-    localStorage.setItem('felix.apiKey', 'k');
+    const stored = JSON.stringify(session('other-tab-jwt'));
+    localStorage.setItem('felix.session', stored);
     act(() => {
-      window.dispatchEvent(new StorageEvent('storage', { key: 'felix.apiKey', newValue: 'k' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'felix.session', newValue: stored }));
     });
     await waitFor(() => expect(screen.getByText('chat is open')).toBeTruthy());
   });
 
   it('lets the no-way-in card check again once the deployment is fixed', async () => {
-    fetchMock.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }));
+    fetchMock.mockImplementation(harness('nobody', {}));
     renderGate();
     await waitFor(() => expect(screen.getByText(/offers no way to sign in/i)).toBeTruthy());
     fetchMock.mockImplementation(async () => unlocked());

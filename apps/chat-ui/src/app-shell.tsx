@@ -3505,7 +3505,7 @@ export function AppShell() {
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {/* Last, past the menu: who this browser is, when it signed in with
-                    GitHub. Renders nothing under the shared key, which names no one. */}
+                    GitHub or Google. Renders nothing when not signed in. */}
                 <AccountChip />
               </div>
             </header>

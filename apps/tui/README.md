@@ -33,7 +33,7 @@ unchanged and still runs on Node.
 
 ## Configuration
 
-No proxy Worker and no shared key: unlike chat-ui, this process reaches the harness itself and
+No proxy Worker and no sign-in: unlike chat-ui, this process reaches the harness itself and
 sends its own `Authorization: Bearer`. `src/config.ts` resolves each setting **narrowest
 first**, in the sense of how many runs a source affects:
 

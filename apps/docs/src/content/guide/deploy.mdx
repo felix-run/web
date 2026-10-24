@@ -766,17 +766,23 @@ but the page cannot read the response. There is no browser login (no cookies), s
 Felix directly would have to hold a bearer token or API key, where any script on the page can read
 it.
 
-Put a server-side proxy on the page's own origin instead. It holds the credential, adds
-`Authorization`, and forwards to Felix. The chat-ui Cloudflare Worker does exactly this: it forwards `/api/*`
-to `FELIX_ORIGIN`, and when `CHAT_UI_KEY` is set it first checks the browser's `x-chat-key`. An
-nginx or Caddy `location /api/` block that sets the header works the same way.
+Put a same-origin proxy in front of it instead. The chat-ui Cloudflare Worker does exactly this:
+it forwards `/api/*` to `FELIX_ORIGIN` and holds **no credential of its own**. A browser gets in by
+signing in to the harness — [GitHub login](/internals/auth/#github-login) or
+[Google sign-in](/internals/auth/#google-sign-in) — and the Cloudflare Worker forwards that bearer
+untouched, so each person runs as their org's tenant and the harness decides what they may do. A
+harness with neither login on offers a browser no way in, and the page says so; one running
+`FELIX_AUTH_MODE=none` is open to anyone who can reach the page. An nginx or Caddy `location /api/`
+block that passes `Authorization` through works the same way.
 
-With [GitHub login](/internals/auth/#github-login) on, the chat-ui gate leads with
-**Continue with GitHub** and keeps the access key behind it (when `CHAT_UI_KEY` is set). A signed-in
-browser sends its own bearer, and the Cloudflare Worker forwards it in place of both `x-chat-key` and
-`FELIX_API_KEY` — so each person runs as their org's tenant rather than as the deployment's key —
-but only while `GET /auth/methods` reports `bearer_required`. Under `FELIX_AUTH_MODE=none` any
-bearer would be accepted, and the Cloudflare Worker refuses to let one past its key there. The session is the
+:::caution[The shared access key is gone]
+chat-ui used to accept a shared access key (`CHAT_UI_KEY`), which ran everyone who held it as the
+deployment's own `FELIX_API_KEY`. Both secrets are now ignored. Turn on a harness login before
+upgrading, then delete them from the Cloudflare Worker:
+`wrangler secret delete CHAT_UI_KEY` and `wrangler secret delete FELIX_API_KEY`.
+:::
+
+With GitHub login on, the chat-ui gate leads with **Continue with GitHub**. The session is the
 harness's token, so it lasts `FELIX_GITHUB_LOGIN_TTL_SECONDS` and signing out of the page does not
 revoke it. Signing out does forget what the page kept for that person: its copies of their threads
 and transcripts, the agent's in-browser workspace and local folder, their thread leases and the

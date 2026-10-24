@@ -8,7 +8,7 @@
 
 import { Button } from '@felix/ui/button';
 import { Loader2Icon } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthCard } from './auth-card';
 import { LastUsedBadge } from './last-used-badge';
 
@@ -77,24 +77,10 @@ export function GoogleButton({
   );
 }
 
-/** The gate's card when Google is the harness's only sign-in. `alternative` is the key. */
-export function GoogleSignIn({
-  error,
-  redirect,
-  alternative,
-  focusOnMount,
-}: {
-  error: string | null;
-  redirect: () => void;
-  alternative?: ReactNode;
-  focusOnMount?: boolean;
-}) {
+/** The gate's card when Google is the harness's only sign-in. */
+export function GoogleSignIn({ error, redirect }: { error: string | null; redirect: () => void }) {
   return (
-    <AuthCard
-      description="Sign in with the Google account you were invited with."
-      footer={alternative}
-      focusOnMount={focusOnMount}
-    >
+    <AuthCard description="Sign in with the Google account you were invited with.">
       <div className="space-y-3">
         {error && (
           <p role="alert" className="text-sm text-state-failed">

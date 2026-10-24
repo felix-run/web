@@ -2,9 +2,9 @@
  * Terminal wording for a failure, over `@felix/client`'s.
  *
  * `describeError` writes for the browser client, and one of its sentences does
- * not survive the move: a 401 there means the shared-key gate is about to
- * re-prompt, so "enter it again to continue" is a real instruction. Here there
- * is nothing to enter it into, and the actionable fact is whether a key was
+ * not survive the move: a 401 there means the sign-in gate is about to
+ * re-prompt, so "sign in again to continue" is a real instruction. Here there
+ * is nothing to sign in to, and the actionable fact is whether a key was
  * configured at all — a first run with no key and a rotated key look identical
  * on the wire and need opposite advice.
  */

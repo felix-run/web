@@ -1,6 +1,6 @@
 /**
  * Hand text to the person as a downloaded file. Exports read through the credentialed fetch
- * (`x-chat-key` or a bearer), so a plain `<a href>` to the route would arrive with neither.
+ * (the sign-in's bearer), so a plain `<a href>` to the route would arrive without it.
  */
 export function saveText(text: string, filename: string, type = 'application/x-ndjson'): void {
   const url = URL.createObjectURL(new Blob([text], { type }));

@@ -196,7 +196,17 @@ describe('the page going away', () => {
    * outlive the page (`keepalive`), and carry the credential the proxy wants.
    */
   it('releases the exclusive hold on pagehide, keepalive, with the credential', async () => {
-    localStorage.setItem('felix.apiKey', 'k-test');
+    // No login, so nothing on the page asks GitHub routes the lease server does not answer.
+    localStorage.setItem(
+      'felix.session',
+      JSON.stringify({
+        token: 'tok-test',
+        expiresAt: Date.now() + 3_600_000,
+        login: '',
+        tenant: 't',
+        scopes: [],
+      }),
+    );
     const server = leaseServer();
     mount('/t/thread-x');
     await settle();
@@ -211,7 +221,7 @@ describe('the page going away', () => {
     expect(sent?.init).toMatchObject({
       method: 'POST',
       keepalive: true,
-      headers: { 'content-type': 'application/json', 'x-chat-key': 'k-test' },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok-test' },
     });
     expect(JSON.parse(String(sent?.init.body))).toEqual({
       thread_id: 'thread-x',

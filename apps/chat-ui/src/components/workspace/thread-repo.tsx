@@ -9,7 +9,7 @@
  * The heading says "on the harness" so the two are not read as one.
  *
  * Opening a repository needs a GitHub sign-in: every read and the clone act as you, with the
- * connection the harness keeps. Under the shared access key there is no "you", so the block
+ * connection the harness keeps. Without a GitHub sign-in there is no "you" here, so the block
  * offers nothing rather than a button that can only refuse.
  */
 
@@ -83,7 +83,7 @@ export function ThreadRepoSection({
 
   const signedIn = Boolean(session?.login);
 
-  // Only for a GitHub sign-in: under the shared key nothing here can act, and a page load must not
+  // Only for a GitHub sign-in: without one nothing here can act, and a page load must not
   // ask the harness about a thread before a message has made it one (`tests/session-lease`).
   // Re-read when a run settles, too: the agent's tools and shell change the checkout, and the
   // branch, commits ahead and the files' status are the harness's to report.

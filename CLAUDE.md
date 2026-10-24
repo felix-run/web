@@ -222,33 +222,34 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
 ```
 
 - The `/api` prefix is **stripped**; everything else (SSE bodies, `x-manifest-variant`) passes through.
-- `CHAT_UI_KEY` (a Worker secret) gates browser clients: the SPA sends `x-chat-key` from
-  `localStorage`, the Worker compares it, then **deletes the header** before going upstream.
-  A 401 anywhere drops the stored key and re-prompts via `src/lib/auth.ts` → `components/gate.tsx`.
-- `FELIX_API_KEY` (optional) is injected upstream as `Authorization: Bearer …`.
-- **A browser's own bearer stands in for the key** — the token from the harness's GitHub login
-  (`src/lib/github-login.ts`, the device flow, no redirect). The Worker forwards it untouched, skips
-  `CHAT_UI_KEY` and injects nothing, **only while `GET /auth/methods` says `bearer_required`**,
-  asked once per isolate and failing closed. Under `FELIX_AUTH_MODE=none` the harness accepts any
-  bearer, so without that check `Authorization: Bearer x` was a way past the deployment's only
-  lock. `GET /auth/methods`, `POST /auth/github/{device,token}` pass with no credential at all.
-- `src/lib/auth.ts` holds **one** credential, key or session, never both: storing one clears the
-  other, because the Worker would honour the key and silently run the person as the deployment.
-  The gate offers GitHub when `/auth/methods` does, and the key only when the Worker's own 401
-  says `gate: 'chat_key'` — a harness 401 is not answered by any key. The session lapses with no
-  refresh and no revocation, so the header's account chip (`components/account-chip.tsx`) renews
-  in a popover with the shell still mounted, and its Sign out says the token outlives it.
-  `/harness/github` offers the same sign-in wherever it says one is needed (2026-10-16: it said so
-  under the shared key and offered nothing) — redirect when offered, else the code in place, and
-  only while `bearer_required`; from the key or a Google session it forgets `felix.tabThread` and
-  reloads, since the new tenant may not hold the thread (`SignInWithGitHub` in `harness/github.tsx`).
-- In `vite dev` the Worker is not in the loop, so the `CHAT_UI_KEY` gate is skipped entirely.
+- **The Worker holds no credential** (2026-10-23). A browser reaches the harness only as the
+  person who signed in — the bearer from the harness's GitHub or Google login
+  (`src/lib/github-login.ts`) — forwarded untouched; the harness alone decides what it may do. A
+  request with none goes upstream with none: a harness that requires sign-in refuses it, and one
+  on `FELIX_AUTH_MODE=none` is open by its own choice. There used to be a shared access key
+  (`CHAT_UI_KEY`, sent as `x-chat-key`) that, once matched, ran the request as the deployment
+  (`FELIX_API_KEY`, injected upstream) — every holder one principal, and the way past every
+  per-person control. Both are gone and ignored if still set. Do not bring back a credential the
+  Worker attaches for an anonymous browser: with it, the Worker is the lock, and a lock nobody
+  signs in to.
+- `src/lib/auth.ts` holds **one** credential, the session; `dropLegacyKey` removes a stored
+  `felix.apiKey` on every gate check. A 401 anywhere drops the session and re-prompts via
+  `components/gate.tsx`. The gate offers GitHub and/or Google from `/auth/methods`, and with
+  neither says no browser can sign in. The session lapses with no refresh and no revocation, so
+  the header's account chip (`components/account-chip.tsx`) renews in a popover with the shell
+  still mounted, and its Sign out says the token outlives it. `/harness/github` offers the same
+  sign-in wherever it says one is needed — redirect when offered, else the code in place, and only
+  while `bearer_required`; signing in from no session or a Google one forgets `felix.tabThread`
+  and reloads, since the new tenant may not hold the thread (`SignInWithGitHub` in
+  `harness/github.tsx`).
+- In `vite dev` the gate is skipped entirely and the dev proxy injects the developer's key (below):
+  the one place dev and the Worker part on purpose.
 - **A cross-site write is refused** (403 `cross_site_request`) before any of the above: any method
   but GET/HEAD with `Sec-Fetch-Site: cross-site`, or an `Origin` that is not the Worker's own.
-  The Worker injects `FELIX_API_KEY` itself, so without this a plain form post from another site
-  arrived upstream as the deployment. A request with neither header is no browser's and meets
-  the key gate as before. `vite.config.ts` mirrors it in a middleware ahead of the proxy, since
-  the dev proxy injects the dev key the same way.
+  The redirect sign-ins leave cookies on the origin, and it costs a same-origin page nothing. A
+  request with neither header is no browser's and goes through on its own credential.
+  `vite.config.ts` mirrors it in a middleware ahead of the proxy, where it matters more: the dev
+  proxy injects the dev key.
 
 The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and
 the other diverges silently.
@@ -271,7 +272,7 @@ fine and silently does nothing — when the harness gains an event, add the arm 
 **The conversation itself is `@felix/client`, not the app.** `createChatEngine` owns the frame
 switch, the transcript, the durable-run and reattach paths, and the approval queue;
 `src/app-shell.tsx` mirrors its state with `useSyncExternalStore` and renders. `createFelixClient`
-owns the chat REST calls with the origin and credentials injected — `/api` plus `x-chat-key` for a browser that cannot
+owns the chat REST calls with the origin and credentials injected — `/api` plus the sign-in's bearer for a browser that cannot
 reach the harness directly, a real origin plus a bearer token for anything that can. Nothing in the
 package touches storage, the DOM, or notifications. `src/management/` holds the **read-only** half
 of the harness's operator surface — audit, usage, memory, plans, artifacts — composed onto the same
@@ -468,7 +469,7 @@ Flows worth knowing before editing the app:
   — the harness closes an idle reattach at ~300s and expects the client back — so the loop re-checks
   `phase` and returns while it is still working.
 - **The service worker is `apps/chat-ui/public/sw.js`, hand-written, and it never touches
-  `/api/*`.** That is the live console: SSE, uploads, `x-chat-key`, approvals that must be current or
+  `/api/*`.** That is the live console: SSE, uploads, credentialed reads, approvals that must be current or
   absent. It does two things: page loads go network-first, falling back to the cached shell so an
   installed app opened offline reaches the gate's "Could not reach the server"; and hashed
   `/assets/*` are cache-first, precached from the page's own `<script>`/`<link>` tags on install.
