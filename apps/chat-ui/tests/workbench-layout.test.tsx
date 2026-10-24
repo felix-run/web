@@ -424,31 +424,52 @@ describe('the sidebar', () => {
   });
 
   /**
-   * The harness's pages are chips since 2026-10-24: ten take four or five lines,
-   * so the region is its content, with no reservation and no fold. When the
-   * sidebar cannot hold everything it still gives way before the list, down to
-   * a floor. happy-dom lays nothing out; the shares were measured in a browser.
+   * Harness view held this region at a fixed `clamp(40svh,32.5rem,60svh)` — 520px
+   * of a 997px window — and the thread list, the sidebar's first job, was left
+   * four rows (2026-10-16). It is now sized by its content, capped at 35svh, with
+   * a reservation of the default layout's height so a fold never drops the row
+   * under the pointer. happy-dom lays nothing out, so the rule is pinned by shape;
+   * the heights were measured in a browser (8 thread rows at 1456×997, was 4).
+   */
+  /**
+   * Capped at 35svh, the region scrolled by 11px at 1667×997 beside ~250px of
+   * empty list (2026-10-24). Both regions now start at their content, and when
+   * they cannot both fit the lower one gives way first — `shrink-[100]` against
+   * the list's `shrink` — down to its reservation, then the list to its floor.
+   * happy-dom lays nothing out; the shares were measured in a browser.
    */
   it('sizes the lower region to its content, giving way to the threads first', () => {
     mountSidebar();
     const classes = (
       document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement
     ).className.split(/\s+/);
-    expect(classes).toEqual(expect.arrayContaining(['min-h-[min(35svh,18rem)]', 'shrink-[100]!']));
+    expect(classes).toEqual(
+      expect.arrayContaining(['min-h-[min(35svh,26.25rem)]', 'shrink-[100]!']),
+    );
     expect(classes.some((c) => /^h-\[|^max-h-/.test(c))).toBe(false);
   });
 
-  it('draws every harness page as a chip, a named run per question, none folded', () => {
+  it('starts How it’s set up folded, and lets a remembered choice win', async () => {
     mountSidebar();
-    const nav = screen.getByRole('navigation', { name: 'Harness' });
-    expect([...nav.querySelectorAll('ul')].map((u) => u.getAttribute('aria-label'))).toEqual([
-      'What happened',
-      'What it knows',
-      'How it’s set up',
-    ]);
-    expect(nav.querySelectorAll('a')).toHaveLength(10);
-    expect(screen.queryByRole('button', { name: 'How it’s set up' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Harness' })).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'How it’s set up' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const rows = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(rows?.hidden).toBe(true);
+    // The other two runs are open, and say so.
+    expect(
+      screen.getByRole('button', { name: 'What happened' }).getAttribute('aria-expanded'),
+    ).toBe('true');
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(JSON.parse(localStorage.getItem('felix.sidebar.harnessGroups') ?? '{}')).toEqual({
+      setup: false,
+    });
+
+    cleanup();
+    mountSidebar();
+    expect(
+      screen.getByRole('button', { name: 'How it’s set up' }).getAttribute('aria-expanded'),
+    ).toBe('true');
   });
 
   /**

@@ -160,14 +160,14 @@ New chat; the **Needs-you band** (below); the threads, grouped as Pinned, Today,
 and Older (Older opens by default while the groups above it hold fewer than eight rows and folds
 otherwise, the operator's choice remembered in `felix.sidebar.olderOpen`; it is cut by month when
 open, and folded still draws the current thread if it is there — never the other fifty — in a group
-named for it, its count reading *1 of N shown*); the harness destinations as chips with their
-glances, a run per question (*What happened*, *What it knows*, *How it's set up*, `GROUPS`) told
-apart by a hairline; and the Workspace row (`WorkspaceRow` in `src/components/workspace/workspace-section.tsx`). It replaced three earlier things: a threads
+named for it, its count reading *1 of N shown*); the Workspace row (`WorkspaceRow` in `src/components/workspace/workspace-section.tsx`);
+and the harness destinations with their glances, grouped by the question each answers
+(*What happened*, *What it knows*, *How it's set up*, `GROUPS`). It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
 zone; and `/harness`'s resident nav rail, which is drawn now only between 768 and 1024, where the
 sidebar is a drawer, in the sidebar's row style on the ground. Inline, the sidebar lists the
-ten destinations in harness view and Activity and Skill drafts everyday, on every address; nothing
-in it folds but Older. On `/harness` the tab's thread is drawn *held* in the
+destinations in debug (its Harness group does not fold on `/harness`, so a remembered fold cannot
+strand a page) and Activity and Skill drafts with debug off, on every address. On `/harness` the tab's thread is drawn *held* in the
 list (`heldId`: a hairline outline, never the current row's fill, *This tab*, no `aria-current`) and
 the header's title slot is `ThreadReturn`, a link back to it drawn as a place (a chat glyph, no
 arrow, beside pages that carry their own back arrow); below `sm` the narrow index leads with
@@ -207,21 +207,26 @@ workspace and the harness's pages fifty rows down. Then the list scrolled but th
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
 side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
 trees no longer scroll on their own for the same reason: they sit inside the lower region's scroll.
-**The lower region is its content, and gives way first** (2026-10-24). It was a fixed
-`h-[clamp(40svh,32.5rem,60svh)]` (2026-10-16 and before), then capped at 35svh with a reservation
-so a fold never dropped the row under the pointer, with each run of destinations folding on its
-own — all of it to give the thread list its height back from ten rows of destinations. As chips the
-ten take four or five lines and **nothing folds** (`HarnessChips`; `HarnessIcons` collapsed), so
-the folds, their storage keys and the reservation are gone. What still binds: rows that change
-*with the address* grow the region on arrival and move the row just clicked, so the chips never
-do — only the current one is lifted. Both regions start at their content (the list is `flex-auto`);
-when they do not fit, the lower one gives way first (`shrink-[100]!`) down to its floor —
-`min(35svh,18rem)` in harness view, the ten chips whole on a laptop's height with a glance or two
-wrapping — then the list to its own (`min-h-[min(16rem,30svh)]`). Everyday the harness's list
-reserves 6rem for Activity and Skill drafts, so drafts coming and going move nothing, and the region
-has no floor beyond it. In harness view the chips are a `nav[aria-label="Harness"]` the arrows walk;
-everyday a plain list under the heading — tests read that `nav` as "harness view's pages". `tests/workbench-layout.test.tsx` pins
-the shape and the chips, `tests/harness-route.test.tsx` the current page and the everyday rows.
+**The lower region sizes to its content, capped at 35svh, in harness view** (2026-10-16). It was a
+fixed `h-[clamp(40svh,32.5rem,60svh)]` — 520px of a 997px window, which left the thread list four
+rows and scrolled the Workspace row out of sight — and fixed for a reason that still binds: a
+region sized to rows that change *with the address* grows upward on arrival and moves the row just
+clicked. So the rows no longer change with the address. Each run of destinations folds on its own
+(`felix.sidebar.harnessGroups`), *How it's set up* folded by default (`GROUP_FOLDED_BY_DEFAULT`)
+and a remembered choice winning; the run holding the page on screen is always open, its toggle
+disabled; and arriving on a page in a folded run unfolds it **for the rest of the visit** (state,
+never storage), so leaving the page never folds rows back up under the pointer. The operator's own
+folds are covered by `min-h-[min(35svh,26.25rem)]`, the default layout's height, so folding the
+whole group leaves the rows where they were. **The two regions share the height by what they hold**
+(2026-10-24): the 35svh cap scrolled the region by 11px at 997px tall beside ~250px of empty list.
+Both start at their content (the list is `flex-auto`); when they do not fit, the lower region gives
+way first (`shrink-[100]!`) down to its reservation, then the list down to its floor
+(`min-h-[min(16rem,30svh)]`). A short list leaves the region whole; a long one keeps its rows while
+the region scrolls under its fade. Everyday reserves 7.5rem for the harness rows alone (Activity, and
+Skill drafts while drafts wait), so drafts coming and going move nothing — a fixed `13rem` left
+~117px empty for an agent with no workspace. `tests/workbench-layout.test.tsx` pins the shape and the
+default fold, `tests/harness-route.test.tsx` the current page's run and the everyday rows' missing run
+labels (one row needs no second label).
 **A thread row says *Failed* or *Denied*, and the call** (2026-10-16; denials and the call
 2026-10-24) when its newest turn broke or had a call denied at an approval — unless it is waiting
 or running, which the band says. Denied is muted with no dot (a decision, not a fault).
