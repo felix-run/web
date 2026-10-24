@@ -198,17 +198,24 @@ describe('the sidebar', () => {
   });
 
   // A run kept going after the operator switched away is still this tab's, and
-  // the rail is where they go to find it; a question it asks never reaches
-  // `/approvals`, so the shell's own record of it is the only one.
-  it('marks a run going in the background, and a question it is waiting on', async () => {
+  // the sidebar is where they go to find it; a question it asks never reaches
+  // `/approvals`, so the shell's own record of it is the only one. Since
+  // 2026-10-24 both are the Needs-you band's, above the list, not groups in it.
+  it('lists a run going in the background, and a question it is waiting on, in the band', async () => {
     mountSidebar({
       runningThreads: new Set(['now', 'other']),
       blockedThreads: new Set(['other']),
+      askingThreads: new Set(['other']),
     });
-    const waiting = await screen.findByRole('group', { name: /^Waiting on you/ });
-    expect(waiting.textContent).toContain('The other one');
-    const runningGroup = screen.getByRole('group', { name: /^Running/ });
-    expect(runningGroup.textContent).toContain('Current thread');
+    const band = await screen.findByRole('region', { name: 'Needs you' });
+    const rows = [...band.querySelectorAll('li')].map((li) => li.textContent);
+    // Waiting first, and said in words; the run that waits is not listed twice.
+    expect(rows).toEqual([
+      'The other oneWaiting on you ·a question',
+      'Current threadRunning ·cowork',
+    ]);
+    expect(screen.queryByRole('group', { name: /^Waiting on you/ })).toBeNull();
+    expect(screen.queryByRole('group', { name: /^Running/ })).toBeNull();
   });
 
   // Starting a thread no longer stops the run on this one, so nothing about a
@@ -219,19 +226,75 @@ describe('the sidebar', () => {
     expect(button.disabled).toBe(false);
   });
 
-  it('marks a thread an approval is waiting on, from the shell poll it already has', async () => {
+  it('names the call an approval waits on, from the shell poll it already has', async () => {
     mountSidebar({
       tenantApprovals: {
-        pending: [{ id: 'a1', thread_id: 'other', tool_name: 'write_file' }],
+        pending: [
+          { id: 'a1', thread_id: 'other', tool_name: 'write_file' },
+          { id: 'a2', thread_id: '', tool_name: 'local_shell' },
+        ],
         error: null,
         lastOkAt: Date.now(),
         refresh: () => {},
       } as unknown as ShellValue['tenantApprovals'],
     });
-    // In words, under a group of its own that heads the list.
-    const waiting = await screen.findByRole('group', { name: /^Waiting on you/ });
-    expect(waiting.textContent).toContain('The other one');
-    expect(waiting.textContent).not.toContain('Current thread');
+    const band = await screen.findByRole('region', { name: 'Needs you' });
+    const rows = [...band.querySelectorAll('li')].map((li) => li.textContent);
+    // An approval no thread owns still waits: a row of its own, not none.
+    expect(rows).toEqual([
+      'The other oneWaiting on you ·write_file',
+      'local_shellWaiting on you ·no thread',
+    ]);
+  });
+
+  /**
+   * The band never leaves, and never says the all-clear over a list it could not
+   * refresh: the attention line's rule. Clear, it is its heading saying *none*;
+   * stale, it keeps the rows it had and says how old they are.
+   */
+  it('says none only over a list that answered', async () => {
+    const approvals = (over: object) =>
+      ({
+        pending: [],
+        error: null,
+        lastOkAt: Date.now(),
+        forbidden: false,
+        refresh: () => {},
+        ...over,
+      }) as unknown as ShellValue['tenantApprovals'];
+    const status = () => document.querySelector('[data-slot="needs-you-status"]')?.textContent;
+
+    const { unmount } = mountSidebar({ tenantApprovals: approvals({}) });
+    expect(status()).toBe('none');
+    unmount();
+    mountSidebar({ tenantApprovals: approvals({ error: new Error('503'), lastOkAt: null }) });
+    expect(status()).toBe('not refreshed');
+    cleanup();
+    mountSidebar({
+      tenantApprovals: approvals({
+        error: new Error('503'),
+        lastOkAt: Date.now() - 3 * 60_000,
+        pending: [{ id: 'a1', thread_id: 'other', tool_name: 'write_file' }],
+      }),
+    });
+    expect(status()).toBe('as of 3m ago');
+    expect(document.querySelectorAll('[data-needs-you-row]')).toHaveLength(1);
+    cleanup();
+    mountSidebar({ tenantApprovals: approvals({ lastOkAt: null }) });
+    expect(status()).toBe('checking');
+  });
+
+  it('draws three rows, and opens the rest in place', async () => {
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    mountSidebar({
+      threads: ids.map((id) => thread(id, `Thread ${id}`)),
+      runningThreads: new Set(ids),
+    });
+    expect(document.querySelectorAll('[data-needs-you-row]')).toHaveLength(3);
+    const more = screen.getByRole('button', { name: '2 more' });
+    await act(async () => userEvent.click(more));
+    expect(document.querySelectorAll('[data-needs-you-row]')).toHaveLength(5);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('groups by last activity, and folds Older with its count when chosen', async () => {
@@ -305,20 +368,22 @@ describe('the sidebar', () => {
     expect(screen.queryByRole('button', { name: /^Workspace/ })).toBeNull();
   });
 
-  // Collapsed, the column is all there is of the rail, so a run going in the
-  // background — not only something waiting — has to show on the Threads icon,
-  // and be said, since a dot is not.
-  it('says on the collapsed Threads icon that a run is going, and that something waits', () => {
+  // Collapsed, the column is all there is of the sidebar, so what the band holds
+  // has to show on its icon — and be said, since a dot is not.
+  it('says on the collapsed band icon what is waiting and what is running', () => {
     const { unmount } = mountSidebar({ runningThreads: new Set(['other']) }, { open: false });
-    expect(screen.getByRole('button', { name: /^Threads\W+a run is going/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Needs you\W+1 running/ })).toBeTruthy();
     unmount();
     mountSidebar(
-      { runningThreads: new Set(['other']), blockedThreads: new Set(['other']) },
+      { runningThreads: new Set(['now']), blockedThreads: new Set(['other']) },
       { open: false },
     );
     expect(
-      screen.getByRole('button', { name: /^Threads\W+something is waiting on you/ }),
+      screen.getByRole('button', { name: /^Needs you\W+1 waiting on you, 1 running/ }),
     ).toBeTruthy();
+    cleanup();
+    mountSidebar({}, { open: false });
+    expect(screen.getByRole('button', { name: /^Needs you\W+nothing/ })).toBeTruthy();
   });
 
   // The list scrolls inside itself, so an opened Older cannot push the workspace
@@ -359,52 +424,31 @@ describe('the sidebar', () => {
   });
 
   /**
-   * Harness view held this region at a fixed `clamp(40svh,32.5rem,60svh)` — 520px
-   * of a 997px window — and the thread list, the sidebar's first job, was left
-   * four rows (2026-10-16). It is now sized by its content, capped at 35svh, with
-   * a reservation of the default layout's height so a fold never drops the row
-   * under the pointer. happy-dom lays nothing out, so the rule is pinned by shape;
-   * the heights were measured in a browser (8 thread rows at 1456×997, was 4).
-   */
-  /**
-   * Capped at 35svh, the region scrolled by 11px at 1667×997 beside ~250px of
-   * empty list (2026-10-24). Both regions now start at their content, and when
-   * they cannot both fit the lower one gives way first — `shrink-[100]` against
-   * the list's `shrink` — down to its reservation, then the list to its floor.
-   * happy-dom lays nothing out; the shares were measured in a browser.
+   * The harness's pages are chips since 2026-10-24: ten take four or five lines,
+   * so the region is its content, with no reservation and no fold. When the
+   * sidebar cannot hold everything it still gives way before the list, down to
+   * a floor. happy-dom lays nothing out; the shares were measured in a browser.
    */
   it('sizes the lower region to its content, giving way to the threads first', () => {
     mountSidebar();
     const classes = (
       document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement
     ).className.split(/\s+/);
-    expect(classes).toEqual(
-      expect.arrayContaining(['min-h-[min(35svh,26.25rem)]', 'shrink-[100]!']),
-    );
+    expect(classes).toEqual(expect.arrayContaining(['min-h-[min(35svh,18rem)]', 'shrink-[100]!']));
     expect(classes.some((c) => /^h-\[|^max-h-/.test(c))).toBe(false);
   });
 
-  it('starts How it’s set up folded, and lets a remembered choice win', async () => {
+  it('draws every harness page as a chip, a named run per question, none folded', () => {
     mountSidebar();
-    const toggle = screen.getByRole('button', { name: 'How it’s set up' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    const rows = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
-    expect(rows?.hidden).toBe(true);
-    // The other two runs are open, and say so.
-    expect(
-      screen.getByRole('button', { name: 'What happened' }).getAttribute('aria-expanded'),
-    ).toBe('true');
-    await userEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(JSON.parse(localStorage.getItem('felix.sidebar.harnessGroups') ?? '{}')).toEqual({
-      setup: false,
-    });
-
-    cleanup();
-    mountSidebar();
-    expect(
-      screen.getByRole('button', { name: 'How it’s set up' }).getAttribute('aria-expanded'),
-    ).toBe('true');
+    const nav = screen.getByRole('navigation', { name: 'Harness' });
+    expect([...nav.querySelectorAll('ul')].map((u) => u.getAttribute('aria-label'))).toEqual([
+      'What happened',
+      'What it knows',
+      'How it’s set up',
+    ]);
+    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(screen.queryByRole('button', { name: 'How it’s set up' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Harness' })).toBeNull();
   });
 
   /**

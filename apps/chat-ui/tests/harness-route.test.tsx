@@ -239,12 +239,13 @@ describe('the harness address', () => {
     mount('/harness/memory');
     await waitFor(() => expect(document.querySelector('nav[aria-label="Harness"]')).not.toBeNull());
     const nav = document.querySelector('nav[aria-label="Harness"]') as HTMLElement;
-    const groups = [...nav.querySelectorAll('[aria-labelledby]')];
-    // Shown, not only announced: each list is named by a visible label.
-    const named = groups.map(
-      (g) => document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent,
-    );
-    expect(named).toEqual(['What happened', 'What it knows', 'How it’s set up']);
+    // A named list per question, told apart on screen by a hairline (chips, 2026-10-24).
+    const groups = [...nav.querySelectorAll('ul[aria-label]')];
+    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
+      'What happened',
+      'What it knows',
+      'How it’s set up',
+    ]);
     const inGroup = (i: number) =>
       // The label is the link's first text span; a glance value may follow it.
       [...(groups[i]?.querySelectorAll('a') ?? [])].map(
@@ -359,29 +360,24 @@ describe('the harness address', () => {
   });
 
   /**
-   * One level down, the same rule: *How it's set up* starts folded, but the run
-   * holding the page on screen is open, and its toggle is off while it is. And it
-   * stays open once left, because folding it back as the reader moved to another
-   * page would shrink the region and move the row they had just clicked.
+   * Nothing folds since the pages became chips (2026-10-24), so arriving on a page
+   * opens nothing and leaving it closes nothing: the chip the reader is on is the
+   * only thing that changes.
    */
-  it('opens the run holding the page on screen, and leaves it open after', async () => {
+  it('marks the page on screen, and moves nothing else on the way to another', async () => {
     mount('/harness/agent');
-    const setup = await waitFor(() => {
-      const el = [...document.querySelectorAll('button[aria-controls^="sidebar-harness-"]')].find(
-        (b) => b.textContent === 'How it’s set up',
+    const current = () =>
+      [...document.querySelectorAll('nav[aria-label="Harness"] a[aria-current="page"]')].map(
+        (a) => a.getAttribute('href')?.split('?')[0],
       );
-      expect(el).toBeTruthy();
-      return el as HTMLButtonElement;
-    });
-    expect(setup.getAttribute('aria-expanded')).toBe('true');
-    expect(setup.disabled).toBe(true);
+    await waitFor(() => expect(current()).toEqual(['/harness/agent']));
+    expect(document.querySelector('button[aria-controls^="sidebar-harness-"]')).toBeNull();
+    const count = document.querySelectorAll('nav[aria-label="Harness"] a').length;
     await act(async () => {
       go('/harness/activity');
     });
-    await waitFor(() => expect(setup.disabled).toBe(false));
-    expect(setup.getAttribute('aria-expanded')).toBe('true');
-    // Not written down: next load, the remembered default stands.
-    expect(localStorage.getItem('felix.sidebar.harnessGroups')).toBeNull();
+    await waitFor(() => expect(current()).toEqual(['/harness/activity']));
+    expect(document.querySelectorAll('nav[aria-label="Harness"] a')).toHaveLength(count);
   });
 
   it('offers a skip link as the first stop, landing on the page', async () => {
@@ -638,7 +634,11 @@ describe('the harness address', () => {
         a.getAttribute('href')?.startsWith('/harness/jobs'),
       );
       // Shown short; spoken in full, with the label and the count kept apart.
-      expect(jobs?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent).toBe('1 failing');
+      // The chip's state dot comes first and says nothing: the words do.
+      const shown = [...(jobs?.querySelectorAll('[aria-hidden="true"]:not(svg)') ?? [])]
+        .map((x) => x.textContent)
+        .find(Boolean);
+      expect(shown).toBe('1 failing');
       expect(jobs?.querySelector('.sr-only')?.textContent).toBe(', 1 failing');
     });
   });
