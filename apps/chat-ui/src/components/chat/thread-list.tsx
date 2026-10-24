@@ -128,11 +128,10 @@ type Row = { thread: ThreadMeta; excerpt?: string };
 /**
  * Every thread this client can reach, as the sidebar's Threads section.
  *
- * Grouped the way a returning operator looks for one: what they pinned, then by
- * last activity — Today, Yesterday, Previous 7 days, Older. What is waiting on
- * them or running is the Needs-you band above the list, not a group in it. Older
- * opens while the groups above it are short, and folds with its count showing
- * once they fill the list. A search drops the groups: a match is a match,
+ * Grouped the way a returning operator looks for one: what is waiting on them,
+ * what they pinned, then by last activity — Today, Yesterday, Previous 7 days,
+ * Older. Older starts folded with its count showing, because on a long-lived
+ * harness it is most of the list. A search drops the groups: a match is a match,
  * whenever it last moved.
  *
  * **The list scrolls inside itself.** The sidebar's other sections — the
@@ -165,9 +164,8 @@ type Row = { thread: ThreadMeta; excerpt?: string };
  *
  * A row is read by someone coming back, so what it says has to tell rows apart
  * without hovering: the best title there is (see `threadLabel`), the agent when
- * this client knows it, how long ago, and whether its newest turn failed or had
- * a call denied (running and waiting are the band's, and said on a row only in
- * search results). There is no per-row icon — an icon on every row marks a
+ * this client knows it, how long ago, and whether the thread is running, waiting
+ * on a person, or its newest turn failed. There is no per-row icon — an icon on every row marks a
  * row, not a kind, and the width is worth more as title.
  */
 export function ThreadList({
@@ -391,7 +389,10 @@ export function ThreadList({
   }, [threads, localFiltered, hits, query]);
 
   const filtering = query.trim() !== '';
-  const groups = useMemo(() => groupThreads(threads, pinned, Date.now()), [threads, pinned]);
+  const groups = useMemo(
+    () => groupThreads(threads, pinned, Date.now(), blocked, running),
+    [threads, pinned, blocked, running],
+  );
   /** The operator's own fold when they have chosen one; else open on a short list. */
   const [olderChoice, setOlderChoice] = useState(readOlderOpen);
   const above = groups.filter((g) => g.key !== 'older').reduce((n, g) => n + g.threads.length, 0);
@@ -674,15 +675,14 @@ export function ThreadList({
             ) : (
               <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                 {/*
-                  In search results only, where nothing else on screen says
-                  it: in the grouped list the Needs-you band above owns these
-                  two, and the row stays plain where recency put it. A word
-                  beside the dot, never the dot alone.
+                  First, because it is the one fact on the row that asks
+                  something of the reader. A word beside the dot, never the
+                  dot alone. Under its own group's label it would only repeat it.
                 */}
-                {waiting && !inGroup && (
+                {waiting && inGroup !== 'waiting' && (
                   <StateMark className="text-state-blocked">Waiting on you</StateMark>
                 )}
-                {live && !waiting && !inGroup && (
+                {live && !waiting && inGroup !== 'running' && (
                   <StateMark className="text-state-running">Running</StateMark>
                 )}
                 {/* After the two live states: it asks nothing of the reader now,
@@ -990,7 +990,17 @@ export function ThreadList({
                       </span>
                     </button>
                   ) : (
-                    <p id={labelId} className={STICKY_LABEL}>
+                    <p
+                      id={labelId}
+                      className={cn(
+                        STICKY_LABEL,
+                        g.key === 'waiting' && 'text-state-blocked',
+                        g.key === 'running' && 'text-state-running',
+                      )}
+                    >
+                      {(g.key === 'waiting' || g.key === 'running') && (
+                        <span aria-hidden className="size-1.5 rounded-full bg-current" />
+                      )}
                       {g.label}
                       {g.key === 'pinned' && (
                         <span className="ml-auto font-normal">this browser</span>

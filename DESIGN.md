@@ -1000,105 +1000,94 @@ choosing a kind in the palette closes it and opens the new step there.
 
 ### Sidebar
 
-On the ground, with no border: the sheet's edge is the divider. Top to bottom: **New chat** (the
-ink pill); the **Needs-you band**; **Threads**; then the lower region — **Harness**, then the
-workspace, one order on every address and in both modes. The workspace is **one row**
-(*Workspace* and where it lives — the mounted folder in mono, *in-tab*, *on the harness*); its
-trees are the side pane's Files tab.
-
-**The Needs-you band** (2026-10-24) answers "what needs me" before anything is scrolled. It lists
-what is live or ran with nobody watching and asks something of the operator, in this order:
-**Waiting on you** (`state-blocked`) — a thread held on an approval (from the tenant-wide
-`/approvals` poll, by its `thread_id`) or on a question one of this tab's runs asked, naming the
-call in mono (*write_file*), the count (*2 approvals*) or *a question*; approvals that name no
-thread are one row of their own (*no thread*), opening the attention line's queue. Then
-**Failing** (`state-failed`) — a scheduled job whose last firing did not succeed, once per job
-however often it fires, with when it ran, opening Jobs; a disabled job is left out. Then
-**Running** (`state-running`) — a run this tab carries, with its agent. A conversation's failed or
-denied turn is **not** in the band: it was seen by whoever ran it, and stays a mark on its row. Each
-row is a tile like a thread's: the title (a job's name in mono) over the state's dot and word and
-what it is about. At most three rows; *N more* opens the rest in place. Its heading, *Needs you*,
-is 12px semibold ink like the section headings, with a muted status beside it: *none* when clear —
-the band is never removed, so nothing below it moves when the last thing is answered — *checking*
-before `/approvals` has answered, and over a list it could not refresh *as of 3m ago* with the
-last rows kept, or *not refreshed* (in `state-failed`) with none; it never says *none* over a list
-nobody refreshed (the attention line's rule). It reads only what is already polled, plus the Jobs
-glance's shared read, which runs everyday now too. One Tab stop, arrows within.
+On the ground, with no border: the sheet's edge is the divider. **New chat** (the ink pill), then
+**Threads**, then the lower region, with hairline separators between sections. The lower region has
+**one order** on every address and in both modes: **Harness**, then the workspace. In harness
+view Harness is all ten destinations (never folded on `/harness`, where they are the page's own
+navigation), each run folding on its own under its label — *How it's set up* folded until opened,
+and the run holding the page on screen always open, its chevron hidden and its toggle off. Everyday it is the same frame on every address, `/harness` included — the heading, **Activity** with its
+failure glance, and a **Skill drafts** row with the amber `N waiting` glance while drafts wait
+(or while the reader is on Skills), the current one marked — then the workspace. Everyday the
+runs carry no labels: each is one row, and *What happened* over *Activity* was two labels for
+it; the row's menu takes the run's name as its accessible name. The workspace is **one row**
+(*Workspace* and where it lives — the mounted folder in mono, *in-tab*, *on the harness*) on
+every address; its trees are the side pane's Files tab. Arriving moves nothing: the rows do not
+change. Collapsed, everyday shows those one or two icons above Workspace.
 
 Threads is a heading and a **pill search field** (`Input size="lg"`: 36px, `sidebar-accent` face,
 `input` edge, 14px) that stay put above a list that scrolls inside itself. Beside the heading,
 muted and right-aligned, **how far back the outcome marks reach** (*marks · last 7d*, or *· 3h*
 when the audit read covers less, `glanceWindow`), so an unmarked row reads as "not in that
-time", never as fine. The thread groups are *Pinned* (labelled *this browser*), *Today*,
-*Yesterday*, *Previous 7 days*, and *Older*, cut by month when open — **not** *Waiting on you* or
-*Running*, which are the band's: a thread in the band keeps a plain row where recency put it, and
-the two states are said on a row only in search results. **Older opens by default while the groups
-above it hold fewer than eight rows**, because folded it held 73 of 76 threads beside an empty
-list; the operator's own fold, once chosen, is remembered (`felix.sidebar.olderOpen`). Folded
-around the thread on screen, its count reads *1 of 81 shown*. Group labels are 12px medium muted
-on the ground, 28px tall, and stick to the top of the list while their rows scroll under them.
-Empty groups are not drawn.
+time", never as fine. **The threads come first**: the list is what the sidebar is opened for.
+Harness and Workspace are one region below it. The two **share the height by what they hold**
+(2026-10-24): each starts at its content, and when the sidebar cannot hold both the lower region
+gives way first (`shrink-[100]`) down to its reservation, then the list down to its floor
+(`min(16rem, 30svh)`: the heading, the search and about four rows). In harness view the
+reservation is the default layout's height (`min(35svh, 26.25rem)`, measured 26.2rem), so a fold
+never drops the row under the pointer; everyday it is the harness rows' own (7.5rem, Activity
+and Skill drafts), so a draft arriving moves nothing and an agent with no workspace leaves no
+empty band. The region never changes its rows with the address (a run unfolded by arriving on
+its page stays unfolded). Measured at 1667×941: a short list leaves the region whole (419px,
+nothing scrolls) and the threads take the rest; with Older open the threads take 499px and the
+region 329px. Capped at 35svh, the region had scrolled by 11px beside ~250px of empty list. The
+harness's rows scroll on their own above the **Workspace** row, which sits outside that scroll
+on a hairline, and their bottom edge fades (`scroll-fade-b`) while there is more below. The
+sidebar itself never scrolls when expanded. The thread groups rank by state, then recency:
+*Waiting on you* (`state-blocked`, dot and words), *Running* (`state-running`), *Pinned*
+(labelled *this browser*), *Today*, *Yesterday*, *Previous 7 days*, and *Older*, cut by month
+when open. **Older opens by default while the groups above it hold fewer than eight rows**,
+because folded it held 73 of 76 threads beside an empty list; the operator's own fold, once
+chosen, is remembered (`felix.sidebar.olderOpen`). Folded around the thread on screen, its count
+reads *1 of 81 shown*. Group labels are 12px medium muted on the ground, 28px tall, and stick to
+the top of the list while their rows scroll under them. Empty groups are not drawn. A row's
+second line leads with its state, dot and word: *Waiting on you*, *Running*, or **Failed**
+(`state-failed`) when the thread's newest turn broke, then the call that broke in mono
+(*Failed local_shell*) — or **Denied** and the call (*Denied write_file*) when an approval said
+no, in muted ink and with no dot, since a denial is a decision and not a fault. An outcome shows
+only when neither live state holds.
 
-**The harness's pages are chips** (2026-10-24), wrapping, a run per question — *What happened*,
-*What it knows*, *How it's set up* — told apart by a hairline, not a label, each run a named list
-for a reader. A chip is 32px (40px on a coarse pointer), `rounded-lg`, its label muted 14px; the
-current page's chip is lifted to `sidebar-accent` with `shadow-sheet`, semibold, `aria-current`,
-and kept in view. A glance is the state's dot and its words on the chip (*Jobs · 2 failing*),
-never the dot alone. As rows with a label per run, the ten took ~400px of a 941px window, so each
-run folded and *How it's set up* started folded; as chips they take four or five lines and
-**nothing folds**. In harness view they are a `nav` the arrows walk, all ten; everyday a list under
-the heading — **Activity** with its failure glance, and **Skill drafts** with the amber `N waiting`
-glance while drafts wait (or while the reader is on Skills).
+**Two label ranks, one edge.** The sidebar's two *section* headings (Threads, Harness) are 12px
+semibold in **foreground ink**; every *subgroup* label inside them (the date groups, Older, What
+happened, What it knows, How it's set up) is 12px medium in muted ink, 28px tall. They were the
+same grey, and *Harness* over *What happened* read as two equal toggles (2026-10-24). Harness's
+fold chevron stays muted beside its ink name. All of them start on the rows' text edge, 18px in,
+and both scrolling regions reserve their scrollbar's gutter, so the counts down the right edge
+end on one line whether or not a region is scrolling.
 
-**The threads come first** in the height. The band is its rows; the thread list and the lower
-region start at their content, and when the sidebar cannot hold everything the lower region gives
-way first (`shrink-[100]`) down to its floor — in harness view `min(35svh, 18rem)`, which holds the
-ten chips whole on a laptop's height with a glance or two wrapping — then the list down to its own
-(`min(16rem, 30svh)`: the heading, the search and about four rows). Below its floor the lower
-region's chips scroll under a bottom fade (`scroll-fade-b`) above the **Workspace** row, which sits
-outside that scroll on a hairline. Everyday the region reserves 6rem for Activity and Skill drafts
-alone, so a draft arriving moves nothing and an agent with no workspace leaves no empty band.
-Measured at 1667×963 in harness view with a long list: band 145px (two job rows), threads 445px,
-lower region 288px whole; everyday 141px. The sidebar itself never scrolls when expanded.
-
-**Two label ranks, one edge.** The sidebar's section headings (Needs you, Threads, Harness) are
-12px semibold in **foreground ink**; every *subgroup* label (the date groups, Older) is 12px
-medium in muted ink, 28px tall. All of them start on the rows' text edge, 18px in, and both
-scrolling regions reserve their scrollbar's gutter, so the counts down the right edge end on one
-line whether or not a region is scrolling.
-
-Each thread row is a **tile** (`rounded-lg`, `px-2.5 py-1.5`): the thread's title over one 12px
-line — an outcome first when its newest turn broke, **Failed** (`state-failed`) and the call in
-mono (*Failed local_shell*), or when an approval said no, **Denied** and the call, in muted ink with
-no dot, since a denial is a decision and not a fault; then the agent in mono, how long ago, and
-*local only* for a thread the harness has never seen. **A title another listed thread carries adds
-the end of its id**, right-aligned in mono (`…c45d57`) outside the line's truncation, so the agent
-gives way before it does: the harness titles a thread by a cut preview of its first message, and
-on the reference harness 38 of 85 rows shared one with another. A thread with no title is listed by
-its id in muted mono, cut from the middle. **The current tile sits on the sheet's colour**
-(`sidebar-accent`) with `shadow-sheet` and `aria-current`; a hovered, focused or menu-open tile
-mixes 70% of that colour into the ground. On `/harness` the tab's thread is **held**, not current:
-a 1px `border` outline on the ground — never the current row's fill, which the active chip wears
-there — no `aria-current`, and *This tab* leading its second line, so the way back is on screen
-without claiming to be the page. A row's ⋯ menu lies *over* the end of the row, revealed by that
-row's hover or focus on a gradient of the row's own colour; on touch it stays in the row, visible.
-The menu is Pin, Rename and Fork; then Compact context and Export JSONL; then any reason an item is
-unavailable; then Delete, in the destructive colour. Deleting a thread with a run going or
-something waiting asks first, in the row (*Stop and delete* / *Keep*); any other delete is
-immediate and undoable from a toast.
+Each row is a **tile** (`rounded-lg`, `px-2.5 py-1.5`): the thread's title over one 12px line
+(*Waiting on you* or *Running* first when the row is not already under that group, else an
+outcome, then the agent in mono, then how long ago, then *local only* for a thread the harness
+has never seen). **A title another listed thread carries adds the end of its id**, right-aligned
+in mono (`…c45d57`) outside the line's truncation, so the agent gives way before it does: the
+harness titles a thread by a cut preview of its first message, and on the reference harness 38
+of 85 rows shared one with another. A thread with no title is listed by its id in muted mono,
+cut from the middle. **The current tile sits on
+the sheet's colour** (`sidebar-accent`) with `shadow-sheet` and `aria-current`; a hovered,
+focused or menu-open tile mixes 70% of that colour into the ground. On `/harness` the tab's
+thread is **held**, not current: a 1px `border` outline on the ground — never the current row's
+fill, which the active destination wears there — no `aria-current`, and *This tab*
+leading its second line, so the way back is on screen without claiming to be the page. The
+sidebar's own menu rows
+(the harness destinations) follow the same grammar: 36px (44px on a coarse pointer), `rounded-lg`,
+the active row lifted to `sidebar-accent` with `shadow-sheet` and semibold, and scrolled into
+the lower region's view when the address changes, since at a laptop's height the last run
+sits below that region's fold. A row's ⋯ menu lies
+*over* the end of the row, revealed by that row's hover or focus on a gradient of the row's own
+colour; on touch it stays in the row, visible. The menu is Pin, Rename and Fork; then Compact
+context and Export JSONL; then any reason an item is unavailable; then Delete, in the destructive
+colour. Deleting a thread with a run going or something waiting asks first, in the row (*Stop and
+delete* / *Keep*); any other delete is immediate and undoable from a toast.
 
 The list is one Tab stop. Arrows, Home and End move between rows and Older's toggle where it sits
 among them, → reaches a row's menu and ← returns, Shift+F10 or a right click opens it, Delete
-deletes. Every row is described by one `sr-only` sentence saying so. A search drops the groups; a
-row whose messages matched shows the words around the match, the match in the foreground.
+deletes. Every row is described by one `sr-only` sentence saying so. A search drops the groups; a row
+whose messages matched shows the words around the match, the match in the foreground.
 
-Collapsed to icons, the column is New chat, **Needs you**, Threads, then the ten destinations
-(harness view; everyday Activity and Skill drafts), then Workspace, each a 36px rounded square.
-Needs you carries one 6px dot for the most urgent thing it holds (waiting, then a failing job,
-then running) and says all of it to a reader (*1 waiting on you, 1 running*, or *nothing*); it
-expands the sidebar onto the band's first row. Threads expands the sidebar and puts the caret in
-the search field. Jobs and Activity carry a `state-failed` dot when their glance reports a
-failure, Skills a `state-blocked` dot while a draft waits, each with the glance's own sentence.
+Collapsed to icons, the column is New chat, Threads, then the ten destinations (harness view; everyday Activity and Skill drafts), then Workspace, each
+a 36px rounded square. Threads expands the sidebar and puts the caret in the search field. It
+carries one 6px dot for the most urgent state and says it as well. Jobs and Activity carry a
+`state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft
+waits, each with the glance's own sentence for a reader.
 
 ### Debug tab
 

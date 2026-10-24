@@ -191,19 +191,14 @@ describe('ThreadList rows', () => {
     expect(screen.getByText('Quarterly review')).toBeTruthy();
   });
 
-  // The Needs-you band above the list owns waiting and running (2026-10-24): in
-  // the grouped list such a row stays plain, where recency put it, and is marked
-  // in words only in search results, where nothing else on screen says so.
-  it('keeps a waiting thread plain in the list, and says it in words in a search', async () => {
-    const { user } = setup({
+  it('marks a thread with a pending approval in words, not by colour alone', () => {
+    setup({
       threads: [thread({ id: 't1' }), thread({ id: 't2', title: 'Other' })],
       blocked: new Set(['t2']),
     });
-    expect(screen.queryByRole('group', { name: /^Waiting on you/ })).toBeNull();
-    const row = screen.getByRole('button', { name: /^Other/ });
-    expect(row.textContent).not.toContain('Waiting on you');
-    await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'other');
-    expect(screen.getByRole('button', { name: /^Other/ }).textContent).toContain('Waiting on you');
+    const waiting = screen.getByRole('group', { name: /^Waiting on you/ });
+    expect(waiting.textContent).toContain('Other');
+    expect(waiting.textContent).not.toContain('Local title');
   });
 
   it('finds a row by what it shows, including a fallback title', async () => {
@@ -313,10 +308,28 @@ describe('searching message text', () => {
   });
 });
 
-describe('grouping and folding', () => {
+/** An instrument ranks by state first: a thread waiting on a person is never folded away. */
+describe('grouping by state', () => {
   const old = Date.now() - 30 * 86_400_000;
   /** The operator folded Older: these cases are about the fold, and a short list opens it. */
   const foldOlder = () => localStorage.setItem('felix.sidebar.olderOpen', '0');
+
+  it('lifts a waiting thread out of a folded Older, above Pinned', () => {
+    setup({
+      threads: [
+        thread({ id: 'p', title: 'Pinned one' }),
+        thread({ id: 'w', title: 'Old but blocked', updatedAt: old }),
+      ],
+      currentId: 'x',
+      pinned: new Set(['p']),
+      blocked: new Set(['w']),
+    });
+    const groups = screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby'));
+    const first = screen.getAllByRole('group')[0] as HTMLElement;
+    expect(groups.length).toBe(2);
+    expect(first.textContent).toContain('Waiting on you');
+    expect(first.textContent).toContain('Old but blocked');
+  });
 
   it('keeps the current thread visible in a folded Older without holding the rest open', async () => {
     foldOlder();
@@ -338,7 +351,19 @@ describe('grouping and folding', () => {
     expect(screen.getByText('Old other')).toBeTruthy();
   });
 
-  it('marks a running thread in words in search results', async () => {
+  it('groups a thread with a live run under Running, below Waiting', () => {
+    setup({
+      threads: [thread(), thread({ id: 'w', title: 'Blocked one' })],
+      running: new Set(['t1']),
+      blocked: new Set(['w']),
+    });
+    const groups = screen.getAllByRole('group');
+    expect(groups[0]?.textContent).toContain('Waiting on you');
+    expect(groups[1]?.textContent).toMatch(/^Running/);
+    expect(groups[1]?.textContent).toContain('Local title');
+  });
+
+  it('marks a running thread in words where it is not under its own group', async () => {
     const { user } = setup({ threads: [thread()], running: new Set(['t1']) });
     await user.type(screen.getByRole('searchbox', { name: 'Search threads' }), 'local');
     expect(screen.getByRole('button', { name: /^Local title/ }).textContent).toContain('Running');
