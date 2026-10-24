@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/activity';
 import {
   ACTIVITY_FETCH,
-  failedThreads,
   glanceWindow,
   jobThreadOutcome,
   mergeReads,
+  rowOutcomes,
   threadOutcomes,
 } from '../src/lib/harness-glances';
 import { buildLedger, failureLabel, failureTally } from '../src/lib/ledger';
@@ -272,9 +272,39 @@ describe('threadOutcomes', () => {
       }),
     ];
     const outcomes = threadOutcomes(events, now);
-    expect([...failedThreads(outcomes)]).toEqual(['broke']);
+    expect([...outcomes].filter(([, o]) => o.failed).map(([id]) => id)).toEqual(['broke']);
     expect(outcomes.get('mended')?.failed).toBe(false);
     expect(outcomes.get('gated')?.failed).toBe(false);
+  });
+
+  // Eight threads on the reference harness carried one title; what each row can
+  // add is how its last turn ended, and the call that ended it.
+  it('names what a row says: failed over denied, with the call, and nothing for a clean turn', () => {
+    const events = [
+      e('broke', 30, { event_type: 'user_input' }),
+      e('broke', 29, { status: 'error', payload: { tool: 'local_shell' } }),
+      e('gated', 10, { event_type: 'user_input' }),
+      e('gated', 9, {
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload: { control: 'approvals', tool: 'write_file' },
+      }),
+      // Both in one turn: the break is the reason to open it.
+      e('both', 8, { event_type: 'user_input' }),
+      e('both', 7, {
+        event_type: 'policy_deny',
+        status: 'denied',
+        payload: { control: 'approvals', tool: 'write_file' },
+      }),
+      e('both', 6, { status: 'error', payload: { tool: 'read_file' } }),
+      e('fine', 5, { event_type: 'user_input' }),
+      e('fine', 4),
+    ];
+    const rows = rowOutcomes(threadOutcomes(events, now));
+    expect(rows.get('broke')).toEqual({ kind: 'failed', tool: 'local_shell' });
+    expect(rows.get('gated')).toEqual({ kind: 'denied', tool: 'write_file' });
+    expect(rows.get('both')).toEqual({ kind: 'failed', tool: 'read_file' });
+    expect(rows.has('fine')).toBe(false);
   });
 
   it('knows nothing of a thread outside the window: unknown, never OK', () => {

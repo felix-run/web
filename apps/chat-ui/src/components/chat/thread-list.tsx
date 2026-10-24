@@ -33,6 +33,7 @@ import {
 } from 'react';
 import { searchSessions } from '@/api';
 import { CutId } from '@/components/cut-id';
+import type { RowOutcome } from '@/lib/harness-glances';
 import { isTransientFailure } from '@/lib/harness-health';
 import { groupThreads, matchExcerpt, type ThreadGroupKey, threadLabel } from '@/lib/threads';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,29 @@ import type { ThreadIndexStatus } from '@/shell-context';
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();
 const NO_RUNNING: ReadonlySet<string> = new Set();
-const NO_FAILED: ReadonlySet<string> = new Set();
+const NO_OUTCOMES: ReadonlyMap<string, RowOutcome> = new Map();
+
+/** Where Older's fold is remembered, once the operator has chosen it. */
+const OLDER_OPEN_KEY = 'felix.sidebar.olderOpen';
+
+/**
+ * Rows above Older below which it opens by default. Folded, Older held 73 of 76
+ * threads on the reference harness while the list sat half empty above it; a
+ * list this short has the room, so the history is drawn rather than counted.
+ */
+const OLDER_FILL_ROWS = 8;
+
+/** Characters of an id's end a row adds when another listed row has its title. */
+const ID_TAIL = 6;
+
+function readOlderOpen(): boolean | null {
+  try {
+    const v = localStorage.getItem(OLDER_OPEN_KEY);
+    return v === '1' ? true : v === '0' ? false : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Characters of an id a row draws: what the row's width holds in 13px mono. A
@@ -158,7 +181,8 @@ export function ThreadList({
   readOnlyId,
   blocked = NO_BLOCKED,
   running = NO_RUNNING,
-  failed = NO_FAILED,
+  outcomes = NO_OUTCOMES,
+  outcomeSpan,
   pinned = NO_PINS,
   onTogglePin,
   searchRef,
@@ -190,11 +214,18 @@ export function ThreadList({
   /** Threads with a run this tab is carrying, by suffix. */
   running?: ReadonlySet<string>;
   /**
-   * Threads whose newest turn failed, by suffix — read off the sidebar's shared
-   * audit poll (`threadOutcomes`), never a request per row. Unknown is not OK:
-   * a thread outside that read is simply unmarked.
+   * How each thread's newest turn ended when that was not fine — failed, or a
+   * call denied at an approval — by suffix, read off the sidebar's shared audit
+   * poll (`rowOutcomes`), never a request per row. Unknown is not OK: a thread
+   * outside that read is simply unmarked, which is why `outcomeSpan` is said.
    */
-  failed?: ReadonlySet<string>;
+  outcomes?: ReadonlyMap<string, RowOutcome>;
+  /**
+   * How far back `outcomes` reaches (`glanceWindow`'s span: `7d`, `3h`), said
+   * beside the heading so an unmarked row reads as "not in the last 3h" rather
+   * than as fine. Omit while the read has not answered.
+   */
+  outcomeSpan?: string | undefined;
   /** Pinned thread ids, from this browser's own store (`readPins`). */
   pinned?: ReadonlySet<string>;
   /** Pin or unpin a thread. Omit to hide the action. */
@@ -274,6 +305,18 @@ export function ThreadList({
   // Keyed on the list, not the query: a placeholder-titled row reads its cached
   // transcript once per index change rather than once per keystroke.
   const labels = useMemo(() => new Map(threads.map((t) => [t.id, threadLabel(t)])), [threads]);
+  /**
+   * Titles more than one thread carries. The harness titles a thread by a cut
+   * preview of its first message, so threads started with the same request read
+   * identically — eight of 76 on the reference harness — and the preview already
+   * ends in its own ellipsis, so no cut of the title can tell them apart. Those
+   * rows add the end of their id, which always differs.
+   */
+  const shared = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const l of labels.values()) if (!l.isId) seen.set(l.text, (seen.get(l.text) ?? 0) + 1);
+    return new Set([...seen].filter(([, n]) => n > 1).map(([text]) => text));
+  }, [labels]);
 
   const localFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -350,7 +393,19 @@ export function ThreadList({
     () => groupThreads(threads, pinned, Date.now(), blocked, running),
     [threads, pinned, blocked, running],
   );
-  const [olderOpen, setOlderOpen] = useState(false);
+  /** The operator's own fold when they have chosen one; else open on a short list. */
+  const [olderChoice, setOlderChoice] = useState(readOlderOpen);
+  const above = groups.filter((g) => g.key !== 'older').reduce((n, g) => n + g.threads.length, 0);
+  const olderOpen = olderChoice ?? above < OLDER_FILL_ROWS;
+  const toggleOlder = () => {
+    const next = !olderOpen;
+    try {
+      localStorage.setItem(OLDER_OPEN_KEY, next ? '1' : '0');
+    } catch {
+      // Storage blocked: the fold lasts for this page.
+    }
+    setOlderChoice(next);
+  };
   const ids = useId();
 
   /**
@@ -382,6 +437,31 @@ export function ThreadList({
 
   const rowButtons = () =>
     Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-thread-row]') ?? []);
+  /** What the arrow keys walk: every row, and Older's toggle where it sits among them. */
+  const stops = () =>
+    Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[data-thread-row], [data-older-toggle]') ??
+        [],
+    );
+  /** ↑ ↓ Home End over `stops()`, from `target`. True when the key was one of them. */
+  function walk(e: KeyboardEvent<HTMLElement>, target: HTMLElement): boolean {
+    const all = stops();
+    const at = all.indexOf(target);
+    const to =
+      e.key === 'ArrowDown'
+        ? at + 1
+        : e.key === 'ArrowUp'
+          ? at - 1
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? all.length - 1
+              : null;
+    if (to === null) return false;
+    e.preventDefault();
+    all[Math.max(0, Math.min(all.length - 1, to))]?.focus();
+    return true;
+  }
   const focusRow = (id: string) =>
     rowButtons()
       .find((b) => b.dataset.threadRow === id)
@@ -411,17 +491,8 @@ export function ThreadList({
     const target = e.currentTarget;
     const id = target.dataset.threadRow;
     if (!id) return;
-    const buttons = rowButtons();
-    const at = buttons.indexOf(target);
-    const move = (to: number) => {
-      e.preventDefault();
-      buttons[Math.max(0, Math.min(buttons.length - 1, to))]?.focus();
-    };
-    if (e.key === 'ArrowDown') move(at + 1);
-    else if (e.key === 'ArrowUp') move(at - 1);
-    else if (e.key === 'Home') move(0);
-    else if (e.key === 'End') move(buttons.length - 1);
-    else if (e.key === 'ArrowRight') {
+    if (walk(e, target)) return;
+    if (e.key === 'ArrowRight') {
       const menu = target
         .closest('[data-thread]')
         ?.querySelector<HTMLElement>('[data-thread-menu]');
@@ -457,7 +528,8 @@ export function ThreadList({
     const waiting = blocked.has(t.id);
     const live = running.has(t.id);
     // A run going now outranks how the last one ended: it may be the retry.
-    const broke = failed.has(t.id) && !live && !waiting;
+    const ended = live || waiting ? undefined : outcomes.get(t.id);
+    const twin = !label.isId && shared.has(label.text);
     const isPinned = pinned.has(t.id);
     const local = t.onServer === false;
     const readOnly = t.id === readOnlyId;
@@ -572,6 +644,7 @@ export function ThreadList({
             }}
             className="min-w-0 flex-1 truncate text-left outline-none"
             aria-current={t.id === currentId ? 'page' : undefined}
+            aria-describedby={`${ids}-keys`}
             // The full title only: everything else is on the row, and a
             // truncated title is the one thing that needs a way to be read whole.
             title={label.text}
@@ -613,11 +686,19 @@ export function ThreadList({
                   <StateMark className="text-state-running">Running</StateMark>
                 )}
                 {/* After the two live states: it asks nothing of the reader now,
-                    but it is why someone coming back opens this row first. */}
-                {broke && (
+                    but it is why someone coming back opens this row first. The
+                    call it names is what tells one such row from the next. */}
+                {ended?.kind === 'failed' && (
                   <StateMark data-slot="thread-failed" className="text-state-failed">
-                    Failed
+                    Failed{ended.tool && <ToolName name={ended.tool} />}
                   </StateMark>
+                )}
+                {/* A denial is a decision, not a fault: neutral, and no dot,
+                    because a dot here is a state's colour. */}
+                {ended?.kind === 'denied' && (
+                  <span data-slot="thread-denied" className="flex shrink-0 items-center gap-1">
+                    Denied{ended.tool && <ToolName name={ended.tool} />} ·
+                  </span>
                 )}
                 {t.id === heldId && (
                   <span data-slot="thread-held" className="shrink-0 font-medium">
@@ -635,6 +716,18 @@ export function ThreadList({
                   {relativeTime(t.updatedAt)}
                   {local && ' · local only'}
                 </span>
+                {/* Outside the truncating span: on these rows it is the one part
+                    of the line that tells them apart, so the agent gives way first. */}
+                {twin && (
+                  <span
+                    data-slot="thread-id-tail"
+                    className="ml-auto shrink-0 pl-1 font-mono"
+                    title={t.id}
+                  >
+                    <span aria-hidden>…{t.id.slice(-ID_TAIL)}</span>
+                    <span className="sr-only">id ending {t.id.slice(-ID_TAIL)}</span>
+                  </span>
+                )}
               </span>
             )}
           </button>
@@ -760,17 +853,34 @@ export function ThreadList({
     <section
       aria-labelledby="history-heading"
       data-slot="thread-list"
-      // Takes whatever height the sidebar's lower region (the workspace and the
-      // harness's pages, capped at 40% of the viewport) leaves, and scrolls its
-      // own rows inside that. `shrink!` beats the sidebar's `*:shrink-0`.
-      className={cn('flex min-h-0 flex-1 shrink! flex-col', className)}
+      // Starts at its rows' height and shares the sidebar with the lower region
+      // (the harness's pages and the workspace), which gives way first; past
+      // that it scrolls its own rows. Its floor — the heading, the search and
+      // about four rows — is the least it is left. `shrink!` beats the
+      // sidebar's `*:shrink-0`.
+      className={cn('flex min-h-[min(16rem,30svh)] flex-auto shrink! flex-col', className)}
     >
       <div className="shrink-0 px-2 pt-3 pb-2">
-        <div className="flex h-7 items-center px-2.5">
-          <h2 id="history-heading" className="text-xs font-semibold text-muted-foreground">
+        <div className="flex h-7 items-center gap-2 px-2.5">
+          {/* A section's name in ink, its groups' in muted: the two were the
+              same 12px grey, and Harness over What happened read as two equal
+              toggles. */}
+          <h2 id="history-heading" className="text-xs font-semibold text-foreground">
             Threads
           </h2>
+          {outcomeSpan && (
+            <span
+              data-slot="thread-outcome-span"
+              className="ml-auto truncate text-xs text-muted-foreground"
+              title={`Failed and denied marks come from the harness's audit log, which this list read back ${outcomeSpan}. A thread with no mark had no turn in that time, or its last turn went through.`}
+            >
+              marks · last {outcomeSpan}
+            </span>
+          )}
         </div>
+        <p id={`${ids}-keys`} className="sr-only">
+          Arrow keys move between threads, Right arrow reaches a thread's actions.
+        </p>
         {indexStatus?.error != null && (
           <IndexStatusRow status={indexStatus} count={threads.length} />
         )}
@@ -852,8 +962,12 @@ export function ThreadList({
                     <button
                       type="button"
                       id={labelId}
+                      data-older-toggle
                       aria-expanded={!folded}
-                      onClick={() => setOlderOpen((o) => !o)}
+                      onClick={toggleOlder}
+                      // In the arrow keys' walk as well as the Tab order: it sits
+                      // among the rows, so ↓ from the last of Previous 7 days lands here.
+                      onKeyDown={(e) => walk(e, e.currentTarget)}
                       className={cn(
                         STICKY_LABEL,
                         'w-full rounded-md text-left hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',
@@ -867,7 +981,13 @@ export function ThreadList({
                         )}
                       />
                       {g.label}
-                      <span className="ml-auto font-normal tabular-nums">{g.threads.length}</span>
+                      {/* Folded around the thread on screen, the count says the row
+                          below is one of many, not Older's only member. */}
+                      <span className="ml-auto font-normal tabular-nums">
+                        {folded && rows.length > 0
+                          ? `${rows.length} of ${g.threads.length} shown`
+                          : g.threads.length}
+                      </span>
                     </button>
                   ) : (
                     <p
@@ -994,6 +1114,11 @@ function StateMark({
       {children} ·
     </span>
   );
+}
+
+/** A tool's name beside an outcome word: the harness's id, so mono, and muted like the line. */
+function ToolName({ name }: { name: string }) {
+  return <span className="font-mono text-muted-foreground"> {name}</span>;
 }
 
 /** `text` with the first occurrence of `query` set in the foreground, so the match is what the eye lands on. */

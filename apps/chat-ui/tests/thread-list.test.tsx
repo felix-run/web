@@ -311,6 +311,8 @@ describe('searching message text', () => {
 /** An instrument ranks by state first: a thread waiting on a person is never folded away. */
 describe('grouping by state', () => {
   const old = Date.now() - 30 * 86_400_000;
+  /** The operator folded Older: these cases are about the fold, and a short list opens it. */
+  const foldOlder = () => localStorage.setItem('felix.sidebar.olderOpen', '0');
 
   it('lifts a waiting thread out of a folded Older, above Pinned', () => {
     setup({
@@ -330,6 +332,7 @@ describe('grouping by state', () => {
   });
 
   it('keeps the current thread visible in a folded Older without holding the rest open', async () => {
+    foldOlder();
     const { user } = setup({
       threads: [
         thread({ id: 'a', title: 'Old current', updatedAt: old }),
@@ -339,6 +342,8 @@ describe('grouping by state', () => {
     });
     expect(screen.getByText('Old current')).toBeTruthy();
     expect(screen.queryByText('Old other')).toBeNull();
+    // Said on the fold, so the row under it does not read as Older's only member.
+    expect(screen.getByRole('button', { name: /^Older/ }).textContent).toContain('1 of 2 shown');
     // The fold still works, rather than being disabled while it holds the current thread.
     const older = screen.getByRole('button', { name: /^Older/ });
     expect(older.hasAttribute('disabled')).toBe(false);
@@ -368,6 +373,7 @@ describe('grouping by state', () => {
   // spanning two months could not be closed.
   it('folds an Older that spans several months, and opens it again', async () => {
     vi.setSystemTime(new Date(2026, 9, 7).getTime());
+    foldOlder();
     try {
       const { user } = setup({
         threads: [
@@ -392,6 +398,7 @@ describe('grouping by state', () => {
 
   it('keeps only the current thread when a several-month Older is folded', () => {
     vi.setSystemTime(new Date(2026, 9, 7).getTime());
+    foldOlder();
     try {
       setup({
         threads: [
@@ -413,7 +420,7 @@ describe('grouping by state', () => {
     const now = new Date(2026, 9, 7).getTime();
     vi.setSystemTime(now);
     try {
-      const { user } = setup({
+      setup({
         threads: [
           thread({ id: 's', title: 'September one', updatedAt: new Date(2026, 8, 10).getTime() }),
           thread({ id: 'a', title: 'August one', updatedAt: new Date(2026, 7, 3).getTime() }),
@@ -421,7 +428,7 @@ describe('grouping by state', () => {
         ],
         currentId: 'x',
       });
-      await user.click(screen.getByRole('button', { name: /^Older/ }));
+      // Open by default: nothing above Older fills the list.
       const september = screen.getByRole('group', { name: /^September/ });
       const august = screen.getByRole('group', { name: /^August/ });
       expect(september.textContent).toContain('September one');
@@ -430,6 +437,107 @@ describe('grouping by state', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * Older held 73 of 76 threads on the reference harness, folded, while the list
+ * sat half empty above it (2026-10-24). It opens by default when the groups
+ * above it are short, and the operator's own choice, once made, is kept.
+ */
+describe('the Older fold', () => {
+  const old = Date.now() - 30 * 86_400_000;
+  const recent = (n: number) =>
+    Array.from({ length: n }, (_, i) => thread({ id: `r${i}`, title: `Recent ${i}` }));
+
+  it('opens on a list whose recent groups leave room, and folds on one that fills it', () => {
+    setup({ threads: [...recent(2), thread({ id: 'o', title: 'Old one', updatedAt: old })] });
+    expect(screen.getByRole('button', { name: /^Older/ }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+    expect(screen.getByText('Old one')).toBeTruthy();
+    cleanup();
+    setup({ threads: [...recent(8), thread({ id: 'o', title: 'Old one', updatedAt: old })] });
+    expect(screen.getByRole('button', { name: /^Older/ }).getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+    expect(screen.queryByText('Old one')).toBeNull();
+  });
+
+  it('remembers the operator’s fold across a reload', async () => {
+    const threads = [...recent(2), thread({ id: 'o', title: 'Old one', updatedAt: old })];
+    const { user } = setup({ threads });
+    await user.click(screen.getByRole('button', { name: /^Older/ }));
+    expect(localStorage.getItem('felix.sidebar.olderOpen')).toBe('0');
+    cleanup();
+    setup({ threads });
+    expect(screen.queryByText('Old one')).toBeNull();
+  });
+
+  it('is in the arrow keys’ walk, between the rows above it and below it', async () => {
+    const { user } = setup({
+      threads: [...recent(1), thread({ id: 'o', title: 'Old one', updatedAt: old })],
+      currentId: 'r0',
+    });
+    screen.getByRole('button', { name: /^Recent 0/ }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Older/ }));
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Old one/ }));
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Recent 0/ }));
+  });
+});
+
+/**
+ * A returning operator tells rows apart by what they say. Eight threads on the
+ * reference harness carried one title, the harness's own cut preview of the same
+ * first message, so the row adds how its last turn ended and, for a title
+ * another row shares, the end of its id.
+ */
+describe('telling rows apart', () => {
+  const twins = [
+    thread({ id: 'aaaa-111111', title: 'Use write_file to create notes.txt…' }),
+    thread({ id: 'bbbb-222222', title: 'Use write_file to create notes.txt…' }),
+    thread({ id: 'cccc-333333', title: 'Something else' }),
+  ];
+
+  it('says a failed or denied last turn, with the call, and nothing for a clean one', () => {
+    setup({
+      threads: twins,
+      currentId: 'x',
+      outcomes: new Map([
+        ['aaaa-111111', { kind: 'denied' as const, tool: 'write_file' }],
+        ['bbbb-222222', { kind: 'failed' as const, tool: null }],
+      ]),
+    });
+    const [a, b] = screen.getAllByRole('button', { name: /^Use write_file/ });
+    expect(a?.querySelector('[data-slot="thread-denied"]')?.textContent).toBe(
+      'Denied write_file ·',
+    );
+    // A denial is neutral: no state colour, no dot.
+    expect(a?.querySelector('[data-slot="thread-denied"]')?.className).not.toMatch(/text-state/);
+    expect(b?.querySelector('[data-slot="thread-failed"]')?.textContent).toContain('Failed');
+    const c = screen.getByRole('button', { name: /^Something else/ });
+    expect(c.querySelector('[data-slot="thread-failed"], [data-slot="thread-denied"]')).toBeNull();
+  });
+
+  it('adds the end of the id to a row whose title another row carries, and only to those', () => {
+    setup({ threads: twins, currentId: 'x' });
+    const tails = [...document.querySelectorAll('[data-slot="thread-id-tail"]')].map(
+      (t) => t.textContent,
+    );
+    expect(tails).toEqual(['…111111id ending 111111', '…222222id ending 222222']);
+  });
+
+  it('says how far back the marks reach, so an unmarked row is not read as fine', () => {
+    setup({ threads: twins, outcomes: new Map(), outcomeSpan: '3h' });
+    expect(document.querySelector('[data-slot="thread-outcome-span"]')?.textContent).toBe(
+      'marks · last 3h',
+    );
+    cleanup();
+    setup({ threads: twins });
+    expect(document.querySelector('[data-slot="thread-outcome-span"]')).toBeNull();
   });
 });
 
