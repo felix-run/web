@@ -163,7 +163,14 @@ export function NeedsYouBand({ onNavigate }: { onNavigate: () => void }) {
             return (
               <li key={key}>
                 {row.kind === 'job' ? (
-                  <Link {...common} to="/harness/jobs" onClick={onNavigate}>
+                  <Link
+                    {...common}
+                    to={{
+                      pathname: '/harness/jobs',
+                      search: `?job=${encodeURIComponent(row.name)}`,
+                    }}
+                    onClick={onNavigate}
+                  >
                     <RowBody
                       title={<span className="font-mono">{row.name}</span>}
                       state={<Mark tone="failed">Failing</Mark>}
@@ -296,10 +303,13 @@ function Mark({ tone, children }: { tone: 'blocked' | 'running' | 'failed'; chil
  * Always drawn, so the column does not shift when something starts waiting.
  */
 export function NeedsYouIcon({ onOpen }: { onOpen: () => void }) {
-  const { rows, stale } = useNeedsYou();
+  const { rows, stale, unchecked, lastOkAt } = useNeedsYou();
   const waiting = rows.filter((r) => r.kind === 'waiting' || r.kind === 'unthreaded').length;
   const jobs = rows.filter((r) => r.kind === 'job').length;
   const running = rows.filter((r) => r.kind === 'running').length;
+  // The band's own rule, kept when it is folded to an icon: an empty list that
+  // nobody refreshed is no answer, so it is never said as "nothing" — it read as
+  // the all-clear here while the expanded band said *not refreshed*.
   const tone =
     waiting > 0
       ? 'bg-state-blocked'
@@ -307,16 +317,28 @@ export function NeedsYouIcon({ onOpen }: { onOpen: () => void }) {
         ? 'bg-state-failed'
         : running > 0
           ? 'bg-state-running'
-          : null;
-  const said = [
+          : stale
+            ? 'bg-state-failed'
+            : unchecked
+              ? 'bg-muted-foreground'
+              : null;
+  const counts = [
     waiting > 0 && `${waiting} waiting on you`,
     jobs > 0 && `${jobs} ${jobs === 1 ? 'job' : 'jobs'} failing`,
     running > 0 && `${running} running`,
   ].filter(Boolean);
+  const said =
+    counts.length > 0
+      ? `${counts.join(', ')}${stale ? `, as of ${lastOkAt != null ? relativeTime(lastOkAt) : 'an earlier check'}` : ''}`
+      : stale
+        ? 'not refreshed'
+        : unchecked
+          ? 'checking'
+          : 'nothing';
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        tooltip={said.length > 0 ? `Needs you: ${said.join(', ')}` : 'Needs you'}
+        tooltip={`Needs you: ${said}`}
         onClick={() => {
           onOpen();
           whenMounted('[data-needs-you-row]', (el) => el.focus());
@@ -331,11 +353,7 @@ export function NeedsYouIcon({ onOpen }: { onOpen: () => void }) {
             className={cn('absolute top-1.5 right-1.5 size-1.5 rounded-full', tone)}
           />
         )}
-        <span className="sr-only">
-          {said.length > 0
-            ? `, ${said.join(', ')}${stale ? ', as of an earlier check' : ''}`
-            : ', nothing'}
-        </span>
+        <span className="sr-only">, {said}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

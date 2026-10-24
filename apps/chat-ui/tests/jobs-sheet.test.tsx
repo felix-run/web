@@ -40,6 +40,8 @@ async function sheet(
     spend?: unknown;
     audit?: unknown[];
     workflows?: unknown[];
+    /** The address the page opens on, for its `?job=` link. */
+    at?: string;
   } = {},
 ) {
   const upsertJob = vi.fn().mockResolvedValue(job());
@@ -58,7 +60,7 @@ async function sheet(
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[opts.at ?? '/harness/jobs']}>
       <JobsSheet manifest="quick" manifestOptions={['quick']} />
     </MemoryRouter>,
   );
@@ -260,6 +262,37 @@ describe('a schedule says what the harness will do', () => {
     await openForm();
     fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByLabelText('Name')).toBeNull());
+  });
+});
+
+/**
+ * The sidebar's Needs-you band links a failing job as `?job=<name>`. It landed at
+ * the top of the list, and the operator hunted for the job the row had named.
+ */
+describe('a link to one job', () => {
+  it('opens that job’s runs, and only that one', async () => {
+    await sheet([job(), job({ name: 'triage', last_status: 'error' })], {
+      at: '/harness/jobs?job=triage',
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Runs of triage' }).getAttribute('aria-expanded'),
+      ).toBe('true'),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Runs of nightly-digest' }).getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  it('leaves a closed job closed once the link has been followed', async () => {
+    await sheet([job({ name: 'triage', last_status: 'error' })], {
+      at: '/harness/jobs?job=triage',
+    });
+    const toggle = await screen.findByRole('button', { name: 'Runs of triage' });
+    await waitFor(() => expect(toggle.getAttribute('aria-expanded')).toBe('true'));
+    fireEvent.click(toggle);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 });
 

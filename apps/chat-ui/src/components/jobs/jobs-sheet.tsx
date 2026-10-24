@@ -15,7 +15,7 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import {
   deleteJob,
   listJobRuns,
@@ -385,6 +385,27 @@ export function JobsSheet({
       setRuns([]);
     }
   }
+
+  /**
+   * `?job=<name>` opens that job's runs and brings its row into view, once per
+   * link — the sidebar's Needs-you band links a failing job here, and landing at
+   * the top of the list to hunt for it was the dead end the band's row led to.
+   * Once handled the operator's own toggles win, so closing it stays closed.
+   */
+  const [params] = useSearchParams();
+  const linked = params.get('job');
+  const handledLink = useRef<string | null>(null);
+  const linkedLoaded = linked != null && jobs.some((j) => j.name === linked);
+  useEffect(() => {
+    if (!linked || !linkedLoaded || handledLink.current === linked) return;
+    handledLink.current = linked;
+    if (expanded !== linked) void toggleRuns(linked);
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-job="${CSS.escape(linked)}"]`)
+        ?.scrollIntoView?.({ block: 'center' }),
+    );
+  }, [linked, linkedLoaded]);
 
   // An open history follows the job. It was read once, so a row reading `last running` sat
   // over a list whose newest run said OK, and a job firing every minute showed the same
@@ -908,6 +929,7 @@ export function JobsSheet({
             return (
               <div
                 key={j.name}
+                data-job={j.name}
                 className="border-b border-border/60 py-2 text-sm first-of-type:border-t"
               >
                 {/* wraps so an armed delete confirmation gets its own line rather

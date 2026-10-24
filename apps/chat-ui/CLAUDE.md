@@ -179,15 +179,19 @@ arrow, beside pages that carry their own back arrow); below `sm` the narrow inde
 something of the operator: threads **waiting** on an approval (the tenant `/approvals` poll, by
 `thread_id`) or a question (`askingThreads`, from the engine pool — `/approvals` never lists a
 question), approvals naming no thread as one row that opens the attention line's queue; scheduled
-jobs **failing** (`failing`, the Jobs glance's reading, once per job, disabled ones left out); and
+jobs **failing** (`failing`, the Jobs glance's reading, once per job, disabled ones left out, each
+linking `/harness/jobs?job=<name>`, which opens that job's runs and scrolls it into view once per
+link); and
 runs **going** in this tab. A conversation's failed or denied turn is *not* in it — it stays a mark
 on the row; the band is for what nobody watched. So the list no longer has *Waiting on you* or
 *Running* groups: a thread in the band keeps a plain row where recency put it, marked in words only in
 search results. Three rows, then *N more* in place; clear it reads *none* and stays (nothing below
 moves), and over an `/approvals` read that failed it keeps its rows and says *as of 3m ago* — never
 *none* over a list nobody refreshed. It reads the Jobs poll on its shared key, which now runs
-everyday too (30s). Collapsed, it is one icon (`NeedsYouIcon`) with the most urgent dot and a spoken
-summary, which used to be a dot on Threads; clicking it expands onto the band's first row.
+everyday too (30s), and the sidebar's Jobs row drops its `N failing` glance (the band lists those
+jobs; `unchecked` stays). Collapsed, it is one icon (`NeedsYouIcon`) with the most urgent dot and a
+spoken summary, which used to be a dot on Threads — and *checking* / *not refreshed* rather than
+*nothing* over an approvals list that has not answered; clicking it expands onto the band's first row.
 `tests/needs-you.test.ts` pins the rows, `tests/workbench-layout.test.tsx` the band's states. Pins live in
 `felix.pinnedThreads` and are local, because the harness records which threads exist, not which
 ones an operator keeps near. `removeThread` drops a deleted thread's pin. The primitive is
@@ -243,8 +247,9 @@ it opened appeared on the far side of the screen. The row says what is mounted (
 harness*), carries Reconnect beside it — never inside it — and opens Files; it is not drawn for an
 agent whose `felix.workspace.tools` is `none` (`useWorkspaceTools`, `src/lib/workspace-tools.ts`;
 absent means a harness older than the key, and keeps the browser's folder). The mount itself is
-one store for both surfaces (`src/lib/mount-state.ts`). The list is **one Tab stop** (roving `tabIndex`; arrows and Home/End over the rows and Older's
-toggle, → to a row's ⋯ and ← back,
+one store for both surfaces (`src/lib/mount-state.ts`). The list is **one Tab stop** (roving `tabIndex`, Older's toggle one place it can rest
+(`OLDER_STOP`) rather than a second stop; arrows and Home/End over the rows and the toggle, → to a
+row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
 is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores

@@ -284,6 +284,39 @@ describe('the sidebar', () => {
     expect(status()).toBe('checking');
   });
 
+  // Folded to its icon, the band keeps the same rule: an approvals list nobody
+  // refreshed is never said as "nothing". It was, while the band said *not refreshed*.
+  it('says on the collapsed icon when the list is unchecked or not refreshed, never nothing', () => {
+    const approvals = (over: object) =>
+      ({
+        pending: [],
+        error: null,
+        lastOkAt: Date.now(),
+        forbidden: false,
+        refresh: () => {},
+        ...over,
+      }) as unknown as ShellValue['tenantApprovals'];
+    const { unmount } = mountSidebar(
+      { tenantApprovals: approvals({ error: new Error('503'), lastOkAt: null }) },
+      { open: false },
+    );
+    expect(screen.getByRole('button', { name: /^Needs you\W+not refreshed$/ })).toBeTruthy();
+    unmount();
+    mountSidebar({ tenantApprovals: approvals({ lastOkAt: null }) }, { open: false });
+    expect(screen.getByRole('button', { name: /^Needs you\W+checking$/ })).toBeTruthy();
+    cleanup();
+    mountSidebar(
+      {
+        runningThreads: new Set(['other']),
+        tenantApprovals: approvals({ error: new Error('503'), lastOkAt: Date.now() - 3 * 60_000 }),
+      },
+      { open: false },
+    );
+    expect(
+      screen.getByRole('button', { name: /^Needs you\W+1 running, as of 3m ago$/ }),
+    ).toBeTruthy();
+  });
+
   it('draws three rows, and opens the rest in place', async () => {
     const ids = ['a', 'b', 'c', 'd', 'e'];
     mountSidebar({

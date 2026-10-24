@@ -122,6 +122,18 @@ const ROW_LIT = cn(
 const STICKY_LABEL =
   'sticky top-0 z-10 flex h-7 items-center gap-1 bg-ground px-2.5 text-xs font-medium text-muted-foreground';
 
+/** The roving stop's id while it rests on Older's toggle, which is not a thread. */
+const OLDER_STOP = '\u0000older';
+
+/**
+ * What marks the thread on screen besides its fill, which is 1.13:1 against the
+ * ground in light and 1.16:1 in dark — under WCAG 1.4.11's 3:1, and the shadow
+ * is 5% alpha. A 2px bar of ink down the row's leading edge, and the title set
+ * semibold where every other is medium, so "where am I" never rests on colour.
+ */
+const CURRENT_MARK =
+  'before:absolute before:inset-y-2 before:left-0.5 before:w-0.5 before:rounded-full before:bg-foreground';
+
 /** A row to draw: the thread, and the stretch of a message that matched a search, if one did. */
 type Row = { thread: ThreadMeta; excerpt?: string };
 
@@ -424,15 +436,22 @@ export function ThreadList({
       }),
     [groups, olderOpen, currentId, heldId],
   );
+  // Older's toggle sits among the rows, so it is one more place the roving stop
+  // can be, in its own position — never a second Tab stop. It was one, and with
+  // the thread on screen inside Older, Tab from the search landed on the toggle
+  // first and Enter folded seventy rows.
   const order = filtering
     ? [...results.map((r) => r.thread.id), ...elsewhere.map((r) => r.id)]
-    : sections.flatMap((s) => s.rows.map((r) => r.thread.id));
+    : sections.flatMap((s) => [
+        ...(s.group.key === 'older' ? [OLDER_STOP] : []),
+        ...s.rows.map((r) => r.thread.id),
+      ]);
   const tabStop =
     activeId && order.includes(activeId)
       ? activeId
       : order.includes(currentId)
         ? currentId
-        : order[0];
+        : (order.find((id) => id !== OLDER_STOP) ?? order[0]);
 
   const rowButtons = () =>
     Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-thread-row]') ?? []);
@@ -544,12 +563,13 @@ export function ThreadList({
           'group/thread relative flex items-center gap-2 rounded-lg bg-(--row-bg) px-2.5 py-1.5 text-sm',
           'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
           t.id === currentId
-            ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]'
+            ? cn('shadow-sheet [--row-bg:var(--sidebar-accent)]', CURRENT_MARK)
             : t.id === heldId
               ? // An outline on the ground, never the current row's fill: on
                 // `/harness` the active destination wears that fill, and two lit
-                // tiles left "where am I" with two answers.
-                cn(ROW_LIT, 'shadow-[inset_0_0_0_1px_var(--border)]')
+                // tiles left "where am I" with two answers. In `--ring`, which
+                // holds 3:1 on the ground; the `--border` hairline did not.
+                cn(ROW_LIT, 'shadow-[inset_0_0_0_1px_var(--ring)]')
               : ROW_LIT,
         )}
       >
@@ -659,7 +679,14 @@ export function ThreadList({
                 <CutId id={label.text} max={ID_CHARS} />
               </span>
             ) : (
-              <span className="block truncate font-medium">{label.text}</span>
+              <span
+                className={cn(
+                  'block truncate',
+                  t.id === currentId ? 'font-semibold' : 'font-medium',
+                )}
+              >
+                {label.text}
+              </span>
             )}
             {excerpt ? (
               // A message matched, so the second line is why: the words around
@@ -963,10 +990,13 @@ export function ThreadList({
                       type="button"
                       id={labelId}
                       data-older-toggle
+                      tabIndex={tabStop === OLDER_STOP ? 0 : -1}
+                      onFocus={() => setActiveId(OLDER_STOP)}
                       aria-expanded={!folded}
                       onClick={toggleOlder}
-                      // In the arrow keys' walk as well as the Tab order: it sits
-                      // among the rows, so ↓ from the last of Previous 7 days lands here.
+                      // In the arrow keys' walk, and the Tab stop only when the
+                      // reader last left it there: it sits among the rows, so ↓
+                      // from the last of Previous 7 days lands here.
                       onKeyDown={(e) => walk(e, e.currentTarget)}
                       className={cn(
                         STICKY_LABEL,
@@ -1056,7 +1086,7 @@ export function ThreadList({
                       'rounded-lg bg-(--row-bg) px-2.5 py-1.5 text-sm',
                       'has-[[data-thread-row]:focus-visible]:ring-[3px] has-[[data-thread-row]:focus-visible]:ring-ring',
                       t.id === currentId
-                        ? 'shadow-sheet [--row-bg:var(--sidebar-accent)]'
+                        ? cn('shadow-sheet [--row-bg:var(--sidebar-accent)]', CURRENT_MARK)
                         : ROW_LIT,
                     )}
                   >
