@@ -132,7 +132,10 @@ summaries. Honoured on `react` and `deep` only — elsewhere it is refused at va
 :::note
 A client may override the model mid-session with `POST /chat` `{"model": "..."}`, but only against an
 allowlist built from `spec.model.id`, `spec.model.fallbacks`, `FELIX_DEFAULT_MODEL_ID` and the route
-table. Anything else is `400 model_not_allowlisted:<id>`.
+table. Anything else is `400 model_not_allowlisted:<id>`. The override also answers to the manifest's
+own rules, and to those of every sub-agent it is handed to: its provider must be in
+`auth.outbound.providers`, and under a declared `limits.max_cost_usd` it must be priced, or with
+`spec.model.price` set, be a route the manifest names. A durable run checks again when it resumes.
 :::
 
 ### `spec.system_prompt`
@@ -2119,7 +2122,7 @@ spec:
 | `inbound.schemes` | string[] | `[]` | Enforced. The scheme the caller authenticated with (`api_key`, or the JWT verifier scheme) must be listed; `jwt` is an umbrella for every configured JWT scheme. Mismatch → `403`. |
 | `inbound.required_scopes` | string[] | `[]` | Enforced. Missing scopes → `403`. |
 | `inbound.allow_anonymous` | bool | `false` | Enforced. Anonymous callers get `401` unless true. |
-| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider of every model route the manifest names must be listed, or the build fails — not the first model call. That is the primary model and its fallbacks, `vision_model` (or `FELIX_DEFAULT_VISION_MODEL_ID` when the primary is text-only and none is named), `confidence_escalation.escalate_to`, the plan/execute models, `heartbeat.model`, `reflect.verifier_model`, each judge's `model`, `http_tools[].extract_model`, and, when their feature is enabled, the content-screening and image-screening models and the memory capture and consolidation models. A request's `model` override and `spec.decider` are not yet checked. |
+| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider of every model route the manifest names must be listed, or the build fails — not the first model call. That is the primary model and its fallbacks, `vision_model` (or `FELIX_DEFAULT_VISION_MODEL_ID` when the primary is text-only and none is named), `confidence_escalation.escalate_to`, the plan/execute models, `heartbeat.model`, `reflect.verifier_model`, each judge's `model`, `http_tools[].extract_model`, and, when their feature is enabled, the content-screening and image-screening models and the memory capture and consolidation models. A request's `model` override is held to it too. `spec.decider` is not yet checked. |
 
 ### `spec.a2a` and `spec.observability`
 
