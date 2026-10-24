@@ -140,6 +140,13 @@ export function recentFailures(
 /** How a thread's newest turn in the glance's read went. */
 export interface ThreadOutcome {
   failed: boolean;
+  /** An approval said no in that turn, a person or its deadline. Neutral, never a failure. */
+  denied: boolean;
+  /**
+   * The tool the row names beside its mark: the call that broke when the turn
+   * failed, else the call that was denied. `null` when the event names none.
+   */
+  tool: string | null;
   /** When the turn began (its `user_input`), or its oldest event when that is not in the read. */
   startTs: number;
   endTs: number;
@@ -179,8 +186,12 @@ export function threadOutcomes(
       ? inWindow.filter((e) => tsToMs(e.ts) >= opened)
       : inWindow;
     const times = turn.map((e) => tsToMs(e.ts));
+    const broke = turn.filter((e) => isFailureOutcome(eventOutcome(e, turn)));
+    const said = turn.filter((e) => eventOutcome(e, turn) === 'denied');
     out.set(threadSuffix(raw), {
-      failed: turn.some((e) => isFailureOutcome(eventOutcome(e, turn))),
+      failed: broke.length > 0,
+      denied: said.length > 0,
+      tool: toolOf(broke.length > 0 ? broke : said),
       startTs: Math.min(...times),
       endTs: Math.max(...times),
     });
@@ -210,9 +221,33 @@ export function jobThreadOutcome(
   return o.failed ? 'failed' : 'ok';
 }
 
-/** The threads whose newest turn failed, by suffix. */
-export function failedThreads(outcomes: ReadonlyMap<string, ThreadOutcome>): Set<string> {
-  return new Set([...outcomes].filter(([, o]) => o.failed).map(([id]) => id));
+/** The first named tool among `events` — a reply's `final_response` names none. */
+function toolOf(events: readonly OutcomeEvent[]): string | null {
+  for (const e of events) {
+    const t = e.payload?.tool;
+    if (typeof t === 'string' && t) return t;
+  }
+  return null;
+}
+
+/** What a thread row says about how its newest turn ended, when that was not fine. */
+export interface RowOutcome {
+  kind: 'failed' | 'denied';
+  tool: string | null;
+}
+
+/**
+ * The thread rows' outcome marks: *Failed* over *Denied* when a turn held both,
+ * since the break is the thing to open the thread for. A turn that went fine
+ * has no entry — the row has nothing to say about it.
+ */
+export function rowOutcomes(outcomes: ReadonlyMap<string, ThreadOutcome>): Map<string, RowOutcome> {
+  const out = new Map<string, RowOutcome>();
+  for (const [id, o] of outcomes) {
+    if (o.failed) out.set(id, { kind: 'failed', tool: o.tool });
+    else if (o.denied) out.set(id, { kind: 'denied', tool: o.tool });
+  }
+  return out;
 }
 
 /**

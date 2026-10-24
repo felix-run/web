@@ -234,8 +234,10 @@ describe('the sidebar', () => {
     expect(waiting.textContent).not.toContain('Current thread');
   });
 
-  it('groups by last activity, and starts Older folded with its count', async () => {
+  it('groups by last activity, and folds Older with its count when chosen', async () => {
     const day = 86_400_000;
+    // The operator's fold; a list this short would otherwise open it (thread-list.test).
+    localStorage.setItem('felix.sidebar.olderOpen', '0');
     mountSidebar({
       threads: [
         { ...thread('now', 'Current thread') },
@@ -326,7 +328,7 @@ describe('the sidebar', () => {
     mountSidebar();
     const section = document.querySelector('[data-slot="thread-list"]') as HTMLElement;
     expect(section.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['shrink!', 'flex-1', 'min-h-0']),
+      expect.arrayContaining(['shrink!', 'flex-auto', 'min-h-[min(16rem,30svh)]']),
     );
     const scroller = section.querySelector('[data-slot="thread-scroll"]') as HTMLElement;
     expect(scroller.className).toContain('overflow-y-auto');
@@ -338,12 +340,20 @@ describe('the sidebar', () => {
   // The workspace and the harness's pages are one region with one scroll, and
   // the sidebar does not scroll as a whole: with a mounted folder, three
   // scrollbars stood side by side and the harness's pages went off the bottom.
-  it('scrolls the workspace and the harness as one region, and the sidebar not at all', () => {
+  it('scrolls the harness’s rows above the workspace, and the sidebar not at all', () => {
     mountSidebar();
     const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
-    expect(lower.className.split(/\s+/)).toEqual(expect.arrayContaining(['overflow-y-auto']));
-    expect(lower.querySelector('[data-slot="workspace-row"]')).toBeTruthy();
-    expect(lower.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
+    const scroll = lower.querySelector('[data-slot="sidebar-lower-scroll"]') as HTMLElement;
+    // A fade at its end while there is more below: an 11px scroll had cut a
+    // section heading off with nothing to say it was there.
+    expect(scroll.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['overflow-y-auto', 'scroll-fade-b']),
+    );
+    expect(scroll.querySelector('nav[aria-label="Harness"]')).toBeTruthy();
+    // The Workspace row is outside the scroll, so it stays on screen and the fade never covers it.
+    const workspace = lower.querySelector('[data-slot="workspace-row"]') as HTMLElement;
+    expect(workspace).toBeTruthy();
+    expect(scroll.contains(workspace)).toBe(false);
     const content = lower.closest('[data-sidebar="content"]') as HTMLElement;
     expect(content.className).toContain('overflow-y-hidden');
   });
@@ -356,19 +366,22 @@ describe('the sidebar', () => {
    * under the pointer. happy-dom lays nothing out, so the rule is pinned by shape;
    * the heights were measured in a browser (8 thread rows at 1456×997, was 4).
    */
-  it('sizes the lower region to its content in harness view, capped at 35svh', () => {
+  /**
+   * Capped at 35svh, the region scrolled by 11px at 1667×997 beside ~250px of
+   * empty list (2026-10-24). Both regions now start at their content, and when
+   * they cannot both fit the lower one gives way first — `shrink-[100]` against
+   * the list's `shrink` — down to its reservation, then the list to its floor.
+   * happy-dom lays nothing out; the shares were measured in a browser.
+   */
+  it('sizes the lower region to its content, giving way to the threads first', () => {
     mountSidebar();
     const classes = (
       document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement
     ).className.split(/\s+/);
     expect(classes).toEqual(
-      expect.arrayContaining(['max-h-[35svh]', 'min-h-[min(35svh,25.5rem)]', 'shrink-0']),
+      expect.arrayContaining(['min-h-[min(35svh,26.25rem)]', 'shrink-[100]!']),
     );
-    expect(classes.some((c) => /^h-\[/.test(c))).toBe(false);
-    expect(classes.join(' ')).not.toMatch(/32\.5rem|30rem/);
-    // The Workspace row stays on screen while the harness's rows scroll under it.
-    const workspace = document.querySelector('[data-slot="workspace-row"]') as HTMLElement;
-    expect(workspace.parentElement?.className).toMatch(/\bsticky\b.*\bbottom-0\b/);
+    expect(classes.some((c) => /^h-\[|^max-h-/.test(c))).toBe(false);
   });
 
   it('starts How it’s set up folded, and lets a remembered choice win', async () => {

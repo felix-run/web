@@ -157,8 +157,10 @@ approvals", "Working", "Checking") it is its dot alone, the sentence still its l
 
 **The sidebar is the one door to every other conversation** (2026-10-02). From top to bottom it holds
 New chat; the threads, grouped as Waiting on you, Running, Pinned, Today, Yesterday, Previous 7 days
-and Older (Older starts folded, showing its count, is cut by month when open, and folded still draws
-the current thread if it is there — never the other fifty — in a group named for it); the Workspace row (`WorkspaceRow` in `src/components/workspace/workspace-section.tsx`);
+and Older (Older opens by default while the groups above it hold fewer than eight rows and folds
+otherwise, the operator's choice remembered in `felix.sidebar.olderOpen`; it is cut by month when
+open, and folded still draws the current thread if it is there — never the other fifty — in a group
+named for it, its count reading *1 of N shown*); the Workspace row (`WorkspaceRow` in `src/components/workspace/workspace-section.tsx`);
 and the nine harness destinations with their glances, grouped by the question each answers
 (*What happened*, *What it knows*, *How it's set up*, `GROUPS`). It replaced three earlier things: a threads
 popover off the workspace header, which had been the *only* way to switch threads; the workspace
@@ -180,11 +182,11 @@ sidebar. The binding is `Mod+\`, and `Mod+K` lands in the thread search. Both wo
 too.
 
 **The sidebar has two scroll regions, one above the other, and does not scroll as a whole**
-(2026-10-08). The thread list is `flex-1 min-h-0` and scrolls its own rows under a heading and
-search that do not scroll; the workspace and the harness's pages are one region below it
-(`data-slot="sidebar-lower"`) with its own `overflow-y-auto`, and one order everywhere: Harness,
-then the workspace, whose row is `sticky bottom-0` so a scrolled region still shows it; and the expanded
-`SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
+(2026-10-08). The thread list scrolls its own rows under a heading and search that do not scroll;
+the harness's pages and the workspace are one region below it (`data-slot="sidebar-lower"`), one
+order everywhere: Harness, whose rows scroll on their own (`sidebar-lower-scroll`, `scroll-fade-b`),
+then the Workspace row outside that scroll, so a scrolled region still shows it and the fade never
+covers it; and the expanded `SidebarContent` is `overflow-y-hidden`. Before the list scrolled at all, an opened Older pushed the
 workspace and the harness's pages fifty rows down. Then the list scrolled but the sidebar did too,
 and on production a mounted folder's file tree — itself a third scroller — put three scrollbars
 side by side, left the list eight rows and pushed the harness's pages off the bottom. The file
@@ -198,23 +200,35 @@ clicked. So the rows no longer change with the address. Each run of destinations
 and a remembered choice winning; the run holding the page on screen is always open, its toggle
 disabled; and arriving on a page in a folded run unfolds it **for the rest of the visit** (state,
 never storage), so leaving the page never folds rows back up under the pointer. The operator's own
-folds are covered by `min-h-[min(35svh,25.5rem)]`, the default layout's height measured at
-1456×997, so folding the whole group leaves the rows where they were. Under ~1170px tall the cap
-is below that and the region is simply 35svh; measured at 1456×997 the thread list went from 4
-full rows to 8. Everyday keeps its fixed `h-[min(40svh,13rem)]`: three rows at most, and a region
-that moved when drafts came and went would be the same bug. `tests/workbench-layout.test.tsx` pins
-the shape and the default fold, `tests/harness-route.test.tsx` the current page's run.
-**A thread row says *Failed*** (2026-10-16) when its newest turn broke — after *Waiting on you* and
-*Running*, which outrank it. `threadOutcomes` (`lib/harness-glances.ts`) reads it off the audit
-read the Activity glance already polls (`useRecentAudit`, one shared key), so the list asks
-nothing per row; a thread outside that read is unmarked, which means unknown, not OK.
+folds are covered by `min-h-[min(35svh,26.25rem)]`, the default layout's height, so folding the
+whole group leaves the rows where they were. **The two regions share the height by what they hold**
+(2026-10-24): the 35svh cap scrolled the region by 11px at 997px tall beside ~250px of empty list.
+Both start at their content (the list is `flex-auto`); when they do not fit, the lower region gives
+way first (`shrink-[100]!`) down to its reservation, then the list down to its floor
+(`min-h-[min(16rem,30svh)]`). A short list leaves the region whole; a long one keeps its rows while
+the region scrolls under its fade. Everyday reserves 7.5rem for the harness rows alone (Activity, and
+Skill drafts while drafts wait), so drafts coming and going move nothing — a fixed `13rem` left
+~117px empty for an agent with no workspace. `tests/workbench-layout.test.tsx` pins the shape and the
+default fold, `tests/harness-route.test.tsx` the current page's run and the everyday rows' missing run
+labels (one row needs no second label).
+**A thread row says *Failed* or *Denied*, and the call** (2026-10-16; denials and the call
+2026-10-24) when its newest turn broke or had a call denied at an approval — after *Waiting on you*
+and *Running*, which outrank both. Denied is muted with no dot (a decision, not a fault).
+`threadOutcomes` → `rowOutcomes` (`lib/harness-glances.ts`) reads it off the audit read the Activity
+glance already polls (`useRecentAudit`, one shared key), so the list asks nothing per row; a thread
+outside that read is unmarked, which means unknown, not OK — so the Threads heading says how far
+back the marks reach (*marks · last 7d*, `glanceWindow`'s span). **A title another row carries adds
+the end of the id** (`thread-id-tail`, outside the line's truncation): the harness titles by a cut
+preview of the first message, which already ends in `…`, so no cut of the title can tell two apart;
+38 of 85 rows on the reference harness shared one.
 **The workspace is one row, and its trees are the side pane's Files tab** (2026-10-12). Even
 folded, a mounted repository's tree held ~880px above the harness's pages when open, and the file
 it opened appeared on the far side of the screen. The row says what is mounted (or *on the
 harness*), carries Reconnect beside it — never inside it — and opens Files; it is not drawn for an
 agent whose `felix.workspace.tools` is `none` (`useWorkspaceTools`, `src/lib/workspace-tools.ts`;
 absent means a harness older than the key, and keeps the browser's folder). The mount itself is
-one store for both surfaces (`src/lib/mount-state.ts`). The list is **one Tab stop** (roving `tabIndex`; arrows, Home/End, → to a row's ⋯ and ← back,
+one store for both surfaces (`src/lib/mount-state.ts`). The list is **one Tab stop** (roving `tabIndex`; arrows and Home/End over the rows and Older's
+toggle, → to a row's ⋯ and ← back,
 Shift+F10 or a right click for the menu, Delete with the toast's undo); Delete lives in the menu,
 not as a one-click icon beside it. **A thread with a run going or something waiting asks before it
 is deleted** — inline, *Stop and delete* / *Keep* — because the abort is immediate and Undo restores

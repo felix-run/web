@@ -343,9 +343,11 @@ describe('the harness address', () => {
       return el as HTMLElement;
     });
     const lower = document.querySelector('[data-slot="sidebar-lower"]') as HTMLElement;
-    expect(lower.firstElementChild).toBe(daily);
+    expect(lower.firstElementChild?.firstElementChild).toBe(daily);
     expect(daily.querySelector('h2')?.textContent).toBe('Harness');
-    expect(daily.textContent).toContain('What happened');
+    // A run of one row is named by the row: no *What happened* over *Activity*.
+    expect(daily.textContent).not.toContain('What happened');
+    expect(screen.getByRole('list', { name: 'What happened' }).textContent).toContain('Activity');
   });
 
   it('does not let a remembered fold hide the destinations on /harness', async () => {

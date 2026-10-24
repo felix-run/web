@@ -25,7 +25,7 @@ import { ThreadList } from '@/components/chat/thread-list';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { WorkspaceRow } from '@/components/workspace/workspace-section';
 import { useRecentAudit } from '@/hooks/use-recent-audit';
-import { failedThreads, threadOutcomes } from '@/lib/harness-glances';
+import { glanceWindow, rowOutcomes, threadOutcomes } from '@/lib/harness-glances';
 import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/shortcuts';
 import { readPins, writePins } from '@/lib/threads';
 import { cn } from '@/lib/utils';
@@ -132,15 +132,21 @@ export const AppSidebar = memo(function AppSidebar() {
   }, [tenantApprovals.pending, blockedThreads]);
 
   /**
-   * Threads whose newest turn failed, from the audit read the Activity glance
-   * already polls — one request for the glance, these marks and the Jobs page.
-   * Off while the list is not drawn (collapsed to icons).
+   * How each thread's newest turn ended when it failed or had a call denied,
+   * from the audit read the Activity glance already polls — one request for the
+   * glance, these marks and the Jobs page — and how far back that read reaches,
+   * which the list says beside its heading. Off while the list is not drawn
+   * (collapsed to icons).
    */
   const recentAudit = useRecentAudit(!collapsed);
-  const failed = useMemo(
-    () => failedThreads(threadOutcomes(recentAudit.data ?? [], Date.now())),
-    [recentAudit.data],
-  );
+  const { outcomes, outcomeSpan } = useMemo(() => {
+    if (!recentAudit.data) return { outcomes: undefined, outcomeSpan: undefined };
+    const now = Date.now();
+    return {
+      outcomes: rowOutcomes(threadOutcomes(recentAudit.data, now)),
+      outcomeSpan: glanceWindow(recentAudit.data, now).span,
+    };
+  }, [recentAudit.data]);
 
   /** Expand, then put the caret in the thread search — the collapsed icons' one job. */
   const openSearch = useCallback(() => {
@@ -264,7 +270,8 @@ export const AppSidebar = memo(function AppSidebar() {
               heldId={onHarness ? threadId : undefined}
               blocked={blocked}
               running={runningThreads}
-              failed={failed}
+              outcomes={outcomes}
+              outcomeSpan={outcomeSpan}
               pinned={pinned}
               onTogglePin={togglePin}
               onSelect={(id) => {
@@ -288,10 +295,14 @@ export const AppSidebar = memo(function AppSidebar() {
             <SidebarSeparator />
             {/* The threads come first. Harness view held this region at a fixed
                 `clamp(40svh,32.5rem,60svh)` — 520px of a 997px window — which left
-                the thread list four rows and scrolled the Workspace row out of
-                sight below the ten destinations. Since 2026-10-16 it is sized by
-                its content and capped at 35svh, scrolling inside itself past that,
-                and *How it's set up* starts folded (`HarnessGroup`).
+                the thread list four rows (until 2026-10-16), then at its content
+                capped at 35svh — which at 997px scrolled the region by 11px beside
+                ~250px of empty list (2026-10-24). Now the two regions share by what
+                they hold. Each starts at its content; when the sidebar cannot hold
+                both, the lower region gives way first (`shrink-[100]`), down to
+                its reservation, and then the thread list (to its own `min-h`). So
+                a short list leaves the harness's rows whole, and a long one keeps
+                its rows while the lower region scrolls under a fade.
 
                 Why that does not bring back the jump that made it fixed: the
                 region once sized to rows that changed **with the address** (two
@@ -302,34 +313,47 @@ export const AppSidebar = memo(function AppSidebar() {
                 leaves it unfolded*, so leaving that page never shrinks the region.
                 What remains is the operator's own fold, and `min-h` covers that:
                 it reserves the default layout's height (both open groups, the
-                folded one's label, Workspace — 25.5rem measured at 1456×997), so
+                folded one's label, Workspace — 25.5rem measured at 1456×997 on
+                2026-10-16, 26.2rem on 2026-10-24 once the rows' labels grew to
+                28px), so
                 folding the whole group leaves the rows where they were rather than
-                dropping the heading the pointer is on. Under ~1170px tall the cap
-                is below the reservation and the region is simply 35svh on every
-                address and fold. Unfolding *How it's set up* on a taller window
+                dropping the heading the pointer is on. Unfolding *How it's set up*
                 grows it once, by at most the difference.
+
+                Everyday the reservation is on the harness's rows alone — Activity,
+                and Skill drafts while drafts wait — so a draft arriving moves
+                nothing, and an agent with no workspace leaves no empty band where
+                the Workspace row would be (a fixed 13rem left ~117px of nothing).
 
                 One order, on every address and in both modes: Harness, then the
                 workspace. It followed the address once, and the row clicked to
-                arrive jumped 142px when the two swapped. The Workspace row sticks
-                to the region's bottom edge, so a scrolled region still shows it.
-                The workspace is one row; its trees are the side pane's Files tab. */}
+                arrive jumped 142px when the two swapped. The harness's rows scroll
+                on their own above the Workspace row, so a scrolled region still
+                shows it, and their bottom edge fades while there is more below:
+                a scroll of a few pixels had cut *How it's set up* off with nothing
+                to say it was there. The workspace is one row; its trees are the
+                side pane's Files tab. */}
             <div
               data-slot="sidebar-lower"
               className={cn(
-                'flex shrink-0 flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
-                // Everyday the rows are three at most — Activity, Skill drafts
-                // while drafts wait, Workspace — so the region is sized for all
-                // three and fixed, so nothing moves when drafts come and go.
-                harnessView ? 'max-h-[35svh] min-h-[min(35svh,25.5rem)]' : 'h-[min(40svh,13rem)]',
+                'flex shrink-[100]! flex-col',
+                harnessView && 'min-h-[min(35svh,26.25rem)]',
               )}
             >
-              {harnessView ? (
-                <HarnessGroup collapsed={false} onNavigate={done} />
-              ) : (
-                <DailyHarnessRows collapsed={false} onNavigate={done} />
-              )}
-              <div className="sticky bottom-0 z-10 mt-auto border-t border-border/60 bg-ground empty:hidden">
+              <div
+                data-slot="sidebar-lower-scroll"
+                className={cn(
+                  'flex-1 scroll-fade-b overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
+                  harnessView ? 'min-h-0' : 'min-h-[7.5rem]',
+                )}
+              >
+                {harnessView ? (
+                  <HarnessGroup collapsed={false} onNavigate={done} />
+                ) : (
+                  <DailyHarnessRows collapsed={false} onNavigate={done} />
+                )}
+              </div>
+              <div className="shrink-0 border-t border-border/60 empty:hidden">
                 <WorkspaceRow collapsed={false} onNavigate={done} />
               </div>
             </div>
@@ -443,7 +467,7 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
       {/* Not rendered while collapsed: the label is faded out there, and a fold
           button nobody can see was still a Tab stop. The rows can't fold then anyway. */}
       {!collapsed && onHarness && (
-        <SidebarGroupLabel asChild>
+        <SidebarGroupLabel asChild className="text-foreground">
           <h2>Harness</h2>
         </SidebarGroupLabel>
       )}
@@ -464,7 +488,9 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
                   return !f;
                 })
               }
-              className="w-full hover:text-foreground"
+              // Ink, like Threads: a section's name, where the runs inside it are
+              // muted. The chevron is the fold's, and dims to say so.
+              className="w-full text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground"
             >
               Harness
               <ChevronRightIcon
@@ -506,7 +532,10 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
                         writeGroupFold(key, next);
                         setGroupFolds((f) => ({ ...f, [key]: next }));
                       }}
-                      className="flex w-full items-center rounded-md px-2.5 pt-1 pb-0.5 text-left outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:hover:text-muted-foreground"
+                      // 28px, a section heading's height: at 23px the row missed
+                      // the 24px target floor (WCAG 2.5.8) and sat flush against
+                      // its neighbours.
+                      className="flex h-7 w-full items-center rounded-md px-2.5 text-left outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:hover:text-muted-foreground"
                     >
                       {label}
                       <ChevronRightIcon
@@ -625,28 +654,23 @@ function DailyHarnessRows({
         ]
       : []),
   ];
-  // Drawn in `HarnessGroup`'s frame, row for row — the heading, each run's
-  // label, the same menu rows — so harness view adds the other destinations
-  // below Activity and moves nothing above it.
+  // Drawn in `HarnessGroup`'s frame — the heading, the same menu rows, a rule
+  // between runs — but without the runs' names: each run here is one row, and
+  // *What happened* over *Activity* was two labels for it (2026-10-24). The row's
+  // own name is the label; the menu takes it from the heading.
   return (
     <SidebarGroup data-slot="daily-harness" className="pt-1">
       {!collapsed && (
-        <SidebarGroupLabel asChild>
+        <SidebarGroupLabel asChild className="text-foreground">
           <h2>Harness</h2>
         </SidebarGroupLabel>
       )}
       {runs.map(({ key, rows }, ri) => (
         <Fragment key={key}>
           {ri > 0 && <SidebarSeparator className="my-1.5" />}
-          {!collapsed && (
-            <p
-              id={`sidebar-daily-${key}`}
-              className="px-2.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
-            >
-              {GROUPS.find((g) => g.key === key)?.label}
-            </p>
-          )}
-          <SidebarMenu aria-labelledby={collapsed ? undefined : `sidebar-daily-${key}`}>
+          <SidebarMenu
+            aria-label={collapsed ? undefined : GROUPS.find((g) => g.key === key)?.label}
+          >
             {rows.map(({ key: rowKey, label, icon: Icon, to, active, glance }) => (
               <SidebarMenuItem key={rowKey} data-slot={rowKey}>
                 <SidebarMenuButton
