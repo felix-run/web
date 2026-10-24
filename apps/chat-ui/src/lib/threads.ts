@@ -213,14 +213,7 @@ export function writePins(ids: Iterable<string>): void {
   }
 }
 
-export type ThreadGroupKey =
-  | 'waiting'
-  | 'running'
-  | 'pinned'
-  | 'today'
-  | 'yesterday'
-  | 'week'
-  | 'older';
+export type ThreadGroupKey = 'pinned' | 'today' | 'yesterday' | 'week' | 'older';
 
 export interface ThreadGroup {
   key: ThreadGroupKey;
@@ -237,16 +230,13 @@ export interface ThreadGroup {
 const DAY_MS = 86_400_000;
 
 /**
- * The sidebar's sections: what is waiting on a person, what is running, then
- * pinned, then by last activity.
+ * The thread list's sections: pinned, then by last activity.
  *
- * State comes before recency because an instrument ranks by state: sorted by
- * date alone, a thread blocked on an approval — or a run kept going after the
- * operator switched away — could sit under a folded Older and say nothing.
- * Waiting first, because it is the one state that asks something of the reader.
- * `waiting` is the shell's tenant-wide `/approvals` poll plus questions this
- * tab's runs are asking, and `running` the runs this tab carries, all by suffix
- * and positive evidence only.
+ * State is not a section here. What is waiting on a person and what is running
+ * are the sidebar's Needs-you band (`needsYouRows`), above the list, so a thread
+ * blocked on an approval cannot sit under a folded Older and say nothing; the
+ * list keeps such a thread in its place by recency, plain, so it can still be
+ * found there. Until 2026-10-24 they were the list's first two groups.
  *
  * The rest is bucketed on `updatedAt` — the last time this client or the harness
  * saw the thread move — against local midnight, so "Today" means the operator's
@@ -258,8 +248,6 @@ export function groupThreads(
   threads: readonly ThreadMeta[],
   pinned: ReadonlySet<string>,
   now: number = Date.now(),
-  waiting: ReadonlySet<string> = new Set(),
-  running: ReadonlySet<string> = new Set(),
 ): ThreadGroup[] {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
@@ -268,8 +256,6 @@ export function groupThreads(
   const week = today - 7 * DAY_MS;
 
   const groups: ThreadGroup[] = [
-    { key: 'waiting', label: 'Waiting on you', threads: [] },
-    { key: 'running', label: 'Running', threads: [] },
     { key: 'pinned', label: 'Pinned', threads: [] },
     { key: 'today', label: 'Today', threads: [] },
     { key: 'yesterday', label: 'Yesterday', threads: [] },
@@ -279,9 +265,7 @@ export function groupThreads(
   const at = (key: ThreadGroupKey) => groups.find((g) => g.key === key)!.threads;
 
   for (const t of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
-    if (waiting.has(t.id)) at('waiting').push(t);
-    else if (running.has(t.id)) at('running').push(t);
-    else if (pinned.has(t.id)) at('pinned').push(t);
+    if (pinned.has(t.id)) at('pinned').push(t);
     else if (t.updatedAt >= today) at('today').push(t);
     else if (t.updatedAt >= yesterday) at('yesterday').push(t);
     else if (t.updatedAt >= week) at('week').push(t);

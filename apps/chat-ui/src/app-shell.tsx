@@ -610,6 +610,10 @@ export function AppShell() {
   const engine = pool.get(threadId);
   /** Threads with a run in flight in this tab, the foreground's included. */
   const poolRuns = useSyncExternalStore(pool.subscribe, pool.runs);
+  const askingThreads = useMemo(
+    () => new Set(poolRuns.questions.map((q) => q.threadId)),
+    [poolRuns.questions],
+  );
   const {
     turns,
     error,
@@ -2954,6 +2958,7 @@ export function AppShell() {
     threadId,
     runningThreads: poolRuns.running,
     blockedThreads: poolRuns.blocked,
+    askingThreads,
     watching,
     driver,
     labels,

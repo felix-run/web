@@ -122,6 +122,12 @@ export interface ShellValue {
    */
   blockedThreads: ReadonlySet<string>;
   /**
+   * Of `blockedThreads`, the ones held on an agent's question rather than an
+   * approval — so the sidebar's Needs-you band can say which it waits on.
+   * Optional: a surface that does not draw the band need not provide it.
+   */
+  askingThreads?: ReadonlySet<string>;
+  /**
    * Another client drives this thread and this tab holds only an observer lease:
    * the composer and every driving action are read-only until the keeper takes
    * the thread over, which it does on its own once the thread is free.

@@ -2,7 +2,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
-  SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
@@ -13,7 +12,7 @@ import {
 } from '@felix/ui/sidebar';
 import {
   ActivityIcon,
-  ChevronRightIcon,
+  type LucideIcon,
   MessagesSquareIcon,
   PlusIcon,
   PuzzleIcon,
@@ -23,6 +22,7 @@ import { Link, useMatch, useNavigate } from 'react-router';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
+import { NeedsYouBand, NeedsYouIcon } from '@/components/needs-you-band';
 import { WorkspaceRow } from '@/components/workspace/workspace-section';
 import { useRecentAudit } from '@/hooks/use-recent-audit';
 import { glanceWindow, rowOutcomes, threadOutcomes } from '@/lib/harness-glances';
@@ -45,17 +45,18 @@ import { useShellPick } from '@/shell-context';
 /**
  * The app sidebar: every door this client has, in one place on both addresses.
  *
- * Top to bottom by how often each is the reason to open it — New chat, then the
- * threads (pinned, then by last activity), then the folder the agent works on,
- * then the harness's own pages — those last in harness view only. Everyday, the
- * sidebar is the daily one: New chat, threads, workspace, and a Skill drafts row
- * that appears only while drafts wait on a review. It replaced three separate ways in: a threads
+ * Top to bottom: New chat; the **Needs-you band** — what is waiting on the
+ * operator, failing jobs, and runs going (`NeedsYouBand`); the threads (pinned,
+ * then by last activity); the harness's own pages, as chips (all ten in harness
+ * view; everyday Activity, and Skill drafts while drafts wait on a review); and
+ * the folder the agent works on. It replaced three separate ways in: a threads
  * popover hung off the workspace header (the only door to another conversation,
  * at any width), the workspace zone itself, and `/harness`'s resident nav rail.
  *
  * Collapsed, it is a column of icons with their names in tooltips, and every
- * section is still one click away: Threads and Workspace expand the sidebar and
- * land where they point, and the harness destinations navigate directly. Below
+ * section is still one click away: the band's icon, Threads and Workspace expand
+ * the sidebar and land where they point, and the harness destinations navigate
+ * directly. Below
  * 1024px it is a drawer instead (`use-rails`), closed on every load.
  */
 export const AppSidebar = memo(function AppSidebar() {
@@ -148,6 +149,8 @@ export const AppSidebar = memo(function AppSidebar() {
     };
   }, [recentAudit.data]);
 
+  const harnessEntries = useHarnessEntries(harnessView, true);
+
   /** Expand, then put the caret in the thread search — the collapsed icons' one job. */
   const openSearch = useCallback(() => {
     setOpen(true);
@@ -217,53 +220,37 @@ export const AppSidebar = memo(function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           {collapsed && (
-            <SidebarMenuItem>
-              {/* One icon for the threads, landing in their search: a second,
-                    "Search threads", did exactly the same thing. Marked when
-                    something is waiting on a thread, so the collapsed column still
-                    says there is a reason to open it. */}
-              <SidebarMenuButton
-                tooltip={`Threads (${shortcutLabel('open-threads', mac)})`}
-                aria-keyshortcuts={ariaShortcut('open-threads', mac)}
-                onClick={openSearch}
-                className="relative"
-              >
-                <MessagesSquareIcon aria-hidden />
-                <span>Threads</span>
-                {/* One dot, the most urgent state: something waiting on a person
-                      before a run merely going. Said as well as drawn. */}
-                {(blocked.size > 0 || runningThreads.size > 0) && (
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'absolute top-1.5 right-1.5 size-1.5 rounded-full',
-                      blocked.size > 0 ? 'bg-state-blocked' : 'bg-state-running',
-                    )}
-                  />
-                )}
-                {blocked.size > 0 ? (
-                  <span className="sr-only">, something is waiting on you on a thread</span>
-                ) : runningThreads.size > 0 ? (
-                  <span className="sr-only">
-                    , {runningThreads.size === 1 ? 'a run is' : `${runningThreads.size} runs are`}{' '}
-                    going
-                  </span>
-                ) : null}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            <>
+              {/* The band, as one icon carrying its most urgent state: what used
+                  to be a dot on Threads, now said by the thing that lists it. */}
+              <NeedsYouIcon onOpen={() => setOpen(true)} />
+              <SidebarMenuItem>
+                {/* One icon for the threads, landing in their search: a second,
+                    "Search threads", did exactly the same thing. */}
+                <SidebarMenuButton
+                  tooltip={`Threads (${shortcutLabel('open-threads', mac)})`}
+                  aria-keyshortcuts={ariaShortcut('open-threads', mac)}
+                  onClick={openSearch}
+                >
+                  <MessagesSquareIcon aria-hidden />
+                  <span>Threads</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </>
           )}
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* Expanded, the content does not scroll as a whole: the thread list takes
-          the height the lower region leaves and scrolls its own rows, and the
-          lower region — the workspace and the harness's pages — scrolls as one
-          below it, capped at 35% of the viewport. When the sidebar scrolled too,
-          a mounted folder's file tree put three scrollbars side by side and
-          pushed the harness's pages off the bottom. */}
+      {/* Expanded, the content does not scroll as a whole: the Needs-you band
+          holds its own rows above everything, the thread list takes the height
+          the lower region leaves and scrolls its own rows, and the lower region
+          — the harness's pages and the workspace — scrolls on its own below it.
+          When the sidebar scrolled too, a mounted folder's file tree put three
+          scrollbars side by side and pushed the harness's pages off the bottom. */}
       <SidebarContent className={cn(!collapsed && 'overflow-y-hidden')}>
         {!collapsed && (
           <>
+            <NeedsYouBand onNavigate={done} />
             <ThreadList
               threads={threads}
               currentId={onHarness ? '' : threadId}
@@ -293,65 +280,44 @@ export const AppSidebar = memo(function AppSidebar() {
               indexStatus={threadIndex}
             />
             <SidebarSeparator />
-            {/* The threads come first. Harness view held this region at a fixed
-                `clamp(40svh,32.5rem,60svh)` — 520px of a 997px window — which left
-                the thread list four rows (until 2026-10-16), then at its content
-                capped at 35svh — which at 997px scrolled the region by 11px beside
-                ~250px of empty list (2026-10-24). Now the two regions share by what
-                they hold. Each starts at its content; when the sidebar cannot hold
-                both, the lower region gives way first (`shrink-[100]`), down to
-                its reservation, and then the thread list (to its own `min-h`). So
-                a short list leaves the harness's rows whole, and a long one keeps
-                its rows while the lower region scrolls under a fade.
+            {/* The threads come first. The region below them held the harness's
+                pages as rows, ten in harness view at ~400px of a 941px window, and
+                every sizing rule here since 2026-10-08 was a way to give the list
+                its height back: a fixed clamp, a 35svh cap, a reservation so a fold
+                never dropped the row under the pointer, folds per run. As chips
+                (2026-10-24) the ten take four or five lines and nothing folds, so
+                the region is its content. When the sidebar cannot hold everything
+                it still gives way before the list (`shrink-[100]`), down to a floor
+                that holds the ten chips whole on a laptop's height, a glance or two
+                wrapping included (18rem, or 35svh
+                on a shorter window), and scrolls under a fade below it; the list keeps its own floor (`min-h` on
+                `ThreadList`'s section).
 
-                Why that does not bring back the jump that made it fixed: the
-                region once sized to rows that changed **with the address** (two
-                harness rows on a thread, ten on `/harness`), so it grew upward on
-                arrival and moved the row just clicked. In harness view the rows no
-                longer depend on the address — the same groups are drawn on every
-                page, and arriving at a page in a folded group unfolds it *and
-                leaves it unfolded*, so leaving that page never shrinks the region.
-                What remains is the operator's own fold, and `min-h` covers that:
-                it reserves the default layout's height (both open groups, the
-                folded one's label, Workspace — 25.5rem measured at 1456×997 on
-                2026-10-16, 26.2rem on 2026-10-24 once the rows' labels grew to
-                28px), so
-                folding the whole group leaves the rows where they were rather than
-                dropping the heading the pointer is on. Unfolding *How it's set up*
-                grows it once, by at most the difference.
-
-                Everyday the reservation is on the harness's rows alone — Activity,
-                and Skill drafts while drafts wait — so a draft arriving moves
-                nothing, and an agent with no workspace leaves no empty band where
-                the Workspace row would be (a fixed 13rem left ~117px of nothing).
+                Everyday the harness's rows are Activity, and Skill drafts while
+                drafts wait, and the region reserves room for both, so a draft
+                arriving moves nothing.
 
                 One order, on every address and in both modes: Harness, then the
                 workspace. It followed the address once, and the row clicked to
-                arrive jumped 142px when the two swapped. The harness's rows scroll
-                on their own above the Workspace row, so a scrolled region still
-                shows it, and their bottom edge fades while there is more below:
-                a scroll of a few pixels had cut *How it's set up* off with nothing
-                to say it was there. The workspace is one row; its trees are the
-                side pane's Files tab. */}
+                arrive jumped 142px when the two swapped. The Workspace row sits
+                outside the harness's scroll, so a scrolled region still shows it
+                and the fade never covers it. The workspace is one row; its trees
+                are the side pane's Files tab. */}
             <div
               data-slot="sidebar-lower"
               className={cn(
                 'flex shrink-[100]! flex-col',
-                harnessView && 'min-h-[min(35svh,26.25rem)]',
+                harnessView && 'min-h-[min(35svh,18rem)]',
               )}
             >
               <div
                 data-slot="sidebar-lower-scroll"
                 className={cn(
-                  'flex-1 scroll-fade-b overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
-                  harnessView ? 'min-h-0' : 'min-h-[7.5rem]',
+                  'min-h-0 flex-1 scroll-fade-b overflow-y-auto overscroll-contain [scrollbar-gutter:stable]',
+                  !harnessView && 'min-h-[6rem]',
                 )}
               >
-                {harnessView ? (
-                  <HarnessGroup collapsed={false} onNavigate={done} />
-                ) : (
-                  <DailyHarnessRows collapsed={false} onNavigate={done} />
-                )}
+                <HarnessChips entries={harnessEntries} asNav={harnessView} onNavigate={done} />
               </div>
               <div className="shrink-0 border-t border-border/60 empty:hidden">
                 <WorkspaceRow collapsed={false} onNavigate={done} />
@@ -361,11 +327,7 @@ export const AppSidebar = memo(function AppSidebar() {
         )}
         {collapsed && (
           <>
-            {harnessView ? (
-              <HarnessGroup collapsed onNavigate={done} />
-            ) : (
-              <DailyHarnessRows collapsed onNavigate={done} />
-            )}
+            <HarnessIcons entries={harnessEntries} asNav={harnessView} onNavigate={done} />
             <WorkspaceRow collapsed onNavigate={done} />
           </>
         )}
@@ -374,336 +336,224 @@ export const AppSidebar = memo(function AppSidebar() {
   );
 });
 
-const HARNESS_FOLD_KEY = 'felix.sidebar.harnessFolded';
-
-function readFolded(): boolean {
-  try {
-    return localStorage.getItem(HARNESS_FOLD_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 type GroupKey = (typeof GROUPS)[number]['key'];
+type Glance = ReturnType<typeof useNavGlances>[string];
 
-/** Each run's own fold, as the operator last left it; a run never chosen is absent. */
-const GROUP_FOLD_KEY = 'felix.sidebar.harnessGroups';
-
-/**
- * Folded until someone opens it: *How it's set up* is visited when something is
- * being configured, not on the way back to a conversation, and its four rows were
- * what pushed the thread list down to four.
- */
-export const GROUP_FOLDED_BY_DEFAULT: Readonly<Record<GroupKey, boolean>> = {
-  happened: false,
-  knows: false,
-  setup: true,
-};
-
-function readGroupFolds(): Record<GroupKey, boolean> {
-  const folds = { ...GROUP_FOLDED_BY_DEFAULT };
-  try {
-    const stored = JSON.parse(localStorage.getItem(GROUP_FOLD_KEY) ?? '{}') as unknown;
-    if (stored && typeof stored === 'object') {
-      for (const { key } of GROUPS) {
-        const v = (stored as Record<string, unknown>)[key];
-        if (typeof v === 'boolean') folds[key] = v;
-      }
-    }
-  } catch {
-    // Unreadable or blocked: the defaults.
-  }
-  return folds;
-}
-
-function writeGroupFold(key: GroupKey, folded: boolean) {
-  try {
-    const stored = JSON.parse(localStorage.getItem(GROUP_FOLD_KEY) ?? '{}') as Record<
-      string,
-      unknown
-    >;
-    localStorage.setItem(GROUP_FOLD_KEY, JSON.stringify({ ...stored, [key]: folded }));
-  } catch {
-    // Storage blocked: the fold lasts for this page.
-  }
+/** One harness page the sidebar points at, with what its glance says. */
+interface HarnessEntry {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  group: GroupKey;
+  to: { pathname: string; search: string };
+  active: boolean;
+  glance: Glance;
 }
 
 /**
- * The harness's ten pages, in the runs `GROUPS` sorts them into. Its glances —
- * failing jobs, recent Activity failures — poll only while the rows are on
- * screen, so a folded section costs nothing.
- *
- * The heading is an `h2`, like Threads and Workspace beside it, so moving by
- * headings does not skip it. On `/harness` it does not fold: there the rows are
- * the page's own navigation, and a fold remembered from the conversation side
- * would arrive with no way to any other page.
- *
- * Each run folds on its own too (`GROUP_FOLDED_BY_DEFAULT`), and the same rule
- * holds one level down: the run holding the page on screen is always open, and
- * its toggle is off while it is. Arriving on a page in a folded run unfolds it
- * for the rest of the visit rather than only while the page is current — so
- * leaving the page never folds rows back up under the pointer that left it.
+ * The harness pages this view points at. In harness view, all ten with their
+ * glances — failing jobs, recent Activity failures, drafts waiting — which poll
+ * only while drawn. Everyday, **Activity**, always: it answers "what happened
+ * while I was away", which is the daily surface's question as much as harness
+ * view's; and **Skill drafts**, only while drafts an agent wrote wait on a
+ * person's review (or while the reader is on Skills, so publishing the last one
+ * does not take the row they are on out of the sidebar). Everyday, a check that
+ * never answered draws nothing, because "unchecked" is a fact about the harness,
+ * which is harness view's to say; a failed check keeps a count it had, with its age.
  */
-function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
-  const [folded, setFolded] = useState(readFolded);
-  const [groupFolds, setGroupFolds] = useState(readGroupFolds);
+function useHarnessEntries(harnessView: boolean, enabled: boolean): HarnessEntry[] {
   const { search } = useHarnessAgent();
-  const onHarness = !!useMatch('/harness/*');
-  // Collapsed to icons, the rows are all there is to the sidebar, so they never fold.
-  const shown = collapsed || onHarness || !folded;
-  // Collapsed too: the icons are on screen, and a failure that vanishes when the
-  // column narrows is an instrument that stops reading.
-  const glance = useNavGlances(shown);
+  const glance = useNavGlances(enabled && harnessView);
+  const activity = useActivityGlance(enabled && !harnessView);
+  const drafts = useDraftGlance(enabled && !harnessView);
   const at = useMatch('/harness/:destination/*')?.params.destination;
-  const atGroup = HARNESS_DESTINATIONS.find((d) => d.path === at)?.group;
-  // Not written to storage: a remembered fold is the operator's, and an arrival
-  // is not them choosing to keep the run open next time.
-  if (atGroup && groupFolds[atGroup]) setGroupFolds((f) => ({ ...f, [atGroup]: false }));
-  const nav = useRef<HTMLElement>(null);
-  useActiveRowInView(nav, collapsed ? undefined : at);
+  if (harnessView) {
+    return HARNESS_DESTINATIONS.map((d) => ({
+      key: d.path,
+      label: d.label,
+      icon: d.icon,
+      group: d.group,
+      to: {
+        pathname: `/harness/${d.path}`,
+        search: navSearch(d.path, search, glance[d.path]),
+      },
+      active: at === d.path,
+      glance: glance[d.path],
+    }));
+  }
+  const quiet = (g: Glance) => (g && g.tone !== 'unknown' ? g : undefined);
+  const entries: HarnessEntry[] = [
+    {
+      key: 'activity',
+      label: 'Activity',
+      icon: ActivityIcon,
+      group: 'happened',
+      to: { pathname: '/harness/activity', search: navSearch('activity', search, quiet(activity)) },
+      active: at === 'activity',
+      glance: quiet(activity),
+    },
+  ];
+  if (drafts?.tone === 'blocked' || at === 'skills') {
+    entries.push({
+      key: 'skill-drafts',
+      label: 'Skill drafts',
+      icon: PuzzleIcon,
+      group: 'knows',
+      to: { pathname: '/harness/skills', search: '' },
+      active: at === 'skills',
+      glance: drafts?.tone === 'blocked' ? drafts : undefined,
+    });
+  }
+  return entries;
+}
 
-  return (
-    <SidebarGroup className="pt-1">
-      {/* Not rendered while collapsed: the label is faded out there, and a fold
-          button nobody can see was still a Tab stop. The rows can't fold then anyway. */}
-      {!collapsed && onHarness && (
-        <SidebarGroupLabel asChild className="text-foreground">
-          <h2>Harness</h2>
-        </SidebarGroupLabel>
-      )}
-      {!collapsed && !onHarness && (
-        <h2>
-          <SidebarGroupLabel asChild>
-            <button
-              type="button"
-              aria-expanded={shown}
-              aria-controls="sidebar-harness"
-              onClick={() =>
-                setFolded((f) => {
-                  try {
-                    localStorage.setItem(HARNESS_FOLD_KEY, f ? '0' : '1');
-                  } catch {
-                    // Storage blocked: the fold lasts for this page.
-                  }
-                  return !f;
-                })
-              }
-              // Ink, like Threads: a section's name, where the runs inside it are
-              // muted. The chevron is the fold's, and dims to say so.
-              className="w-full text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground"
-            >
-              Harness
-              <ChevronRightIcon
-                aria-hidden
-                className={cn(
-                  'ml-auto transition-transform duration-200 ease-out motion-reduce:transition-none',
-                  shown && 'rotate-90',
-                )}
-              />
-            </button>
-          </SidebarGroupLabel>
-        </h2>
-      )}
-      <SidebarGroupContent id="sidebar-harness" hidden={!shown}>
-        <nav ref={nav} aria-label="Harness" onKeyDown={walkNav}>
-          {GROUPS.map(({ key, label }, gi) => {
-            const pinned = atGroup === key;
-            const open = collapsed || pinned || !groupFolds[key];
-            return (
-              <Fragment key={key}>
-                {gi > 0 && <SidebarSeparator className="my-1.5" />}
-                {!collapsed && (
-                  <h3
-                    id={`sidebar-harness-${key}`}
-                    className="text-xs font-medium text-muted-foreground"
-                  >
-                    {/* The run's name is its toggle, as Harness's is: one row the
-                        same height folded or open, pinned or not. Disabled while
-                        the page on screen is in it, never hidden — the label is
-                        what names its list. */}
-                    <button
-                      type="button"
-                      aria-expanded={open}
-                      aria-controls={`sidebar-harness-${key}-rows`}
-                      disabled={pinned}
-                      title={pinned ? 'The page you are on is in this group' : undefined}
-                      onClick={() => {
-                        const next = !groupFolds[key];
-                        writeGroupFold(key, next);
-                        setGroupFolds((f) => ({ ...f, [key]: next }));
-                      }}
-                      // 28px, a section heading's height: at 23px the row missed
-                      // the 24px target floor (WCAG 2.5.8) and sat flush against
-                      // its neighbours.
-                      className="flex h-7 w-full items-center rounded-md px-2.5 text-left outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:hover:text-muted-foreground"
-                    >
-                      {label}
-                      <ChevronRightIcon
-                        aria-hidden
-                        className={cn(
-                          'ml-auto size-3.5 transition-transform duration-200 ease-out motion-reduce:transition-none',
-                          open && 'rotate-90',
-                          pinned && 'opacity-0',
-                        )}
-                      />
-                    </button>
-                  </h3>
-                )}
-                <SidebarMenu
-                  id={`sidebar-harness-${key}-rows`}
-                  hidden={!open}
-                  aria-labelledby={collapsed ? undefined : `sidebar-harness-${key}`}
-                >
-                  {HARNESS_DESTINATIONS.filter((d) => d.group === key).map(
-                    ({ path, label: name, icon: Icon }) => (
-                      <SidebarMenuItem key={path}>
-                        {/* Every row a Tab stop, as links are. Active is read off
-                          the address, so the Chat address marks none of them. */}
-                        <SidebarMenuButton
-                          asChild
-                          isActive={at === path}
-                          tooltip={name}
-                          className="relative text-muted-foreground"
-                        >
-                          <Link
-                            to={{
-                              pathname: `/harness/${path}`,
-                              search: navSearch(path, search, glance[path]),
-                            }}
-                            onClick={onNavigate}
-                            aria-current={at === path ? 'page' : undefined}
-                          >
-                            <Icon aria-hidden />
-                            <span className="min-w-0 flex-1 truncate">{name}</span>
-                            {collapsed ? (
-                              <CollapsedGlance glance={glance[path]} />
-                            ) : (
-                              <NavGlance glance={glance[path]} />
-                            )}
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ),
-                  )}
-                </SidebarMenu>
-              </Fragment>
-            );
-          })}
-        </nav>
-      </SidebarGroupContent>
-    </SidebarGroup>
+/** `entries` in `GROUPS`' order, a run per group that has any. */
+function runsOf(entries: HarnessEntry[]) {
+  return GROUPS.map((g) => ({ ...g, entries: entries.filter((e) => e.group === g.key) })).filter(
+    (g) => g.entries.length > 0,
   );
 }
 
 /**
- * Everyday, the harness pages the sidebar still points at. **Activity**, always:
- * it answers "what happened while I was away", which is the daily surface's
- * question as much as harness view's. **Skill drafts**, only while there is a
- * reason to go — drafts an agent wrote, waiting on a person's review. The other
- * seven are harness view's, on `/harness` too: everyday, the harness is Activity
- * (and a review queue when one waits), not a console.
+ * The harness's pages, expanded: **chips** that wrap, a run per question —
+ * *What happened*, *What it knows*, *How it's set up* — told apart by a hairline
+ * rather than a label (2026-10-24). As rows with a label per run they took ~400px
+ * of a 941px window in harness view, which is why each run folded and *How it's
+ * set up* started folded; as chips the ten take four or five lines, so nothing
+ * folds and nothing is ever out of reach behind a fold. Each run is still a named
+ * list for a reader.
  *
- * A failed check keeps a count it already had (with its age); a check that never
- * answered draws nothing on these rows, because "unchecked" is a fact about the
- * harness, which is harness view's to say.
+ * A glance is a dot and its words on the chip (`1 failing`), never the dot alone.
+ * On `/harness` these are the page's own navigation: the current page's chip is
+ * lifted, as a selected row is, and kept in view.
  */
-function DailyHarnessRows({
-  collapsed,
+function HarnessChips({
+  entries,
+  asNav,
   onNavigate,
 }: {
-  collapsed: boolean;
+  entries: HarnessEntry[];
+  /**
+   * Harness view: the pages are the harness's navigation, a `nav` the arrows
+   * walk. Everyday it is a door or two, a list under the heading — the harness
+   * as a console is harness view's.
+   */
+  asNav: boolean;
   onNavigate: () => void;
 }) {
-  const { search } = useHarnessAgent();
-  const activity = useActivityGlance();
-  const drafts = useDraftGlance();
-  const quiet = (g: typeof activity) => (g && g.tone !== 'unknown' ? g : undefined);
-  const atActivity = !!useMatch('/harness/activity/*');
-  const atSkills = !!useMatch('/harness/skills/*');
-  const runs = [
-    {
-      key: 'happened' as const,
-      rows: [
-        {
-          key: 'activity',
-          label: 'Activity',
-          icon: ActivityIcon,
-          to: { pathname: '/harness/activity', search: navSearch('activity', search, activity) },
-          active: atActivity,
-          glance: quiet(activity),
-        },
-      ],
-    },
-    // Kept while the reader is on the skills page: publishing the last draft
-    // would otherwise take the row they are on out of the sidebar.
-    ...(drafts?.tone === 'blocked' || atSkills
-      ? [
-          {
-            key: 'knows' as const,
-            rows: [
-              {
-                key: 'skill-drafts',
-                label: 'Skill drafts',
-                icon: PuzzleIcon,
-                to: { pathname: '/harness/skills', search: '' },
-                active: atSkills,
-                glance: drafts?.tone === 'blocked' ? drafts : undefined,
-              },
-            ],
-          },
-        ]
-      : []),
-  ];
-  // Drawn in `HarnessGroup`'s frame — the heading, the same menu rows, a rule
-  // between runs — but without the runs' names: each run here is one row, and
-  // *What happened* over *Activity* was two labels for it (2026-10-24). The row's
-  // own name is the label; the menu takes it from the heading.
+  const nav = useRef<HTMLDivElement>(null);
+  useActiveRowInView(nav, entries.find((e) => e.active)?.key);
+  const Frame = asNav ? 'nav' : 'div';
   return (
-    <SidebarGroup data-slot="daily-harness" className="pt-1">
-      {!collapsed && (
-        <SidebarGroupLabel asChild className="text-foreground">
-          <h2>Harness</h2>
-        </SidebarGroupLabel>
-      )}
-      {runs.map(({ key, rows }, ri) => (
-        <Fragment key={key}>
-          {ri > 0 && <SidebarSeparator className="my-1.5" />}
-          <SidebarMenu
-            aria-label={collapsed ? undefined : GROUPS.find((g) => g.key === key)?.label}
-          >
-            {rows.map(({ key: rowKey, label, icon: Icon, to, active, glance }) => (
-              <SidebarMenuItem key={rowKey} data-slot={rowKey}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={active}
-                  tooltip={label}
-                  className="relative text-muted-foreground"
-                >
-                  <Link to={to} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
-                    <Icon aria-hidden />
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {collapsed ? (
-                      <CollapsedGlance glance={glance} />
-                    ) : (
-                      <NavGlance glance={glance} />
+    <SidebarGroup data-slot={asNav ? 'harness-pages' : 'daily-harness'} className="pt-1">
+      <SidebarGroupLabel asChild className="text-foreground">
+        <h2>Harness</h2>
+      </SidebarGroupLabel>
+      <Frame
+        ref={nav}
+        aria-label={asNav ? 'Harness' : undefined}
+        onKeyDown={asNav ? walkNav : undefined}
+      >
+        {runsOf(entries).map((run, i) => (
+          <Fragment key={run.key}>
+            {i > 0 && <SidebarSeparator className="mx-2.5 my-1.5" />}
+            <ul aria-label={run.label} className="flex flex-wrap gap-1">
+              {run.entries.map((e) => (
+                <li key={e.key} data-slot={e.key}>
+                  <Link
+                    to={e.to}
+                    onClick={onNavigate}
+                    aria-current={e.active ? 'page' : undefined}
+                    data-active={e.active || undefined}
+                    className={cn(
+                      'inline-flex h-8 coarse:h-10 max-w-full items-center gap-1.5 rounded-lg px-2.5 text-sm text-muted-foreground outline-none',
+                      'hover:bg-[color-mix(in_oklab,var(--sidebar-accent)_70%,var(--ground))] hover:text-foreground',
+                      'focus-visible:ring-[3px] focus-visible:ring-ring',
+                      'data-active:bg-sidebar-accent data-active:font-semibold data-active:text-foreground data-active:shadow-sheet',
                     )}
+                  >
+                    <span className="shrink-0">{e.label}</span>
+                    {e.glance && <ChipGlance glance={e.glance} />}
                   </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </Fragment>
-      ))}
+                </li>
+              ))}
+            </ul>
+          </Fragment>
+        ))}
+      </Frame>
+    </SidebarGroup>
+  );
+}
+
+/** A chip's glance: the state's dot and its words, the way `NavGlance` says them on a row. */
+function ChipGlance({ glance }: { glance: NonNullable<Glance> }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-xs font-medium">
+      {glance.tone !== 'unknown' && (
+        <span
+          aria-hidden
+          className={cn(
+            'size-1.5 shrink-0 rounded-full',
+            glance.tone === 'failed' ? 'bg-state-failed' : 'bg-state-blocked',
+          )}
+        />
+      )}
+      <NavGlance glance={glance} />
+    </span>
+  );
+}
+
+/**
+ * The harness's pages collapsed to the icon column: a run per question, a rule
+ * between runs, each icon named in its tooltip. Every row a Tab stop, as links are.
+ */
+function HarnessIcons({
+  entries,
+  asNav,
+  onNavigate,
+}: {
+  entries: HarnessEntry[];
+  asNav: boolean;
+  onNavigate: () => void;
+}) {
+  const Frame = asNav ? 'nav' : 'div';
+  return (
+    <SidebarGroup className="pt-1">
+      <Frame aria-label={asNav ? 'Harness' : undefined} onKeyDown={asNav ? walkNav : undefined}>
+        {runsOf(entries).map((run, i) => (
+          <Fragment key={run.key}>
+            {i > 0 && <SidebarSeparator className="my-1.5" />}
+            <SidebarMenu aria-label={run.label}>
+              {run.entries.map(({ key, label, icon: Icon, to, active, glance }) => (
+                <SidebarMenuItem key={key} data-slot={key}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={active}
+                    tooltip={label}
+                    className="relative text-muted-foreground"
+                  >
+                    <Link to={to} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
+                      <Icon aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      <CollapsedGlance glance={glance} />
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </Fragment>
+        ))}
+      </Frame>
     </SidebarGroup>
   );
 }
 
 /**
  * A destination's glance when the column is icons: a dot on the icon when
- * something failed, and the glance's own sentence for a reader. Nothing for a
- * quiet one — a dot that is always there says nothing.
+ * something failed or waits, and the glance's own sentence for a reader. Nothing
+ * for a quiet one — a dot that is always there says nothing.
  */
-function CollapsedGlance({ glance }: { glance: ReturnType<typeof useNavGlances>[string] }) {
+function CollapsedGlance({ glance }: { glance: Glance }) {
   if (!glance || glance.tone === 'unknown') return null;
   return (
     <>
