@@ -89,7 +89,11 @@ neurons but publishes a per-token rate for each model, so the catalog carries th
 day are not subtracted, so spend reads high rather than low.
 
 A manifest that *declares* `limits.max_cost_usd` on a model with no known rates is **refused at
-compile**, pointing at `spec.model.price`. Only a declared cap is refused; an unset one is filled from
+compile**, pointing at `spec.model.price`. The check covers every route the manifest names, the same
+list `auth.outbound.providers` is checked against. The price override reaches only the routes built
+from `spec.model` (fallbacks, vision, escalation, plan/execute, heartbeat, memory capture). Judges, screening, the
+reflect verifier, memory consolidation and fetch extraction build their own client and are billed at
+catalog rates, so they are checked whatever the override says. Only a declared cap is refused; an unset one is filled from
 `DEFAULT_LIMITS`, and refusing on that would break every deployment on an unpriced model over a ceiling the
 author never asked for.
 
