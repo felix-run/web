@@ -194,6 +194,17 @@ describe('the service worker', () => {
     );
   });
 
+  it('never keeps an HTML page as a hashed asset', async () => {
+    network = async () =>
+      new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    const f = fetchEvent('/assets/index-0ld.js');
+    handlers.fetch(f.event);
+    await f.taken();
+    await new Promise((r) => setTimeout(r, 0));
+    const kept = [...stores].filter(([name]) => name.startsWith('felix-assets-'));
+    expect(kept.every(([, store]) => store.size === 0)).toBe(true);
+  });
+
   it('leaves other same-origin files and other origins to the browser', () => {
     for (const path of ['/favicon.svg', '/site.webmanifest']) {
       const f = fetchEvent(path);

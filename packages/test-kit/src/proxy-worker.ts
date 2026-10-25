@@ -61,6 +61,19 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
         expect(upstream).not.toHaveBeenCalled();
       });
 
+      // An existing asset never reaches the Worker, so one that does is a stale build's chunk.
+      // Answered with the SPA's index.html, it was cached as that chunk for a year.
+      it('answers a missing /assets/ file 404, never with the SPA document', async () => {
+        const res = await worker.fetch(
+          new Request('https://app.example.com/assets/index-0ld.js'),
+          env(),
+        );
+        expect(res.status).toBe(404);
+        expect(res.headers.get('cache-control')).toBe('no-store');
+        expect(assets).not.toHaveBeenCalled();
+        expect(upstream).not.toHaveBeenCalled();
+      });
+
       it('strips the /api prefix and preserves the query string', async () => {
         await worker.fetch(new Request(`https://app.example.com/api/audit?limit=5&x=y`), env());
         expect(upstreamCall().url).toBe(`${ORIGIN}/audit?limit=5&x=y`);

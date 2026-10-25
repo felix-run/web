@@ -1,10 +1,25 @@
 # Workers Static Assets response headers (https://developers.cloudflare.com/workers/static-assets/headers/).
 #
+# Every asset response, the SPA document included. `/api/*` is the Worker's and gets none of this:
+# the harness sets its own. HSTS is the zone's, so it covers api.felix.run as well.
+#
+# The policy is report-only until a live session shows no violation in the console. The hash is the
+# theme script inlined in index.html; `tests/headers.test.ts` fails when the two differ, because a
+# stale hash only shows as a blank first paint once the policy is enforced. Styles stay
+# 'unsafe-inline' for the style attributes React and the highlighter write.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), geolocation=(), payment=(), usb=(), microphone=(self)
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-F3z8p+yLJELc0YLG4WId4gXBTAu14vF4lu5v0E+TTbs=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+
 # Everything under /assets/ is named by a hash of its content, so a name never
 # serves two contents: cache it for a year and never revalidate. Without this a
 # browser revalidated every chunk on every load, about 40 conditional requests,
 # until the service worker installed (and always, where there is none).
 # index.html and sw.js are not hashed and keep the platform's default, which
-# revalidates: they are how a deploy reaches anyone.
+# revalidates: they are how a deploy reaches anyone. A name that no longer
+# exists never gets this header: the Worker answers it 404 (worker/index.ts).
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
