@@ -98,7 +98,9 @@ async function asset(request) {
   const cached = await caches.match(request, { cacheName: ASSETS, ignoreVary: true });
   if (cached) return cached;
   const res = await fetch(request);
-  if (res.ok) {
+  // A hashed name answered with HTML is a page standing in for a file that is gone; kept, it
+  // would be served as that file for good.
+  if (res.ok && !res.headers.get('content-type')?.startsWith('text/html')) {
     const copy = res.clone();
     caches.open(ASSETS).then(async (c) => {
       await c.put(request, copy);

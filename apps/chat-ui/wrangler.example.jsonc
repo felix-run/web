@@ -16,5 +16,11 @@
     // Public origin of the self-hosted Python Felix harness.
     "FELIX_ORIGIN": "https://api.felix.run"
   },
-  "routes": [{ "pattern": "make.felix.run", "custom_domain": true }]
+  "routes": [{ "pattern": "make.felix.run", "custom_domain": true }],
+  // Workers Logs: every proxied call's status, so a failure through the proxy is on record.
+  // Invocation logs carry the URL, query string included (a sign-in callback's `code` among
+  // them); wrangler has no switch to redact it, and the code is single-use.
+  "observability": { "enabled": true },
+  "workers_dev": false,
+  "preview_urls": false
 }

@@ -10,5 +10,8 @@
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page"
   },
-  "routes": [{ "pattern": "docs.felix.run", "custom_domain": true }]
+  "routes": [{ "pattern": "docs.felix.run", "custom_domain": true }],
+  "observability": { "enabled": true },
+  "workers_dev": false,
+  "preview_urls": false
 }

@@ -75,6 +75,14 @@ export default {
       });
     }
 
+    // A file that exists is served before this Worker runs, so a hashed name that reaches it does
+    // not exist: an old build's chunk, asked for by a tab opened before a deploy. The SPA fallback
+    // answered it with index.html, and `_headers` cached that HTML under the chunk's name for a
+    // year — the lazy import failed, and kept failing, in that browser and its service worker.
+    if (url.pathname.startsWith('/assets/')) {
+      return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+    }
+
     return env.ASSETS.fetch(req);
   },
 } satisfies ExportedHandler<Env>;
