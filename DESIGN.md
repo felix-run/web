@@ -1021,7 +1021,10 @@ what is live or ran with nobody watching and asks something of the operator, in 
 call in mono (*write_file*), the count (*2 approvals*) or *a question*; approvals that name no
 thread are one row of their own (*no thread*), opening the attention line's queue. Then
 **Failing** (`state-failed`) — a scheduled job whose last firing did not succeed, once per job
-however often it fires, with when it ran, opening Jobs; a disabled job is left out. Then
+however often it fires, with when it ran, opening the Jobs page on that job (`?job=<name>`,
+its runs open and its row in view); a disabled job is left out. The sidebar's own Jobs row says
+nothing of a failing job the band lists — it said `2 failing` under the same two rows — and keeps
+only *unchecked*, which the band cannot say. Then
 **Running** (`state-running`) — a run this tab carries, with its agent. A conversation's failed or
 denied turn is **not** in the band: it was seen by whoever ran it, and stays a mark on its row. Each
 row is a tile like a thread's: the title (a job's name in mono) over the state's dot and word and
@@ -1079,9 +1082,13 @@ in mono (`…c45d57`) outside the line's truncation, so the agent gives way befo
 harness titles a thread by a cut preview of its first message, and on the reference harness 38
 of 85 rows shared one with another. A thread with no title is listed by its id in muted mono,
 cut from the middle. **The current tile sits on
-the sheet's colour** (`sidebar-accent`) with `shadow-sheet` and `aria-current`; a hovered,
+the sheet's colour** (`sidebar-accent`) with `shadow-sheet` and `aria-current`, and — because that
+fill is 1.13:1 against the ground in light and 1.16:1 in dark, under WCAG 1.4.11's 3:1 — **a 2px
+bar of ink** down its leading edge and its title in **semibold** where the others are medium, so
+where you are never rests on colour; a hovered,
 focused or menu-open tile mixes 70% of that colour into the ground. On `/harness` the tab's
-thread is **held**, not current: a 1px `border` outline on the ground — never the current row's
+thread is **held**, not current: a 1px outline in `ring` on the ground (3:1 and over; the `border`
+hairline was not) — never the current row's
 fill, which the active destination wears there — no `aria-current`, and *This tab*
 leading its second line, so the way back is on screen without claiming to be the page. The
 sidebar's own menu rows
@@ -1095,16 +1102,20 @@ context and Export JSONL; then any reason an item is unavailable; then Delete, i
 colour. Deleting a thread with a run going or something waiting asks first, in the row (*Stop and
 delete* / *Keep*); any other delete is immediate and undoable from a toast.
 
-The list is one Tab stop. Arrows, Home and End move between rows and Older's toggle where it sits
-among them, → reaches a row's menu and ← returns, Shift+F10 or a right click opens it, Delete
+The list is one Tab stop. Older's toggle is one place that stop can rest, never a second stop: it
+was one, and with the thread on screen inside a folded Older, Tab from the search reached the
+toggle first. Arrows, Home and End move between rows and Older's toggle where it sits among them, → reaches a row's menu and ← returns, Shift+F10 or a right click opens it, Delete
 deletes. Every row is described by one `sr-only` sentence saying so. A search drops the groups; a row
 whose messages matched shows the words around the match, the match in the foreground.
 
 Collapsed to icons, the column is New chat, **Needs you**, Threads, then the ten destinations (harness view; everyday Activity and Skill drafts), then Workspace, each
 a 36px rounded square. Needs you carries one 6px dot for the most urgent thing it holds
-(waiting, then a failing job, then running) and says all of it to a reader; it expands the sidebar
-onto the band's first row. Threads expands the sidebar and puts the caret in the search field. Jobs and Activity carry a
-`state-failed` dot when their glance reports a failure, Skills a `state-blocked` dot while a draft
+(waiting, then a failing job, then running) and says all of it to a reader; over an approvals list
+it could not refresh it says *not refreshed* with a `state-failed` dot (or its counts *as of 3m
+ago*), and *checking* with a muted dot before the first answer — never *nothing*, the band's own
+rule. It expands the sidebar onto the band's first row. Threads expands the sidebar and puts the caret in the search field. Activity carries a
+`state-failed` dot when its glance reports a failure (Jobs only when its read failed: a failing
+job is the band's), Skills a `state-blocked` dot while a draft
 waits, each with the glance's own sentence for a reader.
 
 ### Debug tab

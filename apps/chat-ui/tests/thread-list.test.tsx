@@ -516,6 +516,65 @@ describe('telling rows apart', () => {
   });
 });
 
+/**
+ * Older's toggle is one place the list's single Tab stop can rest, never a
+ * second stop. With the thread on screen inside a folded Older it was the first
+ * thing Tab reached, and Enter on it folded seventy rows (2026-10-24).
+ */
+describe('Older and the Tab stop', () => {
+  const old = Date.now() - 30 * 86_400_000;
+  const threads = [
+    thread({ id: 'r', title: 'Recent' }),
+    thread({ id: 'o', title: 'Old current', updatedAt: old }),
+    thread({ id: 'p', title: 'Old other', updatedAt: old - 1 }),
+  ];
+
+  it('tabs from the search to the thread on screen, past Older', async () => {
+    localStorage.setItem('felix.sidebar.olderOpen', '0');
+    const { user } = setup({ threads, currentId: 'o' });
+    const older = screen.getByRole('button', { name: /^Older/ });
+    expect(older.tabIndex).toBe(-1);
+    screen.getByRole('searchbox', { name: 'Search threads' }).focus();
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Old current/ }));
+  });
+
+  it('keeps the stop on Older once the reader has left it there', async () => {
+    const { user } = setup({ threads, currentId: 'r' });
+    screen.getByRole('button', { name: /^Recent/ }).focus();
+    await user.keyboard('{ArrowDown}');
+    const older = screen.getByRole('button', { name: /^Older/ });
+    expect(document.activeElement).toBe(older);
+    expect(older.tabIndex).toBe(0);
+    expect(screen.getByRole('button', { name: /^Recent/ }).tabIndex).toBe(-1);
+  });
+});
+
+/**
+ * The current row's fill is 1.13:1 against the ground (light), under WCAG
+ * 1.4.11's 3:1, so it is also marked by an ink bar and a semibold title; the
+ * held row's outline is `--ring`, which holds 3:1, not the `--border` hairline.
+ */
+describe('where am I, without colour', () => {
+  it('marks the current row with a bar and a heavier title, and the held one with a ring-strength outline', () => {
+    setup({
+      threads: [thread({ id: 'a', title: 'Here' }), thread({ id: 'b', title: 'Elsewhere' })],
+      currentId: 'a',
+    });
+    const here = document.querySelector('[data-thread="a"]') as HTMLElement;
+    const there = document.querySelector('[data-thread="b"]') as HTMLElement;
+    expect(here.className).toMatch(/before:bg-foreground/);
+    expect(there.className).not.toMatch(/before:bg-foreground/);
+    expect(here.querySelector('[data-thread-row] span')?.className).toContain('font-semibold');
+    expect(there.querySelector('[data-thread-row] span')?.className).toContain('font-medium');
+    cleanup();
+    setup({ threads: [thread({ id: 'a', title: 'Held' })], currentId: '', heldId: 'a' });
+    expect((document.querySelector('[data-thread="a"]') as HTMLElement).className).toContain(
+      'shadow-[inset_0_0_0_1px_var(--ring)]',
+    );
+  });
+});
+
 /** The list is one Tab stop: three per row put 167 between the search and the workspace. */
 describe('the keyboard', () => {
   const three = [

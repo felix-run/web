@@ -615,7 +615,9 @@ describe('the harness address', () => {
     expect(links.every((a) => a.tabIndex === 0)).toBe(true);
   });
 
-  it('carries failing jobs on the rail, counted as the Jobs page counts them', async () => {
+  // Failing jobs are the Needs-you band's, a row each that opens the job itself;
+  // the sidebar's Jobs row saying `1 failing` under it was the same fact twice.
+  it('carries a failing job in the band, linked to the job, and not on the Jobs row', async () => {
     const base = vi.mocked(fetch).getMockImplementation();
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input);
@@ -634,13 +636,14 @@ describe('the harness address', () => {
     });
     mount('/harness/memory');
     await waitFor(() => {
-      const jobs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].find((a) =>
-        a.getAttribute('href')?.startsWith('/harness/jobs'),
-      );
-      // Shown short; spoken in full, with the label and the count kept apart.
-      expect(jobs?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent).toBe('1 failing');
-      expect(jobs?.querySelector('.sr-only')?.textContent).toBe(', 1 failing');
+      const row = document.querySelector('[data-needs-you-row="job:triage"]');
+      expect(row?.getAttribute('href')).toBe('/harness/jobs?job=triage');
     });
+    expect(document.querySelectorAll('[data-needs-you-row^="job:"]')).toHaveLength(1);
+    const jobs = [...document.querySelectorAll('nav[aria-label="Harness"] a')].find((a) =>
+      a.getAttribute('href')?.startsWith('/harness/jobs'),
+    );
+    expect(jobs?.textContent).toBe('Jobs');
   });
 
   it("says it couldn't check, rather than going blank, when a glance's read fails", async () => {

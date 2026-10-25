@@ -439,7 +439,12 @@ function HarnessGroup({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
   const shown = collapsed || onHarness || !folded;
   // Collapsed too: the icons are on screen, and a failure that vanishes when the
   // column narrows is an instrument that stops reading.
-  const glance = useNavGlances(shown);
+  const read = useNavGlances(shown);
+  // Failing jobs are the Needs-you band's, a row each, at the top of the same
+  // sidebar: a `Jobs · 2 failing` here said it a second time, and collapsed drew
+  // two red dots for one fact. What the band cannot say stays — a read that
+  // failed (`unchecked`) — and the `/harness` rail beside a drawer keeps its own.
+  const glance = read.jobs?.tone === 'failed' ? { ...read, jobs: undefined } : read;
   const at = useMatch('/harness/:destination/*')?.params.destination;
   const atGroup = HARNESS_DESTINATIONS.find((d) => d.path === at)?.group;
   // Not written to storage: a remembered fold is the operator's, and an arrival
