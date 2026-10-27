@@ -35,9 +35,9 @@ createRoot(document.getElementById('root') as HTMLElement).render(
     <ThemeProvider>
       <TooltipProvider delayDuration={300}>
         <ErrorBoundary label="app" fallback={(error) => <AppErrorFallback error={error} />}>
-          {/* The Worker already serves `not_found_handling: single-page-application`,
-              so a deep link to `/t/:threadSuffix` reaches this bundle rather than a
-              404 and no Worker change is needed for these routes. */}
+          {/* The Worker answers every path that is not a file with index.html, so a
+              deep link to `/t/:threadSuffix` reaches this bundle rather than a 404 and
+              no Worker change is needed for these routes. */}
           <RouterProvider router={router} />
         </ErrorBoundary>
         <Toaster />

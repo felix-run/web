@@ -1,7 +1,7 @@
 /**
  * Proxy Worker for the Felix chat UI.
  *
- * Serves the SPA from ASSETS and proxies `/api/*` to the self-hosted Python
+ * Serves the SPA from ASSETS (index.html for any path that is not a file) and proxies `/api/*` to the self-hosted Python
  * Felix harness (`FELIX_ORIGIN`), stripping the `/api` prefix. Same contract
  * as the Vite dev proxy.
  *
@@ -83,6 +83,8 @@ export default {
       return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
     }
 
-    return env.ASSETS.fetch(req);
+    // Any other miss is a route of the SPA (`not_found_handling` is "none", so the platform serves
+    // no fallback of its own): the document, keeping the request's validators for a 304.
+    return env.ASSETS.fetch(new Request(new URL('/', url), { headers: req.headers }));
   },
 } satisfies ExportedHandler<Env>;

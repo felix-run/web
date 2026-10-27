@@ -12,7 +12,9 @@ You own the two proxy Workers in **felix-web** and everything in their wrangler 
 
 They are the only server-side code in this repo. Each one does exactly two things:
 
-1. Serves the built SPA from the `ASSETS` binding (`not_found_handling: single-page-application`).
+1. Serves the built SPA from the `ASSETS` binding — files directly, any other path as `index.html`
+   from the Worker (`not_found_handling: none`; the platform's SPA mode answers navigations before
+   the Worker runs, which turned the `/api/auth/*` sign-in redirect into the SPA).
 2. Proxies `/api/*` to the self-hosted Python harness at `FELIX_ORIGIN`, **stripping the `/api` prefix**.
 
 Felix serves no static assets and sets no CORS headers, so this proxy is what makes a browser

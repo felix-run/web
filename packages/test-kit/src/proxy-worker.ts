@@ -58,6 +58,7 @@ export function describeProxyWorker(label: string, worker: ProxyWorker): void {
         const res = await worker.fetch(new Request('https://app.example.com/threads/42'), env());
         expect(await res.text()).toBe('<!doctype html>');
         expect(assets).toHaveBeenCalledTimes(1);
+        expect(new URL((assets.mock.calls[0] as [Request])[0].url).pathname).toBe('/');
         expect(upstream).not.toHaveBeenCalled();
       });
 
