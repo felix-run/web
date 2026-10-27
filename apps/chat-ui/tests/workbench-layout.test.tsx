@@ -388,6 +388,26 @@ describe('the sidebar', () => {
     expect(screen.queryByRole('button', { name: /^Search threads/ })).toBeNull();
   });
 
+  // The rail hides a label by clipping it to the 36px button, which only works
+  // for a label that can shrink to nothing. The primitive truncates a button's
+  // last span; a label followed by a dot or a spoken sentence is not last, and
+  // "Needs you" wrapped and drew 2px of its N past the icon (2026-10-27).
+  // happy-dom lays nothing out, so what is pinned is the shape.
+  it('lets every label on the collapsed rail shrink out of sight', () => {
+    mountSidebar({}, { open: false });
+    const buttons = document.querySelectorAll('[data-sidebar="menu-button"]');
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      const label = [...button.children].find(
+        (c) => c.tagName === 'SPAN' && !c.hasAttribute('aria-hidden') && !c.matches('.sr-only'),
+      );
+      if (!label || label === button.lastElementChild) continue;
+      expect(label.className.split(/\s+/), button.textContent ?? '').toEqual(
+        expect.arrayContaining(['min-w-0', 'truncate']),
+      );
+    }
+  });
+
   // An agent with no file tools has no workspace to open, expanded or collapsed.
   it('draws no Workspace row for an agent with no file tools', () => {
     const none = {

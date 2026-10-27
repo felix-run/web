@@ -346,7 +346,7 @@ export function NeedsYouIcon({ onOpen }: { onOpen: () => void }) {
         className="relative"
       >
         <InboxIcon aria-hidden />
-        <span>Needs you</span>
+        <span className="min-w-0 flex-1 truncate">Needs you</span>
         {tone && (
           <span
             aria-hidden
