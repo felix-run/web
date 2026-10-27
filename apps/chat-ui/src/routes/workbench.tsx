@@ -13,6 +13,7 @@ import { InstallHint } from '@/components/chat/install-hint';
 import { Message } from '@/components/chat/message';
 import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
+import { ReplyChangesLine } from '@/components/chat/reply-changes-line';
 import { SideAnswerCard } from '@/components/chat/side-answer';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
@@ -22,7 +23,7 @@ import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { landedPaths } from '@/lib/changes';
+import { changesByReply, landedPaths } from '@/lib/changes';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { openInPane, usePaneState } from '@/lib/side-pane';
 import { cn } from '@/lib/utils';
@@ -200,6 +201,13 @@ export function Workbench() {
     () => (streaming && lastUser !== -1 ? landedPaths(turns, lastUser) : new Set<string>()),
     [turns, streaming, lastUser],
   );
+  // Each finished reply's changed files, for the line under it. Read as numbers by
+  // the rows, so a reply whose count did not move keeps its row's memo.
+  const replyChanges = useMemo(() => changesByReply(turns), [turns]);
+  const reviewChanges = useCallback(
+    (from: number, to: number) => openInPane(threadId, { kind: 'changes', from, to }),
+    [threadId],
+  );
   // Stable, for the memoised Inspector: an inline closure redrew it on every frame.
   const closeInspector = useCallback(() => setInspectorOpen(false), [setInspectorOpen]);
   const inRouter = useInRouterContext();
@@ -228,6 +236,9 @@ export function Workbench() {
             )}
             {turns.map((t, i) => {
               const isLast = i === turns.length - 1;
+              // Not while the reply is still being written: the count would climb
+              // under the reader, and a Review mid-run shows half a reply.
+              const reply = streaming && isLast ? undefined : replyChanges.get(i);
               return (
                 // Keyed by position, the message inside by turn: see `TurnItem`.
                 <TurnItem
@@ -255,6 +266,9 @@ export function Workbench() {
                   editTurn={editTurn}
                   labelTurn={labelTurn}
                   rateTurn={rateTurn}
+                  changedFiles={reply?.files ?? 0}
+                  replyFrom={reply?.from ?? 0}
+                  reviewChanges={reviewChanges}
                 />
               );
             })}
@@ -509,9 +523,9 @@ type TurnRowProps = Parameters<typeof TurnRow>[0];
  * which anchors it has handled by DOM element, so a snapshot rebuild that re-mints turn
  * ids must not re-create the rows, or every anchor reads as new and the view jumps.
  */
-const TurnItem = memo(function TurnItem({ index, ...row }: TurnRowProps & { index: number }) {
+const TurnItem = memo(function TurnItem(row: TurnRowProps) {
   return (
-    <ConversationItem id={`turn-${index}`} anchor={row.turn.role === 'user'}>
+    <ConversationItem id={`turn-${row.index}`} anchor={row.turn.role === 'user'}>
       <TurnRow key={row.turn.id} {...row} />
     </ConversationItem>
   );
@@ -527,6 +541,7 @@ const TurnItem = memo(function TurnItem({ index, ...row }: TurnRowProps & { inde
  */
 function TurnRow({
   turn: t,
+  index,
   first,
   isLast,
   continues,
@@ -543,8 +558,13 @@ function TurnRow({
   editTurn,
   labelTurn,
   rateTurn,
+  changedFiles,
+  replyFrom,
+  reviewChanges,
 }: {
   turn: Turn;
+  /** The row's position, which is how a reply's changes are scoped. */
+  index: number;
   first: boolean;
   isLast: boolean;
   continues: boolean;
@@ -562,6 +582,11 @@ function TurnRow({
   editTurn: ShellValue['editTurn'];
   labelTurn: ShellValue['labelTurn'];
   rateTurn: ShellValue['rateTurn'];
+  /** Files the reply this turn ends changed; 0 draws no line. */
+  changedFiles: number;
+  /** Where that reply begins. */
+  replyFrom: number;
+  reviewChanges: (from: number, to: number) => void;
 }) {
   const eventId = t.eventId;
   return (
@@ -592,6 +617,9 @@ function TurnRow({
             }
           : {})}
       />
+      {changedFiles > 0 && (
+        <ReplyChangesLine files={changedFiles} onReview={() => reviewChanges(replyFrom, index)} />
+      )}
       {/* A labelled turn is a restore point, so it says so where it is
           rather than only in the hover-revealed actions. */}
       {drives && eventId && label !== undefined && !streaming && !isLast && (
