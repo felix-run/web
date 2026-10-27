@@ -30,8 +30,8 @@ attacker-influenceable content, and one carries credentials.
   harness trusts (a tenant hint, an auth header supplied by the client) is forwarded unchecked. A
   client-supplied `Authorization` reaching the harness when `FELIX_API_KEY` is unset is worth
   flagging.
-- **SPA fallback.** `not_found_handling: single-page-application` means unknown paths serve
-  `index.html`. Confirm no sensitive path is shadowed and that build output in `dist/` contains no
+- **SPA fallback.** The Worker answers every non-file path outside `/api/*` and `/assets/*` with
+  `index.html` (`not_found_handling` is `none`; the Worker is the fallback). Confirm no sensitive path is shadowed and that build output in `dist/` contains no
   source maps or secrets you didn't intend to publish.
 
 ### 2. The gate decides what the page draws; the harness decides access
