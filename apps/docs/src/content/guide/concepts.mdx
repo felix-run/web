@@ -194,8 +194,8 @@ manifest declares those instead. See [Patterns](/internals/patterns/).
 ## Skill
 
 An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`name`,
-`description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`) and a Markdown
-body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
+`description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`,
+`disable-model-invocation`, `user-invocable`, `argument-hint`) and a Markdown body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
 
 Skills are disclosed progressively. The compiled system prompt carries only the catalog, as an
 `<available_skills>` block of names and descriptions, sorted by name. A skill with
@@ -223,6 +223,49 @@ or an approval refused never counts. Activation only reaches skills in the manif
   budget, is named rather than repeated, and the model is told to activate it again.
 - Activating instructions the conversation already holds answers `already_active` rather than
   sending them again.
+
+The skill tools change nothing outside the conversation's log, so all four are read-only and run in
+[plan mode](/guide/manifest-reference/#specpermissions).
+
+### Running a skill as `/skill-name`
+
+A person runs a skill by sending `/skill-name args` as the last message of their turn. The harness
+then calls `activate_skill` for them before the model's first step, through the same tool round the
+model's calls take: every governance wrapper, approvals with their stream frames, `before_tool`
+hooks and the audit. The call and its result are logged as an assistant turn, as if the model had
+made it. The person's turn is sent as written (`/triage ACME 900`); the body reaches the model as a
+screened tool result, never with the authority of the person's own words.
+
+- **Which turns.** Only a turn a chat route marks as the person's: `POST /chat`, `/chat/stream`,
+  `/v1/chat/completions` and a durable `/chat` run. Only the last message, and only a text-only one.
+  `/name` in a `task` prompt, a plan step, an A2A message, a scheduled job's prompt or a workflow
+  step runs nothing.
+- **Which agents.** Only `react` agents run it.
+- **Which names.** A declared [prompt](/guide/manifest-reference/#slash-commands) of the same name
+  wins, since prompts are expanded before the agent runs. A name that is no skill the person may run
+  is sent as written. The name matches exactly.
+- **Which skills.** Any resolved skill unless its frontmatter sets `user-invocable: false`, which
+  keeps it for the model only. A `disable-model-invocation` skill is runnable by `/name` only where
+  the manifest declares it in `spec.skills`; it still never reaches the model, and an undeclared one
+  stays unavailable to everyone.
+- **Arguments.** What follows the name goes into the body: `$ARGUMENTS` is the whole text,
+  `$ARGUMENTS[N]` and `$N` the Nth argument from 0, split as a shell would (one past the end is
+  empty). A body that never names `$ARGUMENTS` gets `ARGUMENTS: <text>` appended, so they are never
+  dropped. `activate_skill` takes `arguments` (at most 16,000 characters) only on a call the harness
+  made for a person; `arguments` the model passes itself are ignored, and the result says
+  `arguments_ignored`. Running the same skill again with other arguments sends it again rather than
+  answering `already_active`.
+
+`argument-hint` is read as written (`argument-hint: [issue-number]` is the hint `[issue-number]`), and
+[`GET /skills/{manifest}`](/guide/management-api/#skills) reports it with `user_invocable`.
+
+**Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/#specskills) entry
+activates that skill the same way at the start of a conversation, once: a skill the thread has ever
+activated, even one since deactivated, is not activated again. An imported skill nobody adopted is
+never preloaded. Only `react` agents run preloads; any other pattern logs a warning at compile.
+
+Each activation's `skill_activation` audit row records who asked as `by`: `person`, `preload` or
+`model`.
 
 ### Where skills come from
 
