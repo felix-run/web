@@ -1716,7 +1716,9 @@ newest 20 wait at most, for at most a day). The job's run records what happened 
 (waiting for a run to end), `missing`, `screened`, `not_eligible` (nowhere it may go) or `failed`; an
 empty answer records none. An answer over 16,000 characters is cut, and the run history keeps it
 whole. A firing that errors reports that it did not finish, with the run's recorded error. Every
-firing of a recurring task adds its answer, so a short interval grows the conversation quickly.
+firing of a recurring task adds its answer to the conversation, but only the task's newest report
+reaches the model (`metadata.context_key: task_report:<name>`), so a short interval does not grow
+each turn's context.
 
 **Refusals.** Every refusal is a tool result the model reads, `{"error": <code>, "detail": …}`, and
 nothing is written:
