@@ -43,7 +43,7 @@
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "remark-breaks": "^4.0.0",
-    "shiki": "^3.23.0",
+    "shiki": "catalog:",
     "sonner": "catalog:",
     "streamdown": "catalog:",
     "tailwind-merge": "catalog:",

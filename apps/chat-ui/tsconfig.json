@@ -28,6 +28,8 @@
       "@felix/ui/*": ["../../packages/ui/src/*"],
       "@felix/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"],
       "@felix/ui/lib/field": ["../../packages/ui/src/lib/field.ts"],
+      "@felix/ui/lib/highlighter": ["../../packages/ui/src/lib/highlighter.tsx"],
+      "@felix/ui/hooks/*": ["../../packages/ui/src/hooks/*"],
       "@felix/test-kit/*": ["../../packages/test-kit/src/*"]
     }
   },
