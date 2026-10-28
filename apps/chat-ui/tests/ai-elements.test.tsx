@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The AI Elements components are presentational, and nothing in them needs the AI
- * SDK at runtime: the twelve that import from `ai` import *types* only, which the
- * compiler erases. This pins that, so a component that starts calling into the SDK
- * fails here rather than quietly adding it to the bundle — and it shows the
- * mapping a Felix tool call needs, which is the whole of the integration cost.
+ * The vendored AI Elements that are left are presentational, and nothing in them needs the
+ * AI SDK at runtime: `context.tsx` imports a *type* from `ai`, which the compiler erases. This
+ * pins that, so a component that starts calling into the SDK fails here rather than quietly
+ * adding it to the bundle. Every file in the folder is loaded, so one added later is covered.
  */
 
 vi.mock('ai', () => {
@@ -16,42 +17,34 @@ vi.mock('ai', () => {
 
 afterEach(cleanup);
 
+// Vitest runs from the package root; `import.meta.url` is not a file URL under happy-dom.
+const DIR = join(process.cwd(), 'src/components/ai-elements');
+const files = readdirSync(DIR).filter((f) => f.endsWith('.tsx'));
+
 describe('AI Elements without the AI SDK', () => {
-  it('renders a Felix tool call through the tool card, from a plain object', async () => {
-    const { Tool, ToolHeader } = await import('../src/components/ai-elements/tool');
-    // A Felix `ToolCall`, mapped to the shape the header expects: the part type is
-    // `tool-<name>` and the state is the AI SDK's spelling of done / in flight.
-    const call = { name: 'write_file', done: true };
-    render(
-      <Tool>
-        <ToolHeader
-          type={`tool-${call.name}`}
-          state={call.done ? 'output-available' : 'input-available'}
-        />
-      </Tool>,
-    );
-    expect(screen.getByText('write_file')).toBeTruthy();
+  it('holds only the six the app uses', () => {
+    // The rest were deleted on 2026-10-28; shadcn's Trace and Code Block replaced them.
+    expect(files.sort()).toEqual([
+      'checkpoint.tsx',
+      'context.tsx',
+      'controls.tsx',
+      'file-tree.tsx',
+      'prompt-input.tsx',
+      'terminal.tsx',
+    ]);
   });
 
-  it('renders the components that never mention the SDK', async () => {
-    const { Task, TaskTrigger, TaskContent, TaskItem } = await import(
-      '../src/components/ai-elements/task'
-    );
-    const { Sources, SourcesTrigger } = await import('../src/components/ai-elements/sources');
+  it.each(files)('loads %s without the SDK', async (file) => {
+    await expect(import(`../src/components/ai-elements/${file}`)).resolves.toBeTruthy();
+  });
+
+  it('renders the context meter from a plain usage object', async () => {
+    const { Context, ContextTrigger } = await import('../src/components/ai-elements/context');
     render(
-      <>
-        <Task>
-          <TaskTrigger title="Migrate the billing table" />
-          <TaskContent>
-            <TaskItem>Backfill in batches of 500</TaskItem>
-          </TaskContent>
-        </Task>
-        <Sources>
-          <SourcesTrigger count={2} />
-        </Sources>
-      </>,
+      <Context usedTokens={1200} maxTokens={8000}>
+        <ContextTrigger />
+      </Context>,
     );
-    expect(screen.getByText('Migrate the billing table')).toBeTruthy();
-    expect(screen.getByText(/2 sources/i)).toBeTruthy();
+    expect(screen.getByRole('button').textContent).toContain('15');
   });
 });
