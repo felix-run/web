@@ -1047,6 +1047,14 @@ in `apps/tui/CLAUDE.md`, which loads when you work under `apps/tui`.
 directly, resolved via `paths` in each app's `tsconfig.json`. Adding an export means updating the
 package `exports` map *and* the tsconfig `paths` in `apps/chat-ui`.
 
+`@felix/ui` carries shadcn's October 2026 **Trace** (`trace.tsx`) and **Code Block** (`code-block.tsx`,
+with `hooks/use-highlighted-code` and `lib/highlighter`), installed by hand from the radix-nova
+registry: `cn` from `./lib/utils` (not the registry's `cn` package), lucide for its icon
+placeholder, and the collapsible keyed on Radix's `data-state` — the registry's `data-open:` never
+matches under Radix here. The highlighter is Shiki's core with the JavaScript engine and a short
+language table; a language off it renders plain rather than rejecting. `shiki` is a catalog
+version so the package and chat-ui (and streamdown) share one copy.
+
 Because `@felix/ui` lives outside the app root, Tailwind's automatic content detection does not see
 it; `apps/chat-ui/src/index.css` declares `@source "../../../packages/ui/src"` to compensate. Drop
 that line and every utility used *only* inside a primitive (`bg-primary`, the `focus-visible:ring-*`

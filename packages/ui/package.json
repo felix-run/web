@@ -6,8 +6,10 @@
   "description": "Shared React UI primitives (shadcn/ui) for Felix web apps.",
   "exports": {
     "./*": "./src/*.tsx",
+    "./hooks/*": "./src/hooks/*.ts",
     "./lib/utils": "./src/lib/utils.ts",
-    "./lib/field": "./src/lib/field.ts"
+    "./lib/field": "./src/lib/field.ts",
+    "./lib/highlighter": "./src/lib/highlighter.tsx"
   },
   "scripts": {
     "lint": "biome check .",
@@ -23,6 +25,7 @@
     "radix-ui": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "shiki": "catalog:",
     "tailwind-merge": "catalog:"
   },
   "devDependencies": {
