@@ -922,6 +922,11 @@ as something it said itself. The entry lands in the log as `kind: "custom"` with
 `metadata.in_context`. Both Felix clients draw it as a note that names its role and says whether
 the model read it, never as a message from either side.
 
+`metadata` is yours to store and read back, except for what the harness reads to place or render an
+event, which it drops: `event_id` and `parent_id` (the entry always lands at the end of the
+conversation), `attachments` (images reach the model only on a user's own turn, through `/chat`),
+`thinking`, `origin_request` and `pinned`.
+
 To keep only the newest of a series in context (a progress line, a status card), give each entry
 the same `metadata.context_key`: of the in-context entries on the branch sharing a key, only the
 newest reaches the model, and the transcript keeps them all. The key is stored as `client:<key>`,
