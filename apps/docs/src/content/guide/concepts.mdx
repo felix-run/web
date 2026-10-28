@@ -394,7 +394,9 @@ refused or denied call, a non-zero exit, an image, a skill draft, a background c
 always keep their own card, and Harness + debug folds nothing. A `web_search` or `document_search`
 result opens as its sources: each hit's title, linked when it is an http(s) URL, with Raw a click
 away. A `publish_commits` call says under its card where it landed — files, `repo:branch`, the
-commit and whether the branch is new — with a link to the compare page.
+commit and whether the branch is new — with a link to the compare page. A command that failed with a
+Python traceback or a Node stack in its output shows the error and its frames above the raw
+output, innermost first, with frames in installed packages folded into one line.
 
 Where a thread runs is chosen before its first message, in the line under the empty thread's
 greeting. For an agent whose file tools work in the browser, **Mount a folder** (Chrome or Edge on
