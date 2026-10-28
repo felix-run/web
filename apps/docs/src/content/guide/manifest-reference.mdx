@@ -206,7 +206,8 @@ with `["FEL-12", "high"]`. Arguments split like a shell's, so `"two words"` is o
 quote falls back to splitting on whitespace. The name matches regardless of case.
 
 Only a declared name is a command. `/etc/hosts is gone` or `/shrug` on an agent with no such prompt
-is sent as written, and an agent with no `spec.prompts` behaves exactly as before. A command whose
+is sent as written, and an agent with no `spec.prompts` behaves exactly as before. A name that is no
+prompt may still be a skill a person can run ([`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name)); a prompt of the same name wins. A command whose
 prompt expands to nothing is `404 empty_prompt:<name>`. A turn sent as content parts (text beside
 an image) is never a command.
 
@@ -368,7 +369,7 @@ spec:
 | `multi_edit` | `{path, edits: [{old_string, new_string, replace_all}]}` | Up to 50 exact-string edits to one file, applied in order, each to the result of the one before. All land or none do: an edit `edit_file` would refuse refuses them all, and the file is written once, only if it has not changed since it was read. Max 512 KB file; use `edit_file` above that. |
 | `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
 | `glob` | `{pattern, path, max_results}` | Finds files by name: `*` within a name, `**` across folders (`**/*.py`, `src/**/test_*.py`), matched against the whole path under `path`, case-sensitive. Files only, never `.git`; up to 500 results, with `truncated` when there were more or the workspace was too large to walk whole. A `path` that does not exist or is a file is refused; so is a pattern with `..`, a leading `/`, more than 8 `*`/`?` or more than 4 `**`. |
-| `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file` | `{name}`; `read_skill_file` also `{path}` | Bound to the real catalog when `spec.skills` or `spec.skill_authoring.enabled` is set; `read_skill_file` is added whenever any skill tool is. |
+| `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file` | `{name}`; `read_skill_file` also `{path}`; `activate_skill` also `arguments`, honoured only on a person's `/skill-name` | Bound to the real catalog when `spec.skills` or `spec.skill_authoring.enabled` is set; `read_skill_file` is added whenever any skill tool is. Read-only, so they run in plan mode. |
 | `ask_user` | `{question, kind, options, timeout_seconds}` | Asks the person watching the run and waits for the answer. `kind` is `confirm`, `select` (implied by `options`) or `input`; the timeout defaults to 300 s, max 900. Returns `{answered, value}`, or `{answered: false, reason}`. Only a live `/chat/stream` can reach a person, so anywhere else it returns `reason: "no_one_watching"` at once. |
 | `todo_write` | `{todos: [{content, status, active_form?}]}` | The agent's checklist for a task with several steps. Each call replaces the whole list (at most 100 items); `status` is `pending`, `in_progress` (at most one) or `completed`. The session snapshot returns it as `todos`, read off the conversation's current branch — so it survives a reload and follows a rewind or fork — and each write is announced on the stream as `todo_updated`. A write refused by governance changes nothing. |
 | `trigger_event` | none | The event an [inbound trigger](/guide/deploy/#inbound-triggers) started this run for: its type, delivery id and the payload as its sender posted it. Its output is third-party data, screened like an MCP server's; outside a triggered run it returns an error. A trigger's manifest must list it. |
@@ -1263,6 +1264,7 @@ spec:
 | `name` | string | required |
 | `version` | string \| null | `null` |
 | `description` | string \| null | `null` |
+| `preload` | bool | `false` |
 
 A skill is a `SKILL.md` with YAML frontmatter and a Markdown body. The system prompt carries the
 catalog — each skill's name and description — and `activate_skill` returns the body to the model as
@@ -1270,6 +1272,10 @@ instructions. `description` here is not read by the loader (the SKILL.md's own f
 the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
 `skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
 name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
+`preload: true` starts every conversation with the skill activated, once, before the model's first
+step; only `react` agents run it, and an imported skill nobody adopted is never preloaded. A person
+can also run a skill as `/skill-name args` in a chat turn
+([Concepts → running a skill](/guide/concepts/#running-a-skill-as-skill-name)).
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
@@ -2443,7 +2449,7 @@ shown on the session snapshot as `permissionMode`. It applies from the next run.
 | Mode | What the agent may do |
 |---|---|
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
-| `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task` — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
+| `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task`, the skill tools (so a person's `/skill-name` runs) — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
 | `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), [`notify`](#specnotify) or [`save_workflow`](#specworkflow_authoring), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 

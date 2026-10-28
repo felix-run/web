@@ -209,7 +209,7 @@ never the owner's subject. Feedback events name `skill`, `target_version`, `feed
 
 | `event_type` | Emitted | `status` | Payload adds |
 |---|---|---|---|
-| `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `already_active` (activate only: the conversation already holds those instructions), `unknown_skill` | `action`, `skill`, `thread_id`, `tool_call_id` |
+| `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `already_active` (activate only: the conversation already holds those instructions), `unknown_skill` | `action`, `skill`, `thread_id`, `tool_call_id`; `by` on an activation (`person` for a `/skill-name`, `preload` for a manifest's preload, `model`); `library` for a library skill |
 | `skill_draft_saved` | Every save, agent, operator, import or promotion (reason `imported from <source>@<commit>`, or `updated from …` for an update) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
 | `skill_published` | A publish | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rolled_back` | A rollback | `ok`, `blocked` | `previous`, or `reasons` when blocked |

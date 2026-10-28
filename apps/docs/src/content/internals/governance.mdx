@@ -349,6 +349,14 @@ itself, which the schema allows only behind an approvals rule that gates every `
 approved by a person before it was saved. An agent's edit of a version an operator wrote is never
 published automatically, whatever the mode.
 
+A person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) and a manifest's
+`preload` are `activate_skill` calls the harness makes before the model's first step, through the
+same tool round as the model's, so every wrapper applies. What such a call may do that the model's
+may not — reach a `disable-model-invocation` skill the manifest declares, pass `arguments` — is
+granted by a call id the harness mints, good once and only while that round runs. Only a turn a chat
+route marks as the person's is read for `/name`, so a model cannot write one into a `task` prompt
+or plan step to run a skill hidden from it.
+
 `create_skill` and `update_skill` are trusted local tools and are not content-screened by default;
 their output is the library's own JSON. What they *save* is scanned on save and again on publish,
 and their approval preview is the SKILL.md the harness renders from the arguments, so an approver
