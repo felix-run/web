@@ -199,6 +199,7 @@ export {
   titleFromText,
   UNTITLED_THREAD_TITLE,
 } from './session-log';
+export { parseStackTrace, type StackFrame, type StackTrace } from './stack-trace';
 export { parseTabular, type Tabular } from './tabular';
 export { formatElapsed, relativeTime } from './time';
 export { classifyToolResult, type ToolResultIssue } from './tool-results';

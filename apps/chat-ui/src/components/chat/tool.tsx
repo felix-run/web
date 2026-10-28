@@ -3,6 +3,7 @@ import {
   fileToolOp,
   parsePublishResult,
   parseSearchHits,
+  parseStackTrace,
   parseTabular,
   subagentOf,
   summarizeToolArgs,
@@ -22,7 +23,7 @@ import {
 } from 'lucide-react';
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
-import { HighlightedCode } from '@/components/highlighted-code';
+import { HighlightedCode, stripAnsi } from '@/components/highlighted-code';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { type DenialRecord, denialSubject } from '@/lib/denials';
 import { clockTime } from '@/lib/format';
@@ -31,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { useOptionalShellPick } from '@/shell-context';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
+import { StackTraceView } from './stack-trace';
 import { PublishLine, ToolSources } from './tool-sources';
 import { ToolTable } from './tool-table';
 import { DebugId } from './turn-debug';
@@ -677,6 +679,14 @@ function shellStatus(r: ShellResult): { label: string; failed: boolean } {
  */
 function ShellOutput({ result: r }: { result: ShellResult }) {
   const status = shellStatus(r);
+  // Read only off a command that failed: a passing test run prints the stacks it expected.
+  const trace = useMemo(
+    () =>
+      status.failed
+        ? (parseStackTrace(stripAnsi(r.stderr)) ?? parseStackTrace(stripAnsi(r.stdout)))
+        : null,
+    [status.failed, r.stderr, r.stdout],
+  );
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs">
@@ -693,6 +703,7 @@ function ShellOutput({ result: r }: { result: ShellResult }) {
         )}
         {r.cwd && <span className="text-muted-foreground">in {r.cwd}</span>}
       </div>
+      {trace && <StackTraceView trace={trace} cwd={r.cwd} />}
       <Stream label="stdout" text={r.stdout} sayEmpty />
       <Stream label="stderr" text={r.stderr} />
       {r.truncated && (

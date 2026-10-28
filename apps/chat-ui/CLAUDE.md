@@ -663,14 +663,19 @@ line cannot wrap the count under it at 390px. `ai-elements/plan.tsx` and `code-b
   zero. Titles and snippets are third-party text; only an http(s) URL (`httpUrl`) is a link.
 - **A publish says where it landed** (`PublishLine`, outside the fold), from
   `parsePublishResult`. The result carries no diff — that is only in the approval's preview.
+- **A failed command's stack trace** (`StackTraceView`, `components/chat/stack-trace.tsx`),
+  above its streams, from `parseStackTrace` (`@felix/client`): CPython's last traceback or a V8
+  stack of two frames or more, innermost first, paths relative to the command's `cwd`, runs of
+  library frames (`site-packages`, `node_modules`, `node:`) folded. Only for a failed command —
+  a passing test run prints the stacks it expected — and the raw streams stay below.
 The Subagent pattern was not built: the card already names the child and its state, and the
 child's own calls never reach the parent's stream, which is the pattern's content.
 
 Two traps found on the way: `shiki` is
 pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` (since
 removed) was CommonJS whose default import Vite's dev bundle resolved to the module object — the
-app crashed on opening any shell result while every test passed. StackTrace
-stays unused: harness tool errors are `[tool error/<code>] message`, with no frames to parse. **Watch
+app crashed on opening any shell result while every test passed. A harness
+tool error is `[tool error/<code>] message`, with no frames; the stack traces are in shell output. **Watch
 the main chunk when wiring one in**: `context.tsx` imported `tokenlens` for its cost line and
 the (since deleted) `plan.tsx` rendered through the `motion`-based `Shimmer`, and between them the entry chunk grew
 ~290 KB for a price this app never shows and an animation the CSS `shimmer` utility already does.
