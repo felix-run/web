@@ -200,3 +200,40 @@ describe('a delete approval', () => {
     expect(screen.getByText('No such file: nothing would be deleted')).toBeTruthy();
   });
 });
+
+/**
+ * A tool whose arguments are a reference — `publish_commits` takes a branch and a sha, not the
+ * files — carries a harness-written `preview`, and the card is the only place it is read before
+ * commits are published as the person. Inside the arguments it was one JSON string: the whole
+ * diff on one escaped line, under no headline, since the summary's JSON fallback is dropped.
+ */
+describe('a call with a harness preview', () => {
+  const SHA = 'a'.repeat(40);
+  const PREVIEW = [
+    `publish ${SHA} to acme/widgets:felix/fix-crash (new branch from ${'b'.repeat(40)})`,
+    '1 local commit(s), published as one:',
+    '  Fix the crash on empty input',
+    '',
+    ' src/app.ts | 2 +-',
+    'diff --git a/src/app.ts b/src/app.ts',
+  ].join('\n');
+  const args = { branch: 'felix/fix-crash', head_sha: SHA, preview: PREVIEW };
+
+  it('leads with what approving does, and shows the diff with its line breaks', () => {
+    render(<ApprovalDecision toolName="publish_commits" args={args} onDecide={vi.fn()} />);
+    expect(screen.getByText(PREVIEW.split('\n')[0] as string)).toBeTruthy();
+    const pane = screen.getByText('What approving does').nextElementSibling as HTMLElement;
+    expect(pane.textContent).toContain('Fix the crash on empty input\n\n src/app.ts | 2 +-');
+    // The rest of the arguments, without the preview repeated inside them.
+    const argsPane = screen.getByText('Arguments').nextElementSibling as HTMLElement;
+    expect(argsPane.textContent).toContain('"branch": "felix/fix-crash"');
+    expect(argsPane.textContent).not.toContain('preview');
+  });
+
+  it('approves the call as it was asked, preview and all', () => {
+    const onDecide = vi.fn();
+    render(<ApprovalDecision toolName="publish_commits" args={args} onDecide={onDecide} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Approve/ }));
+    expect(onDecide).toHaveBeenCalledWith('approved', undefined);
+  });
+});

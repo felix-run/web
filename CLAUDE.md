@@ -656,6 +656,12 @@ Flows worth knowing before editing the app:
   The rule path now sends `reason` too — the manifest rule's `description`, so a banner can say
   `Confirm writes to the workspace` rather than only `workspace-write`. The `/approvals` row still
   carries none, so it is frame-only and stays optional.
+  **A call with a harness `preview` is read through it** (`previewOf` in
+  `approval-decision.tsx`, 2026-10-27): `publish_commits` passes a sha, not the files, so its
+  approval was a JSON string holding the whole diff on one escaped line, under no headline (the
+  summary's JSON fallback is dropped). The preview's first line is now the headline, the rest a
+  pane of its own, the other arguments apart. `branch_prefix` already keeps it off the base
+  branch, so the card needs no protected-branch warning.
   **There is a third answer besides yes and no.** `edited_args` on the decision approves a
   *modified* call and the harness takes it — verified end to end on 2026-09-11, with the client's
   exact payload: the model asked to write `notes.txt`, the decision substituted a different path and
