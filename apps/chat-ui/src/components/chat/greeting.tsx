@@ -1,6 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import { CutId } from '@/components/cut-id';
-import { getMountLabel } from '@/lib/cowork';
+import { GreetingRepo } from '@/components/workspace/thread-repo';
+import { getSession, subscribeCredentials } from '@/lib/auth';
+import { getMountLabel, supportsDirectoryPicker } from '@/lib/cowork';
+import { mountFolder, reconnectFolder, useMount } from '@/lib/mount-state';
 import { cn } from '@/lib/utils';
 import { inBrowser, onHarness } from '@/lib/workspace-tools';
 import { useShell } from '@/shell-context';
@@ -19,10 +22,19 @@ import { StarterPrompts } from './starter-prompts';
  * Only what the client holds is read out; a fact it would have to guess at (the
  * manifest's tool list, which is not fetched until a run reports it) is left out
  * rather than approximated.
+ *
+ * Where the thread runs is also *chosen* here, because this is the one moment the
+ * choice is cheap: before the first message. The Folder line mounts one (or
+ * reconnects last session's), and an agent whose tools work on the harness gets a
+ * Repository line that opens one of the person's repositories for this thread. The
+ * line goes with the greeting at the first send; Files has the same controls after.
  */
 export function Greeting({ manifest, blocked = false }: { manifest: string; blocked?: boolean }) {
   const { threadId, harnessReachable, manifestEntries } = useShell();
-  const folder = useMountLabel();
+  const mount = useMount();
+  // The polled label covers a mount made elsewhere; the store's is at once after a click here.
+  const folder = useMountLabel() ?? mount.label;
+  const canMount = supportsDirectoryPicker();
   // The manifest's own words, when it has them (`metadata.greeting`); each half
   // falls back on its own, so a manifest can change the headline and keep the
   // sentence that names the agent.
@@ -80,8 +92,8 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
                   <>
                     You&apos;re chatting with{' '}
                     <span className="font-medium text-foreground">{manifest}</span>. No folder is
-                    mounted, so its file tools work in this tab&apos;s own storage; mount one from
-                    Workspace in the sidebar to work on yours.
+                    mounted, so its file tools work in this tab&apos;s own storage
+                    {canMount ? '; mount one below to work on yours.' : '.'}
                   </>
                 ) : (
                   <>
@@ -107,11 +119,23 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
         {inBrowser(tools) ? (
           <div className="flex min-w-0 gap-1.5">
             <dt>Folder</dt>
-            <dd className="truncate">
+            <dd className="flex min-w-0 gap-1.5">
               {folder ? (
-                <span className="font-mono text-foreground">{folder}</span>
+                <span className="truncate font-mono text-foreground">{folder}</span>
               ) : (
-                'none mounted'
+                <>
+                  <span>none mounted</span>
+                  {/* Each opens the browser's own prompt, which needs this click. A
+                      browser without the directory picker offers neither: Files says
+                      why, where there is room to. */}
+                  {mount.reconnect ? (
+                    <ReadoutAction onClick={() => void reconnectFolder()}>
+                      Reconnect {mount.reconnect}
+                    </ReadoutAction>
+                  ) : canMount ? (
+                    <ReadoutAction onClick={() => void mountFolder()}>Mount a folder</ReadoutAction>
+                  ) : null}
+                </>
               )}
             </dd>
           </div>
@@ -121,6 +145,10 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
             <dd>on the harness</dd>
           </div>
         ) : null}
+        {onHarness(tools) && (
+          // Its own component decides whether to draw: only for a GitHub sign-in.
+          <RepositoryLine threadId={threadId} />
+        )}
         <div className="flex min-w-0 gap-1.5">
           <dt>Thread</dt>
           {/* Cut from the middle, like every id that tells rows apart: the tail
@@ -163,4 +191,31 @@ export function useMountLabel(): string | null {
 function subscribeMount(onChange: () => void): () => void {
   const id = window.setInterval(onChange, 1000);
   return () => window.clearInterval(id);
+}
+
+/** An action inside the readout: the line's own size and colour, marked by its underline. */
+function ReadoutAction({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:py-1"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The Repository line, only for a person whose sign-in can clone one. */
+function RepositoryLine({ threadId }: { threadId: string }) {
+  const session = useSyncExternalStore(subscribeCredentials, getSession);
+  if (!session?.login) return null;
+  return (
+    <div className="flex min-w-0 gap-1.5">
+      <dt>Repository</dt>
+      <dd className="flex min-w-0 gap-1.5">
+        <GreetingRepo threadId={threadId} />
+      </dd>
+    </div>
+  );
 }

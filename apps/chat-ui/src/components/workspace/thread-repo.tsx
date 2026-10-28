@@ -242,7 +242,79 @@ function RepoStatus({
  * user token sees only that intersection, so a repository missing here is one the App is not
  * installed on — which is what the install link at the foot is for.
  */
-function RepoPicker({ onOpen }: { onOpen: (fullName: string) => Promise<void> }) {
+/**
+ * The empty thread's say in where it runs: a repository on the harness, chosen before
+ * the first message rather than found in Files once the conversation is under way.
+ * For the readout under the greeting, which is drawn only while the thread is empty —
+ * so this asks the harness nothing until it is used: the open is the click's, and only
+ * then does it read the clone's progress (a page load must not ask about a thread no
+ * message has made). Once the thread has a turn, Files' `ThreadRepoSection` takes over.
+ *
+ * Nothing for a person not signed in with GitHub: the clone acts as them.
+ */
+export function GreetingRepo({ threadId }: { threadId: string }) {
+  const session = useSyncExternalStore(subscribeCredentials, getSession);
+  const [repo, setRepo] = useState<ThreadRepo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // A clone finishes in the background: ask until it says how it went.
+  useEffect(() => {
+    if (repo?.state !== 'cloning') return;
+    const id = window.setTimeout(async () => {
+      try {
+        setRepo(await getThreadRepo(threadId));
+      } catch (err) {
+        setError(refusalText(err));
+      }
+    }, CLONING_POLL_MS);
+    return () => window.clearTimeout(id);
+  }, [repo, threadId]);
+  if (!session?.login) return null;
+  return (
+    <>
+      {repo ? (
+        <span className="truncate">
+          <span className="font-mono text-foreground">{repo.repo}</span>
+          {repo.state === 'cloning'
+            ? ' · cloning…'
+            : repo.state === 'failed'
+              ? ' · the clone failed'
+              : repo.branch
+                ? ` · ${repo.branch}`
+                : ''}
+        </span>
+      ) : (
+        <>
+          <span>none</span>
+          <RepoPicker
+            inline
+            onOpen={async (fullName) => {
+              setError(null);
+              try {
+                setRepo(await openThreadRepo(threadId, fullName));
+              } catch (err) {
+                setError(refusalText(err));
+              }
+            }}
+          />
+        </>
+      )}
+      {error && (
+        <span role="alert" className="text-state-failed">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+function RepoPicker({
+  onOpen,
+  inline = false,
+}: {
+  onOpen: (fullName: string) => Promise<void>;
+  /** A link-weight trigger for a line of text (the empty thread's readout), not a block button. */
+  inline?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [listing, setListing] = useState<GitHubRepos | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -270,9 +342,18 @@ function RepoPicker({ onOpen }: { onOpen: (fullName: string) => Promise<void> })
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 w-full text-xs">
-          Open a repository
-        </Button>
+        {inline ? (
+          <button
+            type="button"
+            className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:py-1"
+          >
+            Open a repository
+          </button>
+        ) : (
+          <Button variant="outline" size="sm" className="h-7 w-full text-xs">
+            Open a repository
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         align="start"

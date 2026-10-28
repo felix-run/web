@@ -1,7 +1,8 @@
 /** @vitest-environment happy-dom */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Greeting } from '../src/components/chat/greeting';
+import { resetMountState } from '../src/lib/mount-state';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
 /**
@@ -13,15 +14,50 @@ import { ShellProvider, type ShellValue } from '../src/shell-context';
  * card shows the prompt it sends, and the click sends exactly that.
  */
 
-const fs = vi.hoisted(() => ({ label: null as string | null }));
+const fs = vi.hoisted(() => ({ label: null as string | null, picker: false }));
 vi.mock('../src/lib/cowork', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/cowork')>()),
   getMountLabel: () => fs.label,
+  supportsDirectoryPicker: () => fs.picker,
+  pickDirectory: async () => {
+    fs.label = 'notes';
+    return 'notes';
+  },
+  restoreMount: async () => ({ status: 'none' }),
+}));
+
+const github = vi.hoisted(() => ({ session: null as { login: string } | null }));
+vi.mock('../src/lib/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/auth')>()),
+  getSession: () => github.session,
+  subscribeCredentials: () => () => {},
+}));
+
+const repos = vi.hoisted(() => ({
+  listMyRepos: vi.fn(async () => ({
+    repositories: [{ full_name: 'acme/widgets', private: false, archived: false, can_write: true }],
+    truncated: false,
+    install_url: null,
+  })),
+  openThreadRepo: vi.fn(async (_thread: string, full: string) => ({
+    state: 'cloning',
+    repo: full,
+    branch: null,
+  })),
+  getThreadRepo: vi.fn(),
+}));
+vi.mock('../src/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/api')>()),
+  ...repos,
 }));
 
 afterEach(() => {
   cleanup();
   fs.label = null;
+  fs.picker = false;
+  github.session = null;
+  resetMountState();
+  vi.clearAllMocks();
 });
 
 function mount(over: Partial<ShellValue> = {}, manifest = 'cowork', blocked = false) {
@@ -197,5 +233,55 @@ describe('the empty thread', () => {
   it('says a send will fail while the harness is unreachable', () => {
     mount({ harnessReachable: false });
     expect(screen.getByText(/unreachable/).className).toMatch(/text-state-failed/);
+  });
+});
+
+/**
+ * Where the thread runs is chosen in the readout, before the first message — the one
+ * moment that choice is cheap. The readout goes with the greeting at the first send.
+ */
+describe('choosing where the thread runs', () => {
+  const agent = (tools: string) =>
+    ({
+      manifestEntries: [{ id: 'cowork', workspace: { tools, scope: 'thread' } }],
+    }) as unknown as Partial<ShellValue>;
+
+  it('mounts a folder from the readout where the browser can', async () => {
+    fs.picker = true;
+    mount(agent('client'));
+    fireEvent.click(screen.getByRole('button', { name: 'Mount a folder' }));
+    await waitFor(() => expect(screen.getByText('notes')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Mount a folder' })).toBeNull();
+  });
+
+  it('offers no mount, and does not promise one, where the browser cannot', () => {
+    mount(agent('client'));
+    expect(screen.queryByRole('button', { name: 'Mount a folder' })).toBeNull();
+  });
+
+  it('has no Repository line without a GitHub sign-in, and asks nothing', () => {
+    mount(agent('server'));
+    expect(screen.queryByText('Repository')).toBeNull();
+    expect(repos.listMyRepos).not.toHaveBeenCalled();
+  });
+
+  it('opens a repository for this thread before its first message', async () => {
+    github.session = { login: 'octo' };
+    mount(agent('server'));
+    expect(screen.getByText('Repository')).toBeTruthy();
+    // Nothing is asked of the harness on load: the thread has no message yet.
+    expect(repos.getThreadRepo).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Open a repository' }));
+    fireEvent.click(await screen.findByRole('button', { name: /acme\/widgets/ }));
+    await waitFor(() =>
+      expect(repos.openThreadRepo).toHaveBeenCalledWith('a1b2c3', 'acme/widgets'),
+    );
+    expect(await screen.findByText(/cloning/)).toBeTruthy();
+  });
+
+  it('has no Repository line for an agent whose tools work only in the browser', () => {
+    github.session = { login: 'octo' };
+    mount(agent('client'));
+    expect(screen.queryByText('Repository')).toBeNull();
   });
 });
