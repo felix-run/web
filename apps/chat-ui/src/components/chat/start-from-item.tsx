@@ -112,11 +112,19 @@ export function StartFromItem({ repo }: { repo: string }) {
         )}
         {listing && (
           <>
+            {/* Said before the list, so an empty or short one is not read as "no issues here". */}
+            {pullsOnly(listing) && (
+              <p className="text-xs text-muted-foreground">{pullsOnly(listing)}</p>
+            )}
             {listing.items.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                {filter.trim()
-                  ? 'No open issue or pull request has that in its title.'
-                  : 'No open issues or pull requests.'}
+                {pullsOnly(listing)
+                  ? filter.trim()
+                    ? 'No open pull request has that in its title.'
+                    : 'No open pull requests.'
+                  : filter.trim()
+                    ? 'No open issue or pull request has that in its title.'
+                    : 'No open issues or pull requests.'}
               </p>
             ) : (
               <ul
@@ -156,6 +164,18 @@ export function StartFromItem({ repo }: { repo: string }) {
       </PopoverContent>
     </Popover>
   );
+}
+
+/** Why the list holds pull requests only, or null when issues were listed too. */
+export function pullsOnly(listing: RepoItems): string | null {
+  switch (listing.issue_access) {
+    case 'disabled':
+      return 'Pull requests only: issues are turned off for this repository.';
+    case 'forbidden':
+      return "Pull requests only: the GitHub App can't read this repository's issues.";
+    default:
+      return null;
+  }
 }
 
 /**
