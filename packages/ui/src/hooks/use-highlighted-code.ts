@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { type LineHighlighter, loadHighlighter } from '../lib/highlighter';
+import type { LineHighlighter } from '../lib/highlighter';
 
 type Done = {
   highlighter: LineHighlighter | null;
@@ -26,7 +26,10 @@ export function useHighlightedCode(value: string, language: string): React.React
 
   React.useEffect(() => {
     let cancelled = false;
-    loadHighlighter(language)
+    // Imported here, not at the top: Shiki's core and its regex engine are ~50 kB gzipped, and a
+    // static import put them in the first load of every page that can draw a code block.
+    import('../lib/highlighter')
+      .then((m) => m.loadHighlighter(language))
       .then((next) => {
         if (!cancelled) setLoaded({ language, highlighter: next });
       })

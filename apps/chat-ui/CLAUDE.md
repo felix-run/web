@@ -596,8 +596,9 @@ honours and the build never makes, so `loadMathPlugins` loads it with the plugin
 stylesheet nothing hides the MathML, and every formula is followed by a plain-text copy.
 `tests/response.test.tsx` pins the markup, the order, the sanitizing and the refused `\href`; the
 stylesheet only by reading the source, because CSS imports are stubbed under Vitest. Shiki
-is the same kind of fix, simpler: `ai-elements/code-block.tsx` imports it inside the highlighter
-it already created asynchronously, rather than at the top of the module.
+is the same kind of fix, simpler: `useHighlightedCode` (`@felix/ui`) imports the highlighter
+module inside its effect, not at the top — a static import put Shiki's core and its regex engine
+(~50 kB gzipped) in the first load and failed the bundle budget (2026-10-28).
 
 **A dependency can need one too.** `streamdown` — which renders every assistant message — styles
 itself with Tailwind classes that live in its own `dist`, so `index.css` sources
@@ -631,22 +632,50 @@ installed every npm dependency there (plus a bogus `cn` package, the registry's 
 rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
 the registry JSON and writing files with imports rewritten, as this one was.
 
-**Wired in (2026-10-03):** FileTree (below); **CodeBlock** and **Terminal** in the tool card —
-JSON input/output highlighted with a copy control, a shell result's streams with ANSI colour;
-**Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
+**Wired in (2026-10-03):** FileTree (below); **Terminal** in the tool card — a shell result's
+streams with ANSI colour; **Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
 calls, each of which returns the whole plan (`plansInTurn` in `@felix/client`; one card per plan where it
 first appears, newest state, the later calls folded except in debug); a **version switcher** on
 an edited message, from `branchPoints` in `@felix/client` (`MessageBranch` itself holds every
 version client-side, so the selector is rebuilt from the same `ButtonGroup`); **Context**, the
 meter's hover/focus breakdown, *without* its cost line — it prices from `tokenlens`, the harness
 prices calls itself, and two prices for one call would disagree with the Activity page; and
-**Checkpoint**, a restore point after a labelled turn. Two traps found on the way: `shiki` is
+**Checkpoint**, a restore point after a labelled turn.
+
+**Moved onto shadcn's Trace and Code Block (2026-10-28)**, which `@felix/ui` carries and which
+replace AI SDK Elements upstream. Every highlighted block — a tool card's JSON, a stored output, a
+reply's code and a workspace file in the pane — is `HighlightedCode`
+(`components/highlighted-code.tsx`): the Code Block over `useHighlightedCode`, on `bg-code-surface`
+in both themes (the primitive's `dark:bg-input/30` would otherwise win in dark). A tool card's fold
+and height cap land on the block's scrolling `pre`, not its frame. Reasoning (`chat/reasoning.tsx`)
+and the plan (`chat/plan-card.tsx`) are Trace rows; the plan's goal moved inside the row, since one
+line cannot wrap the count under it at 390px. `ai-elements/plan.tsx` is deleted;
+`ai-elements/code-block.tsx` stays only because the unused vendored `agent.tsx` and `tool.tsx`
+import it.
+
+**Patterns on Trace (2026-10-28).** Three of AI Elements' patterns, where Felix has the data:
+- **A run of routine calls folds** (`ToolRun`, `components/chat/tool-run.tsx`): `groupRuns` in
+  `message.tsx` gathers `MIN_RUN` (3) or more consecutive calls `isRoutineCall` (`tool.tsx`)
+  passes into one line, `summarizeRun` (`lib/tool-run.ts`) wording it. Never a failure,
+  refusal, denial, non-zero exit, image, skill draft, background child or publish; never a
+  plan's anchor call (its card *is* the plan); a plan's later, invisible calls do not break a
+  run; debug folds nothing. A card keeps its `segment-<i>` key inside a run or out of one.
+- **Search hits as sources** (`ToolSources`): `parseSearchHits` (`@felix/client`) reads
+  `web_search`'s and `document_search`'s numbered blocks, refusing anything not numbered 1..n
+  with indented bodies — the harness indents a hit's body so a forged `2.` cannot sit at column
+  zero. Titles and snippets are third-party text; only an http(s) URL (`httpUrl`) is a link.
+- **A publish says where it landed** (`PublishLine`, outside the fold), from
+  `parsePublishResult`. The result carries no diff — that is only in the approval's preview.
+The Subagent pattern was not built: the card already names the child and its state, and the
+child's own calls never reach the parent's stream, which is the pattern's content.
+
+Two traps found on the way: `shiki` is
 pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` is
 CommonJS whose default import Vite's dev bundle resolves to the module object — the app crashed
 on opening any shell result while every test passed, so `terminal.tsx` unwraps it. StackTrace
 stays unused: harness tool errors are `[tool error/<code>] message`, with no frames to parse. **Watch
 the main chunk when wiring one in**: `context.tsx` imported `tokenlens` for its cost line and
-`plan.tsx` rendered through the `motion`-based `Shimmer`, and between them the entry chunk grew
+the (since deleted) `plan.tsx` rendered through the `motion`-based `Shimmer`, and between them the entry chunk grew
 ~290 KB for a price this app never shows and an animation the CSS `shimmer` utility already does.
 Both are edited out (`tokenlens` is no longer a dependency), and the entry chunk ended smaller
 than before. Compare `dist/assets/index-*.js` against main, not just the total.
@@ -673,9 +702,9 @@ never extension**, and the pane draws them through an object URL it revokes when
 Markdown opens rendered through the lazy `SkillMarkdown` (no inline HTML, no remote images) with a
 Source toggle. **HTML and SVG are only ever shown as source** — both can carry script, and rendering
 either would run it in this origin. Anything else is decoded as text; a NUL in the first 8 KB is
-binary, and over 200 KB shows the head; `languageFor` is a short extension table rather than Shiki's map, because a
-language Shiki lacks makes `createHighlighter` reject and the code block does not catch it. (A
-reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name anything.)
+binary, and over 200 KB shows the head; `languageFor` maps an extension to a name on the highlighter's table
+(`@felix/ui/lib/highlighter`), which loads each language on first use and draws a name it lacks
+as plain text — so a reply's fence, which can name anything, goes straight to it.
 
 **The side pane replaced that drawer** (2026-10-10, `components/pane/`, store `src/lib/side-pane.ts`).
 Six things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest

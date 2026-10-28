@@ -1,6 +1,14 @@
 import { countWords, formatElapsed } from '@felix/client';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
-import { BrainIcon, ChevronDownIcon } from 'lucide-react';
+import {
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@felix/ui/trace';
+import { BrainIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useElapsed } from '@/hooks/use-elapsed';
 import { cn } from '@/lib/utils';
@@ -22,6 +30,9 @@ import { StateDot } from './run-status';
  * not as a reply. Settled, it says what it measured: how long, when this tab watched
  * it happen, and how many words, which a block rebuilt from history still has.
  *
+ * Drawn as a Trace row (`@felix/ui/trace`), the same line a tool call or a plan is, so the
+ * steps of a turn read as one list; the shimmer on the title is the line's own `running` state.
+ *
  * Plain text, deliberately. Reasoning is not addressed to the reader and is often
  * half-formed markdown; running it through the renderer would style fragments into
  * headings and lists the model never meant.
@@ -37,46 +48,33 @@ export function Reasoning({ text, streaming = false }: { text: string; streaming
   ].filter(Boolean);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 text-sm">
-      <CollapsibleTrigger className="flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-xs text-muted-foreground hover:text-foreground">
-        {streaming ? (
-          <StateDot tone="running" live />
-        ) : (
-          <BrainIcon aria-hidden className="size-3.5 shrink-0" />
-        )}
-        {/* The sweep says the block is still being written; it brightens toward
-            the foreground, so the running blue never dips under its own contrast. */}
-        <span
-          className={cn(
-            streaming && 'shimmer shimmer-color-foreground font-medium text-state-running',
-          )}
-        >
-          {streaming ? 'Thinking' : elapsed === null ? 'Reasoning' : 'Thought for'}
-        </span>
-        {/* `Thought for 14s · 312 words`; a block this tab never watched has no
-            duration, so it leads with the noun instead of inventing one. */}
-        <span className="font-mono tabular-nums">
-          {streaming || elapsed === null ? `· ${measure.join(' · ')}` : measure.join(' · ')}
-        </span>
-        <ChevronDownIcon
-          aria-hidden
-          className={cn(
-            'size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none',
-            open && 'rotate-180',
-          )}
-        />
-      </CollapsibleTrigger>
+    <TraceCollapsible open={open} onOpenChange={setOpen} className="text-sm">
+      <TraceCollapsibleTrigger className="py-0.5">
+        <TraceLine status={streaming ? 'running' : undefined} className="text-xs">
+          <TraceIcon>
+            {streaming ? <StateDot tone="running" live /> : <BrainIcon className="size-3.5" />}
+          </TraceIcon>
+          {/* The sweep says the block is still being written; it brightens toward
+              the foreground, so the running blue never dips under its own contrast. */}
+          <TraceTitle className={cn(streaming && 'font-medium text-state-running')}>
+            {streaming ? 'Thinking' : elapsed === null ? 'Reasoning' : 'Thought for'}
+          </TraceTitle>
+          {/* `Thought for 14s · 312 words`; a block this tab never watched has no
+              duration, so it leads with the noun instead of inventing one. */}
+          <TraceDescription className="font-mono text-muted-foreground">
+            {streaming || elapsed === null ? `· ${measure.join(' · ')}` : measure.join(' · ')}
+          </TraceDescription>
+        </TraceLine>
+      </TraceCollapsibleTrigger>
       {/* Announced once when thinking starts, and once when it stops — not per word. */}
       <span role="status" aria-live="polite" className="sr-only">
         {streaming ? 'Thinking' : ''}
       </span>
       {streaming && !open && <ReasoningTail text={text} />}
-      <CollapsibleContent>
-        <div className="mt-1.5 whitespace-pre-wrap wrap-anywhere border-l-2 border-border/60 pl-3 text-sm text-muted-foreground">
-          {text}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      <TraceCollapsibleContent className="whitespace-pre-wrap wrap-anywhere text-sm">
+        {text}
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   );
 }
 
@@ -96,7 +94,7 @@ function ReasoningTail({ text }: { text: string }) {
   return (
     <p
       aria-hidden
-      className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap border-l-2 border-border/60 pl-3 text-left text-sm text-muted-foreground [direction:rtl]"
+      className="mt-1 ml-[calc(--spacing(2)-1px)] overflow-hidden text-ellipsis whitespace-nowrap border-l pl-4 text-left text-sm text-muted-foreground [direction:rtl]"
     >
       <span dir="ltr">{tail}</span>
     </p>

@@ -203,6 +203,14 @@ export { parseTabular, type Tabular } from './tabular';
 export { formatElapsed, relativeTime } from './time';
 export { classifyToolResult, type ToolResultIssue } from './tool-results';
 export {
+  httpUrl,
+  PUBLISH_TOOL,
+  type PublishResult,
+  parsePublishResult,
+  parseSearchHits,
+  type SearchHit,
+} from './tool-shapes';
+export {
   createFelixClient,
   type FelixClient,
   type FelixClientOptions,

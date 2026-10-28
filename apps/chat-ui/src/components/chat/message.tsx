@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
+import { MIN_RUN } from '@/lib/tool-run';
 import { cn } from '@/lib/utils';
 import { useOptionalShellPick } from '@/shell-context';
 import type { Turn, TurnFeedback } from '@/types';
@@ -34,7 +35,8 @@ import { RateTurn } from './rate-turn';
 import { Reasoning } from './reasoning';
 import { Response } from './response';
 import { RunStatusLine } from './run-status';
-import { Tool } from './tool';
+import { isRoutineCall, Tool } from './tool';
+import { ToolRun } from './tool-run';
 import { TurnDebugLine } from './turn-debug';
 
 /**
@@ -202,7 +204,16 @@ export function Message({
 
       {/* Keyed by position: segments are append-only while a turn streams — a card
           opens at the end of the prose so far, so nothing already rendered shifts. */}
-      {interleaveTurn(turn.content, turn.tools, turn.reasoning).map((segment, i, arr) => {
+      {groupRuns(interleaveTurn(turn.content, turn.tools, turn.reasoning), {
+        fold: !verbose,
+        hidden: (i) => plans.folded.has(i) && !plans.anchorOf.has(i),
+        anchored: (i) => plans.anchorOf.has(i),
+      }).map((entry, i, arr) => {
+        if (entry.kind === 'run') {
+          return <ToolRun key={`run-${entry.members[0]?.at}`} members={entry.members} />;
+        }
+        const segment = entry.segment;
+        const at = entry.at;
         if (segment.kind === 'tool') {
           // A plan's calls collapse into one card where the plan first appears,
           // showing its newest state. Verbose still shows every call underneath.
@@ -210,20 +221,20 @@ export function Message({
           const plan = planId ? plans.latest.get(planId) : undefined;
           if (plan) {
             return (
-              <div key={`segment-${i}`} className="space-y-2">
+              <div key={`segment-${at}`} className="space-y-2">
                 <PlanCard plan={plan} live={streaming === true} />
                 {verbose && <Tool tool={segment.tool} verbose={verbose} />}
               </div>
             );
           }
           if (plans.folded.has(segment.index) && !verbose) return null;
-          return <Tool key={`segment-${i}`} tool={segment.tool} verbose={verbose} />;
+          return <Tool key={`segment-${at}`} tool={segment.tool} verbose={verbose} />;
         }
         if (segment.kind === 'reasoning') {
           // Only the final block is still being written, and only while the turn is.
           const last = i === arr.length - 1;
           return (
-            <Reasoning key={`segment-${i}`} text={segment.text} streaming={streaming && last} />
+            <Reasoning key={`segment-${at}`} text={segment.text} streaming={streaming && last} />
           );
         }
         // A durable run's status line is the engine talking, not the agent: drawn as
@@ -231,7 +242,7 @@ export function Message({
         if (turn.runStatus) {
           return (
             <RunStatusLine
-              key={`segment-${i}`}
+              key={`segment-${at}`}
               text={segment.text}
               tone={turn.runStatus}
               live={!!streaming}
@@ -239,7 +250,7 @@ export function Message({
           );
         }
         return (
-          <div key={`segment-${i}`} className="max-w-none text-base text-foreground">
+          <div key={`segment-${at}`} className="max-w-none text-base text-foreground">
             <Response>{segment.text}</Response>
           </div>
         );
@@ -286,6 +297,59 @@ export function Message({
       )}
     </div>
   );
+}
+
+type Segment = ReturnType<typeof interleaveTurn>[number];
+type ToolSegment = Extract<Segment, { kind: 'tool' }>;
+type Entry =
+  | { kind: 'segment'; segment: Segment; at: number }
+  | { kind: 'run'; members: { tool: ToolSegment['tool']; at: number }[] };
+
+/**
+ * A turn's segments with each stretch of `MIN_RUN` or more consecutive routine calls
+ * (`isRoutineCall`) gathered into one run. A call that anchors a plan or checklist keeps its
+ * place, since its card is the plan; a plan's later calls, which draw nothing, are passed over
+ * without breaking a stretch; prose, reasoning and any other call end one.
+ * Shorter stretches are left as they were, and `fold: false` (debug) gathers nothing.
+ */
+function groupRuns(
+  segments: Segment[],
+  {
+    fold,
+    hidden,
+    anchored,
+  }: {
+    fold: boolean;
+    hidden: (index: number) => boolean;
+    anchored: (index: number) => boolean;
+  },
+): Entry[] {
+  const out: Entry[] = [];
+  let run: { segment: ToolSegment; at: number }[] = [];
+  const flush = () => {
+    if (run.length >= MIN_RUN) {
+      out.push({
+        kind: 'run',
+        members: run.map(({ segment, at }) => ({ tool: segment.tool, at })),
+      });
+    } else {
+      for (const { segment, at } of run) out.push({ kind: 'segment', segment, at });
+    }
+    run = [];
+  };
+  segments.forEach((segment, at) => {
+    if (fold && segment.kind === 'tool') {
+      if (hidden(segment.index)) return;
+      if (!anchored(segment.index) && isRoutineCall(segment.tool)) {
+        run.push({ segment, at });
+        return;
+      }
+    }
+    flush();
+    out.push({ kind: 'segment', segment, at });
+  });
+  flush();
+  return out;
 }
 
 /**

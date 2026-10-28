@@ -92,12 +92,11 @@ describe('plans in a turn', () => {
   });
 
   /**
-   * At 390px the count sat beside the goal and squeezed it to a word or two a line. The
-   * heading takes the whole row until the card is wide (a container query, since happy-dom
-   * evaluates none, pinned by shape) and the chips wrap under it; the toggle is outside the
-   * wrapping group, so it stays top-right.
+   * At 390px the count sat beside the goal and squeezed it to a word or two a line. The plan is
+   * a Trace row now: one line whose title truncates before the count does, with the goal inside
+   * the row, and the line itself is the toggle.
    */
-  it('lets the count wrap under the goal on a narrow card', () => {
+  it('keeps the count whole on a narrow line and the goal inside the row', () => {
     const turn: Turn = {
       id: 'a1',
       role: 'assistant',
@@ -109,15 +108,15 @@ describe('plans in a turn', () => {
         <Message turn={turn} />
       </TooltipProvider>,
     );
-    const card = document.querySelector('[data-plan-id="p1"]') as HTMLElement;
-    expect(card.className).toContain('@container/plan');
-    const heading = card.querySelector('[data-plan-heading]') as HTMLElement;
-    expect(heading.className).toMatch(/\bbasis-full\b/);
-    expect(heading.className).toContain('@md/plan:basis-0');
-    const group = heading.parentElement as HTMLElement;
-    expect(group.className).toContain('flex-wrap');
-    expect(group.contains(screen.getByText('0 of 1 done'))).toBe(true);
-    expect(group.contains(screen.getByRole('button', { name: /toggle plan/i }))).toBe(false);
+    const row = document.querySelector('[data-plan-id="p1"]') as HTMLElement;
+    const heading = row.querySelector('[data-plan-heading]') as HTMLElement;
+    expect(heading.className).toContain('truncate');
+    const count = screen.getByText('0 of 1 done');
+    expect(count.getAttribute('data-slot')).toBe('trace-description');
+    expect(count.className).toContain('shrink-0');
+    const toggle = heading.closest('button') as HTMLElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.contains(count)).toBe(true);
   });
 
   it('recovers step titles the harness dropped, from what plan_create was sent', () => {
