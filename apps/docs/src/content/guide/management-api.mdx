@@ -1427,7 +1427,10 @@ A run starts three ways: by hand (`trigger: manual`), from a job naming the work
 above), or from a signed trigger (`trigger:<id>`, see [Inbound
 triggers](/guide/deploy/#inbound-triggers)) whose payload fields are mapped to typed inputs; a run a
 trigger started lists the sender's values as `untrusted_inputs`, and its agent steps read every
-value they are given inside a fence.
+value they are given inside a fence. On any run, however it started, a value an agent step is given
+from another step's output is fenced the same way: a step's output is only as trustworthy as what
+that step read, such as a page it fetched. Only the inputs a person started the run with reach an
+agent's prompt as written.
 
 ## Manifests
 
