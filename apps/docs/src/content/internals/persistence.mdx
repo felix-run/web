@@ -31,6 +31,8 @@ Every store has an in-memory twin selected by `FELIX_DATABASE_URL=memory://…`,
 
 <HarnessDiagram name="session-state" />
 
+Which skills a thread has active is read from this log — its `activate_skill` and `deactivate_skill` results on the active branch, fetched with `GetEventsOpts(kinds=["tool_result"], names=[…])` — and not stored anywhere else; migration `0047` dropped the per-`(tenant, manifest)` `skill_activation` table.
+
 Strategies: `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N`, `compacting`, plus any registered with `register_session_strategy`. `memory.checkpointer` chooses where that log lives — `postgres` (default), `none` (no session state), or a registered backend.
 
 ## Relational highlights

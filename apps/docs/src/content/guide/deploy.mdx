@@ -550,7 +550,7 @@ an operator uploads to the object store, and from each tenant's skill library, w
 
 | Setting | Default | |
 |---|---|---|
-| `FELIX_SKILLS_DIR` | empty | An extra directory of `SKILL.md` packages, searched after the bundled `skills/`. The library refuses to save a name either one holds. |
+| `FELIX_SKILLS_DIR` | empty | An extra directory of skill packages, each a `<FELIX_SKILLS_DIR>/<name>/SKILL.md` (a loose `*.md` at its root is not a skill), searched after the bundled `skills/`. The library refuses to save a name either one holds. Check a package with `felix skills validate <dir>`. |
 | `FELIX_SKILL_PUBLISH_MIN_QUALITY` | `0` | 0–100. Refuse a publish whose quality review scores below this; `0` turns the bar off. |
 | `FELIX_SKILL_PUBLISH_BLOCK_ON_ADVISORY` | `false` | Also refuse a version whose security scan is `advisory` (medium findings), not only `fail`. |
 | `FELIX_SKILL_PUBLISH_REQUIRE_EVAL` | `false` | Refuse a publish unless the version has a succeeded evaluation that counts. |

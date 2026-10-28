@@ -86,6 +86,7 @@ felix eval -d my-dataset -m quick --fixture ./dataset.json --mock
 | `felix mint-jwt` | Self-issued JWT for `jwt` mode |
 | `felix bundle-manifests` | Validate bundled YAML |
 | `felix validate-manifest <file>` | Validate one manifest as `PUT /manifests` would, before it is stored |
+| `felix skills validate <dir>` | Check a local Agent Skill (a directory, or the `SKILL.md` in one) against the agentskills.io frontmatter rules and what a skill library saves; reads nothing but the directory, exits 1 on any issue |
 | `felix chat` | Chat with a manifest on a running server, one line at a time (`--url`, `--manifest`, `--api-key`/`FELIX_API_KEY`, `--stream`); `make cli` runs it |
 
 ## Local stack for integration

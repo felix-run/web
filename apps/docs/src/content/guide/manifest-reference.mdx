@@ -1571,6 +1571,8 @@ spec:
   tool call and the result's id are kept, so every provider still sees a result for every call.
 - **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
   names its artifact id in the stub, so `read_artifact` still reaches the full output.
+- **Skill instructions are never stubbed.** An `activate_skill` result is instructions the model
+  follows for the rest of the conversation; see [Concepts → Skill](/guide/concepts/#skill).
 - **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
   what it returned. A result content screening replaced with a `[quarantined]` notice is never
   stubbed.
@@ -1615,7 +1617,8 @@ read the rest.
 | `max_window_chars` | int ≥ 1 | `16000` | Largest window one `read_artifact` call returns |
 
 Output over the threshold is written to `artifacts/{tenant}/{manifest}/{uuid}.txt` and replaced with
-the preview plus a marker, which is always the last thing in the output:
+the preview plus a marker (an `activate_skill` result never is: a skill's instructions reach the
+model whole), which is always the last thing in the output:
 
 ```
 …[artifact:<id> key=artifacts/<tenant>/<manifest>/<id>.txt chars=<N> spilled_at=<unix>]

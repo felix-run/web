@@ -658,8 +658,11 @@ reference.
 ## Skills
 
 Read-only inspection of the [Agent Skills](/guide/concepts/#skill) a manifest compiles: which
-skills the model can reach, which are active, and the instructions activation would hand it.
-Activation stays a decision the model makes mid-turn; there is no write surface here. Writing the
+skills the model can reach, the instructions activation would hand it, and which skills were
+activated where. Activation stays a decision the model makes mid-turn, and it belongs to the
+conversation it was made in: a skill is active in a thread when that thread's session log holds its
+`activate_skill` result, so no route here says a skill is "on" for a manifest. Which skills a
+conversation has active is that conversation's `list_skills`. There is no write surface here. Writing the
 tenant's skills is the [skill library](#skill-library).
 
 | Method | Path | Scope |
@@ -672,14 +675,13 @@ The manifest resolves the way a chat request resolves it — stored revision fir
 behind it — so the answer is what the next turn will see. An unknown or invalid manifest name, or a
 skill not in its catalog, is `404 not_found`.
 
-The list returns `{manifest, declared_only, items, active}`. Each item is
-`{name, description, version, active, has_body, model_invocable, declared, source}`:
+The list returns `{manifest, declared_only, items}`, sorted by name. Each item is
+`{name, description, version, has_body, model_invocable, declared, source}`:
 
 | Field | Meaning |
 |---|---|
-| `active` | switched on for this `(tenant, manifest)` in the activation store; only ever a skill in the caller's own catalog, so one caller's personal skill names never appear for another |
 | `has_body` | the skill has instructions; the body itself is only on the single-skill route |
-| `model_invocable` | `false` when the skill sets `disable_model_invocation` — in the catalog, never offered to the model |
+| `model_invocable` | `false` when the skill sets `disable-model-invocation`, or is a declared ref no source answered — in the catalog, but neither listed to the model nor activatable or readable by a model that guesses its name |
 | `declared` | the manifest named it in `spec.skills` |
 | `source` | `bundled` (the harness's `skills/` or `FELIX_SKILLS_DIR`), `store` (an operator's object-store upload) or `library` (the live version of a tenant-library skill) |
 
@@ -689,18 +691,19 @@ in the tenant's library before `spec.skills` is resolved, so a manifest declarin
 every skill on the host and in the library. With `declared_only: true`, only declared skills are in
 the catalog.
 
-The single-skill route returns `{name, description, version, filename, metadata, active,
+The single-skill route returns `{name, description, version, filename, metadata,
 model_invocable, declared, source, body}`. `body` is the instructions `activate_skill` returns to the
 model; `body` and `metadata` are secret-redacted, and `filename` is the basename only. A skill named in
-`spec.skills` whose body was never found still resolves, with the loader's placeholder description
-and an empty body.
+`spec.skills` whose body was never found still resolves, with the loader's placeholder description,
+an empty body and `model_invocable: false`.
 
-`activations/recent` reads the audit log, newest first — the activation store holds only current
-state. `limit` is 1–200, default 50. Each item is `{ts, skill, action, thread_id, tool_call_id,
+`activations/recent` reads the audit log, newest first — activation lives in each thread's log, so
+no other place answers it across conversations. `limit` is 1–200, default 50. Each item is `{ts, skill, action, thread_id, tool_call_id,
 status, library}`. `library` is `org`, or a personal library's digest (never the person's
 identity), so an investigator can tell whose skill ran; it is empty for a host skill. History
-shows every caller's activations to `skills:read`, personal skill names included. `action` is `activate` or `deactivate`, and `status` is `ok` or `unknown_skill` (the model
-named a skill that does not exist). `tool_call_id` joins the row to the matching `tool_call` audit
+shows every caller's activations to `skills:read`, personal skill names included. `action` is `activate` or `deactivate`, and `status` is `ok`, `already_active` (the same
+instructions were already in that conversation, so they were not sent again) or `unknown_skill` (the
+model named a skill that does not exist, or one hidden from it). `tool_call_id` joins the row to the matching `tool_call` audit
 event.
 
 ## Skill library
