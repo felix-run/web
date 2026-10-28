@@ -2552,6 +2552,12 @@ as `args.preview`, is never part of the signature, and is stripped from `edited_
 that fails refuses the call (`[approval preview failed]`) and writes no row, so nothing is
 approved unseen.
 
+chat-ui's approval card reads a preview as what it is: its first line — for `publish_commits`,
+`publish <sha> to <repo>:<branch> (new branch from <parent>)` — is the card's headline, the rest
+(the commits, the `--stat` and the diff) is shown with its line breaks under *What approving
+does*, and the remaining arguments are listed apart. It is shown as the harness wrote it, shas
+included, since the approval is bound to exactly that.
+
 ### `spec.governance`
 
 Opt-in framework mapping. These are compile-time requirements, **not a certification**.

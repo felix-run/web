@@ -158,7 +158,10 @@ export function ApprovalDecision({
    */
   // A whole file body (`write_file`, `local_write`) is not offered for editing.
   const editable = op !== 'write';
-  const summary = oneLine(summarizeToolArgs(toolName, args));
+  const preview = previewOf(args);
+  // A tool whose arguments are a reference (`publish_commits` takes a sha, not the files) has the
+  // harness write what approving does as its preview's first line; that is the sentence to answer.
+  const summary = preview ? preview.head : oneLine(summarizeToolArgs(toolName, args));
 
   // Re-read every second while the card is up, and only then. The deadline is
   // minutes long, so this is a handful of renders per approval.
@@ -244,7 +247,9 @@ export function ApprovalDecision({
       {reason && <p className="mt-1.5 text-sm text-muted-foreground">{reason}</p>}
 
       {/* The heading step: what is being asked, at the size of a sentence you answer. */}
-      {summary && <p className="mt-2 text-lg font-semibold tracking-tight">{summary}</p>}
+      {summary && (
+        <p className="mt-2 text-lg font-semibold tracking-tight wrap-anywhere">{summary}</p>
+      )}
 
       {isDelete ? (
         <div className="mt-2.5 space-y-2">
@@ -284,6 +289,17 @@ export function ApprovalDecision({
                 className="w-full rounded-md border bg-code-surface p-2 font-mono text-xs leading-snug outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
+          ) : preview ? (
+            <div className="space-y-2">
+              {/* With its line breaks: inside the arguments it was one JSON string, a whole
+                  diff on a single escaped line, under no headline at all. */}
+              {preview.rest && (
+                <CodePane label="What approving does" emphasis>
+                  {preview.rest}
+                </CodePane>
+              )}
+              <CodePane label="Arguments">{safeStringify(preview.args)}</CodePane>
+            </div>
           ) : (
             <CodePane label="Arguments" emphasis>
               {safeStringify(args)}
@@ -476,6 +492,27 @@ export function CodePane({
       )}
     </div>
   );
+}
+
+/**
+ * The harness's `preview` argument, split for reading: the first line (what approving does, in
+ * the harness's words), the rest (for `publish_commits`, the commits, `--stat` and the diff), and
+ * the arguments without it. The harness computes it ahead of the decision and binds the call to
+ * it, so it is shown as written — nothing here re-derives or shortens it, shas included.
+ * `null` for a call that carries none.
+ */
+export function previewOf(
+  args: Record<string, unknown>,
+): { head: string; rest: string; args: Record<string, unknown> } | null {
+  const { preview, ...rest } = args;
+  if (typeof preview !== 'string' || !preview.trim()) return null;
+  const text = preview.trim();
+  const cut = text.indexOf('\n');
+  return {
+    head: cut === -1 ? text : text.slice(0, cut),
+    rest: cut === -1 ? '' : text.slice(cut + 1).replace(/^\n+/, ''),
+    args: rest,
+  };
 }
 
 /** `summarizeToolArgs` falls back to pretty JSON for unknown tools; that is not a summary. */
