@@ -922,6 +922,11 @@ as something it said itself. The entry lands in the log as `kind: "custom"` with
 `metadata.in_context`. Both Felix clients draw it as a note that names its role and says whether
 the model read it, never as a message from either side.
 
+To keep only the newest of a series in context (a progress line, a status card), give each entry
+the same `metadata.context_key`: of the in-context entries on the branch sharing a key, only the
+newest reaches the model, and the transcript keeps them all. The key is stored as `client:<key>`,
+so it never matches one the harness writes for its own entries.
+
 ### The session snapshot
 
 `GET /chat/sessions/{thread_id}` is the contract a client hydrates from. Its keys are **camelCase**,
