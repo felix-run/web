@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Greeting } from '../src/components/chat/greeting';
-import { itemMessage } from '../src/components/chat/start-from-item';
+import { itemMessage, pullsOnly } from '../src/components/chat/start-from-item';
 import { resetMountState } from '../src/lib/mount-state';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -366,5 +366,28 @@ describe('itemMessage', () => {
     expect(itemMessage('acme/widgets', { ...base, body: 'long…', body_truncated: true })).toContain(
       '(The description was cut at 20,000 characters.)',
     );
+  });
+});
+
+/**
+ * A repository whose issues cannot be listed (turned off, or a GitHub App without the Issues
+ * permission) lists its pull requests only. Said, or an empty list reads as "no issues here".
+ */
+describe('pullsOnly', () => {
+  const listing = (issue_access?: 'ok' | 'disabled' | 'forbidden') => ({
+    repository: 'acme/widgets',
+    items: [],
+    truncated: false,
+    ...(issue_access ? { issue_access } : {}),
+  });
+
+  it('says why when issues were not listed', () => {
+    expect(pullsOnly(listing('disabled'))).toMatch(/issues are turned off/);
+    expect(pullsOnly(listing('forbidden'))).toMatch(/GitHub App can't read/);
+  });
+
+  it('says nothing when issues were listed, or the harness predates the field', () => {
+    expect(pullsOnly(listing('ok'))).toBeNull();
+    expect(pullsOnly(listing())).toBeNull();
   });
 });

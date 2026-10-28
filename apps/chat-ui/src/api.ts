@@ -535,6 +535,12 @@ export interface RepoItems {
   items: RepoItem[];
   /** More match than one listing returns: narrow with `q`. */
   truncated: boolean;
+  /**
+   * Whether issues could be listed (`felix-run/felix#698`): `disabled` is a repository with issues
+   * turned off, `forbidden` a GitHub App without the Issues permission. Either way the items are
+   * its pull requests only. Absent from a harness older than that, which answered 502 instead.
+   */
+  issue_access?: 'ok' | 'disabled' | 'forbidden';
 }
 
 export interface RepoItemDetail extends RepoItem {
