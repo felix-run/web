@@ -53,6 +53,12 @@ export type PaneItem =
    * dropped to make room: it is where the other file tabs come from.
    */
   | { kind: 'files'; key: string }
+  /**
+   * What one reply changed: the turns `from`..`to`, by position, as the
+   * transcript's rows are named. One per thread — reviewing another reply
+   * re-scopes it rather than adding a tab per reply.
+   */
+  | { kind: 'changes'; key: string; from: number; to: number }
   | {
       kind: 'skill';
       key: string;
@@ -110,6 +116,9 @@ export const PANE_LIMIT = 6;
 /** Files' key: one per thread, so it is its own identity. */
 export const FILES_KEY = 'files';
 
+/** A reply's changes: one per thread, re-scoped by each Review. */
+export const CHANGES_KEY = 'changes';
+
 /** Past this, an item's content is not written to session storage (it stays open in memory). */
 const PERSIST_LIMIT = 200_000;
 
@@ -133,6 +142,8 @@ export function paneKey(item: PaneItemInput): string {
       return `skill:${item.library ?? ''}/${item.name}`;
     case 'files':
       return FILES_KEY;
+    case 'changes':
+      return CHANGES_KEY;
   }
 }
 
@@ -227,6 +238,8 @@ function isItem(v: unknown): v is PaneItem {
       return typeof o.name === 'string';
     case 'files':
       return o.key === FILES_KEY;
+    case 'changes':
+      return o.key === CHANGES_KEY && typeof o.from === 'number' && typeof o.to === 'number';
     default:
       return false;
   }
@@ -260,6 +273,12 @@ function update(threadId: string, next: (s: PaneState) => PaneState) {
 export function openInPane(threadId: string, input: PaneItemInput) {
   const key = paneKey(input);
   update(threadId, (s) => {
+    // The one item whose key does not fix its content: Review on another reply
+    // re-scopes the tab already open.
+    if (input.kind === 'changes' && s.items.some((i) => i.key === key)) {
+      const items = s.items.map((i) => (i.key === key ? ({ ...input, key } as PaneItem) : i));
+      return { ...s, items, active: key, shown: true };
+    }
     if (s.items.some((i) => i.key === key)) return { ...s, active: key, shown: true };
     return {
       ...s,

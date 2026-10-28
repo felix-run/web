@@ -41,22 +41,60 @@ export function ThreadChanges() {
   return <ChangesList changes={changes} durableGap={durableGap} />;
 }
 
+/**
+ * What one reply changed, in the side pane — the line under a reply opens it.
+ * The everyday surface has no instrument, so this is where "what did it do to
+ * my files" is answered there; it is the same list, scoped to `from`..`to`.
+ *
+ * Positions, as the transcript's rows are named: an edit that rewinds the thread
+ * can leave the scope pointing at a different reply, so the heading quotes the
+ * message the reply answered, and an empty scope says so in its own words.
+ */
+export function ReplyChanges({ from, to }: { from: number; to: number }) {
+  const { turns } = useShell();
+  const changes = useMemo(() => collectChanges(turns.slice(from, to + 1)), [turns, from, to]);
+  const asked = turns[from - 1];
+  const quote = asked?.role === 'user' ? firstLine(asked.content) : '';
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <p className="mb-2 text-xs text-muted-foreground">
+        {quote ? (
+          <>
+            What the reply to <q className="text-foreground">{quote}</q> changed
+          </>
+        ) : (
+          'What this reply changed'
+        )}
+      </p>
+      <ChangesList
+        changes={changes}
+        durableGap={false}
+        empty="Nothing in this reply touched a workspace file."
+      />
+    </div>
+  );
+}
+
+/** A message's first line, cut at 60 characters for a heading. */
+function firstLine(text: string): string {
+  const line = text.trim().split('\n')[0]?.trim() ?? '';
+  return line.length > 60 ? `${line.slice(0, 59).trimEnd()}…` : line;
+}
+
 function ChangesList({
   changes,
   durableGap,
+  empty = 'No tool on this thread has touched a workspace file yet.',
 }: {
   changes: readonly PathChange[];
   durableGap: boolean;
+  empty?: string;
 }) {
   if (durableGap && changes.length === 0) {
     return <p className="text-xs text-muted-foreground">Changes appear when the run finishes.</p>;
   }
   if (changes.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No tool on this thread has touched a workspace file yet.
-      </p>
-    );
+    return <p className="text-xs text-muted-foreground">{empty}</p>;
   }
   return (
     <>

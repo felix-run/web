@@ -318,6 +318,19 @@ the run finishes.* while `durableRunInFlight` (streaming, with the engine's `run
 last) holds and the run has reported no call. The same gap hides the tool *cards* from the
 transcript, which is the bigger half of it.
 
+**Everyday reaches the same list through a line under each reply** (2026-10-27,
+`components/chat/reply-changes-line.tsx`). Everyday renders no instrument, so its Changes tab was
+out of reach there. `changesByReply` (`lib/changes.ts`) takes each reply — every turn between one
+operator message and the next — and keys it by its last assistant turn, so the line is drawn
+once, under the reply's last turn, never under the tool call. It counts files a write, edit,
+delete or rename **landed** on (`countChangedFiles`: a rename once, under its new name; a denial
+none), and is not drawn while that reply is still streaming. *Review* opens a `kind: 'changes'`
+pane item (`from`..`to`, by position like the rows), **one per thread**: `openInPane` re-scopes it
+rather than adding a tab per reply — the one item whose key does not fix its content. The pane
+draws `ReplyChanges`, the instrument's list over that slice, headed by the message it answered.
+`TurnRow` takes the count as numbers (`changedFiles`, `replyFrom`) and a stable `reviewChanges`,
+so a reply whose count did not move keeps its memo. `tests/reply-changes.test.tsx`.
+
 `/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
 divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
 in the right rail (approvals have since moved to the attention line alone) — and the five that outlive every run: memory, corpus, skills, and what the harness
@@ -654,7 +667,7 @@ language Shiki lacks makes `createHighlighter` reject and the code block does no
 reply's code block asks Shiki itself, `useShikiKnows`, since its fence can name anything.)
 
 **The side pane replaced that drawer** (2026-10-10, `components/pane/`, store `src/lib/side-pane.ts`).
-Five things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
+Six things open in it, one tab each (`@felix/ui/tabs`, at most `PANE_LIMIT` = 6, the oldest
 *clean* one dropped first): a workspace file (the file tree, a Changes row a write landed on, or
 the agent's `local_open` — into the pane of the call's own thread, never a new window; a URL
 still opens a tab — or its `open_file` for a harness-side file: the harness only checks the file
@@ -663,7 +676,7 @@ durable run's `tool_result` row, never from a snapshot rebuild or a replay, so a
 nothing; `tests/open-file-pane.test.tsx`), a
 spilled tool output (`Open full output` in the tool card), a reply's code block (an Open control
 `OpenablePre` adds to streamdown's header by wrapping the pass-through `pre`, so Shiki is kept),
-a tool's image, and a skill's editor (see **Skill library**). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
+a tool's image, a skill's editor (see **Skill library**), and a reply's changes (above). Opening goes through `ShellValue.openInPane`, which is **optional** — a test's
 partial shell leaves every Open control out — and stays where it is: **the pane is drawn beside
 every `/harness` page too** (`useHarnessPane` in `routes/harness.tsx`, through the shared
 `PaneColumn`/`PaneOverlay` in `components/pane/pane-zone.tsx`), so a skill opened for editing from

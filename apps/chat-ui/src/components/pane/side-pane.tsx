@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import {
   BracesIcon,
   ChevronLeftIcon,
+  FileDiffIcon,
   FileTextIcon,
   FolderTreeIcon,
   ImageIcon,
@@ -40,6 +41,7 @@ import {
   SaveToWorkspaceForm,
   suggestedName,
 } from '@/components/pane/save-to-workspace';
+import { ReplyChanges } from '@/components/workspace/changes-list';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import {
   closeAllPaneItems,
@@ -255,6 +257,8 @@ export function SidePane({
           <TabsContent key={item.key} value={item.key} className="flex min-h-0 flex-col">
             {item.kind === 'files' ? (
               <FilesView />
+            ) : item.kind === 'changes' ? (
+              <ReplyChanges from={item.from} to={item.to} />
             ) : item.kind === 'file' ? (
               <FileView
                 threadId={threadId}
@@ -301,6 +305,8 @@ function labelOf(item: PaneItem): string {
       return item.name;
     case 'files':
       return 'Files';
+    case 'changes':
+      return 'Changes';
   }
 }
 
@@ -326,7 +332,7 @@ function toolOfImage(title: string): string {
 
 /** An identifier — a file or a tool — is set in mono; a code block's "bash · 4 lines" is not. */
 function isIdentifier(item: PaneItem): boolean {
-  return item.kind !== 'code' && item.kind !== 'files';
+  return item.kind !== 'code' && item.kind !== 'files' && item.kind !== 'changes';
 }
 
 const ICONS = {
@@ -336,6 +342,7 @@ const ICONS = {
   image: ImageIcon,
   skill: PuzzleIcon,
   files: FolderTreeIcon,
+  changes: FileDiffIcon,
 } as const;
 
 /**
@@ -362,7 +369,9 @@ function PaneTab({
         ? item.name
         : item.kind === 'files'
           ? 'The workspace'
-          : item.title;
+          : item.kind === 'changes'
+            ? 'What this reply changed'
+            : item.title;
   const dirty = isDirty(item);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Delete' || e.key === 'Backspace') {

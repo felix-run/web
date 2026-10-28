@@ -387,6 +387,51 @@ export function collectChanges(turns: readonly Turn[]): PathChange[] {
 }
 
 /**
+ * How many files the changes changed: paths a write, edit, delete or rename
+ * landed on, with a rename counted once — under its new name, not also its old.
+ */
+export function countChangedFiles(changes: readonly PathChange[]): number {
+  return changes.filter((c) => {
+    if (!c.changed) return false;
+    const landed = c.calls.find((call) => MUTATING.has(call.kind) && call.outcome === 'landed');
+    return !(c.gone && landed?.kind === 'rename');
+  }).length;
+}
+
+/** One reply's stretch of the transcript, and how many files it changed. */
+export interface ReplyChanges {
+  /** The reply's first turn: the one after the operator's message. */
+  from: number;
+  /** Its last assistant turn, where the line is drawn. */
+  to: number;
+  files: number;
+}
+
+/**
+ * Each reply that changed a file, keyed by its last assistant turn. A reply is
+ * every turn between one operator message and the next: one answer is often
+ * several assistant turns (the message that called the tools, then the one after
+ * them), and the line belongs under the last, once.
+ */
+export function changesByReply(turns: readonly Turn[]): Map<number, ReplyChanges> {
+  const out = new Map<number, ReplyChanges>();
+  let from = 0;
+  for (let i = 0; i <= turns.length; i++) {
+    const turn = turns[i];
+    if (turn && turn.role !== 'user') continue;
+    // `i` closes the reply that began at `from`: a user turn, or the end.
+    let to = i - 1;
+    while (to >= from && turns[to]?.role !== 'assistant') to--;
+    if (to >= from) {
+      const files = countChangedFiles(collectChanges(turns.slice(from, i)));
+      if (files > 0) out.set(to, { from, to, files });
+    }
+    from = i + 1;
+  }
+  return out;
+}
+
+/**
  * The run on screen is a durable one still in flight.
  *
  * The engine marks the status turn with `runStatus` while it is a durable run's
