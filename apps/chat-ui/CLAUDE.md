@@ -579,8 +579,8 @@ defaults minus whichever is not loaded until a reply needs it — `$$` for math 
 streamdown uses before loading KaTeX's CSS), a tag-like `<` for HTML (`needsRaw`, loose on purpose)
 — keeping the order: raw before sanitize, sanitize and harden after KaTeX. Until `rehype-raw`
 arrives, the reply's HTML reaches the sanitizer as `raw` nodes, which it drops: missing for a
-moment, never unsanitized. The terminal that draws a shell call's output is a lazy chunk too
-(`components/chat/tool-stream.tsx`), with its ANSI parser; until it loads the output is plain text
+moment, never unsanitized. A shell call's output is drawn by the code
+block's highlighter, which is lazy too (`ansi`, below); until it loads the output is plain text
 with the colour codes stripped. `pnpm check-bundle-budget` fails CI when the first load passes its
 budget, because each of these arrived by one static import that changed nothing else anyone checks. The swap is a **remount** (`key`): streamdown's top-level `memo` compares
 `children`, the theme, `mode` and `isAnimating` and nothing else, so a new `rehypePlugins` alone
@@ -613,23 +613,25 @@ near-black page). The block's own surface is ours: Shiki tries to pass its dark 
 ## AI Elements and the side pane
 
 
-**Six vendored AI Elements are left** (`apps/chat-ui/src/components/ai-elements/`):
+**Four vendored AI Elements are left** (`apps/chat-ui/src/components/ai-elements/`):
 `prompt-input` (the ported composer, edited heavily since), `context` (the meter's breakdown),
-`terminal` (a shell result's streams), `checkpoint`, `file-tree` and `controls` (the workflow
-canvas). The other 33 of the AI SDK Elements set vendored on 2026-10-03 were deleted unused on
+`file-tree` and `controls` (the workflow canvas). `terminal` and `checkpoint` went last
+(2026-10-28): a shell stream is `HighlightedCode` with `language="ansi"` — Shiki draws the
+colour codes, a copy holds the text without them (`stripAnsi`), and `ansi-to-react` is gone —
+and `TurnCheckpoint` is a Trace line. The other 33 of the AI SDK Elements set vendored on 2026-10-03 were deleted unused on
 2026-10-28, once shadcn's AI Elements replaced that set upstream — new patterns are built on
 `@felix/ui`'s Trace and Code Block instead (below) — and with them twelve dependencies only they
 used (`motion`, `react-jsx-parser` and its `@types/react-dom` override, `media-chrome`,
 `@rive-app/react-webgl2`, `use-stick-to-bottom`, …). They **do not need the AI SDK at runtime**:
 `context.tsx` imports a *type* from `ai`, a **dev** dependency pinned to `^6` (v7 renamed
 `LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,
-loads every file in the folder, and pins the six by name. **`shadcn add` does not
+loads every file in the folder, and pins the four by name. **`shadcn add` does not
 work in this monorepo** for a registry like this one: it resolved `@felix/ui` to `packages/ui`,
 installed every npm dependency there (plus a bogus `cn` package, the registry's import alias),
 rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
 the registry JSON and writing files with imports rewritten, as this one was.
 
-**Wired in (2026-10-03, some since replaced):** FileTree (below); **Terminal** in the tool card — a shell result's
+**Wired in (2026-10-03, most since replaced):** FileTree (below); **Terminal** in the tool card — a shell result's
 streams with ANSI colour; **Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
 calls, each of which returns the whole plan (`plansInTurn` in `@felix/client`; one card per plan where it
 first appears, newest state, the later calls folded except in debug); a **version switcher** on
@@ -665,9 +667,9 @@ The Subagent pattern was not built: the card already names the child and its sta
 child's own calls never reach the parent's stream, which is the pattern's content.
 
 Two traps found on the way: `shiki` is
-pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` is
-CommonJS whose default import Vite's dev bundle resolves to the module object — the app crashed
-on opening any shell result while every test passed, so `terminal.tsx` unwraps it. StackTrace
+pinned to the 3.x line streamdown uses, or the bundle carries two; and `ansi-to-react` (since
+removed) was CommonJS whose default import Vite's dev bundle resolved to the module object — the
+app crashed on opening any shell result while every test passed. StackTrace
 stays unused: harness tool errors are `[tool error/<code>] message`, with no frames to parse. **Watch
 the main chunk when wiring one in**: `context.tsx` imported `tokenlens` for its cost line and
 the (since deleted) `plan.tsx` rendered through the `motion`-based `Shimmer`, and between them the entry chunk grew

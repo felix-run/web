@@ -22,15 +22,14 @@ const DIR = join(process.cwd(), 'src/components/ai-elements');
 const files = readdirSync(DIR).filter((f) => f.endsWith('.tsx'));
 
 describe('AI Elements without the AI SDK', () => {
-  it('holds only the six the app uses', () => {
-    // The rest were deleted on 2026-10-28; shadcn's Trace and Code Block replaced them.
+  it('holds only the four the app uses', () => {
+    // The rest were deleted on 2026-10-28, terminal and checkpoint last: shadcn's Trace and
+    // Code Block replaced them.
     expect(files.sort()).toEqual([
-      'checkpoint.tsx',
       'context.tsx',
       'controls.tsx',
       'file-tree.tsx',
       'prompt-input.tsx',
-      'terminal.tsx',
     ]);
   });
 

@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -404,12 +404,21 @@ describe('a shell result with colour in it', () => {
       stderr: '',
     });
     render(<Tool tool={{ name: 'test', done: true, output }} verbose />);
-    // The terminal loads with the first shell output (`tool-stream.tsx`); its copy button
-    // says it has.
-    expect(await screen.findByRole('button', { name: 'Copy stdout' })).toBeTruthy();
-    const line = screen.getByText('✓ 12 passed');
-    expect(line.closest('pre')?.textContent).not.toContain('\u001b');
-    expect(line.getAttribute('style') ?? line.className).toBeTruthy();
+    // The highlighter loads with the first block; the colour arrives with it, as a token
+    // carrying Shiki's light and dark colours.
+    const token = await waitFor(() => {
+      const t = [...document.querySelectorAll('[data-language="ansi"] span[style]')].find((el) =>
+        el.textContent?.includes('12 passed'),
+      );
+      expect(t?.getAttribute('style')).toContain('--shiki-light');
+      return t as HTMLElement;
+    });
+    expect(token.closest('pre')?.textContent).not.toContain('\u001b');
+    // The copy holds what the stream reads as, not its escape codes.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy stdout' }));
+    expect(writeText).toHaveBeenCalledWith('✓ 12 passed');
   });
 });
 
@@ -427,7 +436,7 @@ describe('shell output, whether or not the terminal has loaded yet', () => {
     const { container } = render(
       <Tool tool={{ name: 'local_shell', done: true, output }} verbose />,
     );
-    // The fallback until `tool-stream.tsx` arrives, the terminal after; neither prints escapes.
+    // Plain lines until the highlighter loads, coloured after; neither prints escapes.
     expect(container.textContent).not.toContain('\u001b');
     expect(container.textContent).toContain('docs  notes.md');
   });
