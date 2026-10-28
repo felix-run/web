@@ -1,5 +1,3 @@
-import type { BundledLanguage } from 'shiki';
-
 /**
  * What the workspace's file preview may show, decided from the file's bytes.
  *
@@ -115,13 +113,12 @@ function countLines(text: string): number {
 /**
  * A highlighter language for a path, or null to draw it as plain text.
  *
- * A short table rather than Shiki's whole language map: the map is a few
- * hundred dynamic imports in the entry chunk, and a language Shiki does not
- * have makes `createHighlighter` reject, which the code block does not catch.
- * Anything not here is shown unhighlighted, which is right for most of what
- * else lands in a workspace — notes, logs, data.
+ * Names from `@felix/ui/lib/highlighter`'s table, which loads each one on first
+ * use and draws a name it lacks as plain text. Anything not here is shown
+ * unhighlighted, which is right for most of what else lands in a workspace —
+ * notes, logs, data.
  */
-const BY_EXTENSION: Record<string, BundledLanguage> = {
+const BY_EXTENSION: Record<string, string> = {
   ts: 'typescript',
   tsx: 'tsx',
   mts: 'typescript',
@@ -162,7 +159,7 @@ const BY_EXTENSION: Record<string, BundledLanguage> = {
   dockerfile: 'docker',
 };
 
-export function languageFor(path: string): BundledLanguage | null {
+export function languageFor(path: string): string | null {
   const name = path.split('/').pop()?.toLowerCase() ?? '';
   if (name === 'dockerfile') return 'docker';
   if (name === 'makefile') return 'make';

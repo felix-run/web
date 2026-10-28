@@ -376,10 +376,12 @@ describe('the tool card output pane', () => {
     );
     // Highlighted as JSON, in a block that keeps the card's wrap-don't-scroll rule.
     const block = document.querySelector('[data-language="json"]') as HTMLElement;
-    // One block per line (the copy control copies the newlines).
-    const lines = [...block.querySelectorAll('pre code > span')].map((l) => l.textContent);
+    // One line element per line (the copy control copies the newlines).
+    const lines = [...block.querySelectorAll('[data-slot=code-block-line-content]')].map(
+      (l) => l.textContent,
+    );
     expect(lines).toEqual(['{', '  "number": 232,', '  "state": "open"', '}']);
-    expect(block.className).toContain('[&_pre]:whitespace-pre-wrap');
+    expect(block.querySelector('pre')?.hasAttribute('data-wrap')).toBe(true);
     expect(screen.getByRole('button', { name: 'Copy output' })).toBeTruthy();
   });
 
@@ -445,7 +447,7 @@ describe('a long input or output in debug', () => {
     expect(fold.getAttribute('aria-expanded')).toBe('false');
     const block = document.getElementById(fold.getAttribute('aria-controls') ?? '');
     expect(block?.hasAttribute('data-folded')).toBe(true);
-    expect(block?.querySelector('[data-language="json"]')?.className).toContain('max-h-44');
+    expect(block?.querySelector('[data-language="json"] pre')?.className).toContain('max-h-44');
     // A short output has nothing to fold.
     expect(screen.queryByRole('button', { name: /of the output$/ })).toBeNull();
     expect(DEBUG_FOLD_LINES).toBeLessThan(JSON.stringify(plan, null, 2).split('\n').length);
@@ -454,7 +456,7 @@ describe('a long input or output in debug', () => {
     expect(fold.getAttribute('aria-expanded')).toBe('true');
     expect(fold.textContent).toContain('Show less');
     expect(block?.hasAttribute('data-folded')).toBe(false);
-    expect(block?.querySelector('[data-language="json"]')?.className).toContain('max-h-none');
+    expect(block?.querySelector('[data-language="json"] pre')?.className).toContain('max-h-none');
     unmount();
 
     // Outside debug a card opens on request and keeps its ordinary scrolling cap.

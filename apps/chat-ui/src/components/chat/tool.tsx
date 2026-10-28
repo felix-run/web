@@ -1,6 +1,8 @@
 import {
   describeError,
   fileToolOp,
+  parsePublishResult,
+  parseSearchHits,
   parseTabular,
   subagentOf,
   summarizeToolArgs,
@@ -20,7 +22,7 @@ import {
 } from 'lucide-react';
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api';
-import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block';
+import { HighlightedCode } from '@/components/highlighted-code';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { type DenialRecord, denialSubject } from '@/lib/denials';
 import { clockTime } from '@/lib/format';
@@ -29,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { useOptionalShellPick } from '@/shell-context';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
+import { PublishLine, ToolSources } from './tool-sources';
 import { ToolTable } from './tool-table';
 import { DebugId } from './turn-debug';
 
@@ -92,6 +95,16 @@ export const Tool = memo(function Tool({
   const table = useMemo(
     () => (tool.done && !shell && !issue ? parseTabular(tool.output) : null),
     [tool.done, shell, issue, tool.output],
+  );
+  // A search tool's numbered hits, drawn as its sources; tried only where a table was not.
+  const hits = useMemo(
+    () => (tool.done && !shell && !issue && !table ? parseSearchHits(tool.output) : null),
+    [tool.done, shell, issue, table, tool.output],
+  );
+  // Where a publish landed, said outside the fold.
+  const published = useMemo(
+    () => (tool.done && !issue ? parsePublishResult(tool.name, tool.output) : null),
+    [tool.done, issue, tool.name, tool.output],
   );
   // A `task` call is a child agent's job: named by the agent and the job, not by
   // the first string argument, and running as that agent rather than as a tool.
@@ -214,6 +227,7 @@ export const Tool = memo(function Tool({
       {/* Outside the fold: a screenshot is the result a person wants to see, and
           hiding it behind the chevron made every browser call read as text. */}
       {tool.images?.length ? <ToolImages images={tool.images} label={target ?? tool.name} /> : null}
+      {published && <PublishLine result={published} />}
       {/* Outside the fold too: who said no and when is the first thing asked of a
           denied call, and the way forward has to be on screen when the agent's
           reply asks "would you like to approve this?" in prose nothing can answer. */}
@@ -243,6 +257,8 @@ export const Tool = memo(function Tool({
         ) : tool.done ? (
           table ? (
             <ToolTable table={table} raw={render(tool.output)} />
+          ) : hits ? (
+            <ToolSources hits={hits} raw={render(tool.output)} />
           ) : (
             <Field label="Output" value={tool.output} tool={tool.name} emphasis fold={verbose} />
           )
@@ -264,6 +280,27 @@ export const Tool = memo(function Tool({
     </div>
   );
 });
+
+/**
+ * A call routine enough to fold into a run's summary line (`ToolRun` in `message.tsx`):
+ * finished, and with nothing in it a person would want to see without asking — no failure,
+ * refusal or denial, no non-zero exit, no image, no skill draft waiting on a decision, no
+ * child still working in the background, no publish. Anything else keeps its own card.
+ */
+export function isRoutineCall(tool: ToolCall): boolean {
+  if (!tool.done || tool.images?.length) return false;
+  if (classifyToolResult(tool.name, tool.output) !== null) return false;
+  const shell = parseShellResult(tool.output);
+  if (shell && shellStatus(shell).failed) return false;
+  if (subagentOf(tool)?.state === 'background') return false;
+  if (parseSkillCall(tool.name, tool.output)) return false;
+  return parsePublishResult(tool.name, tool.output) === null;
+}
+
+/** Whether a finished call's result is a shell result, which a run summary counts as a command. */
+export function isShellCall(tool: ToolCall): boolean {
+  return tool.done === true && parseShellResult(tool.output) !== null;
+}
 
 /**
  * A denied call's subject line, and the way forward.
@@ -717,7 +754,8 @@ export function prettyJson(value: unknown): string | null {
  * Tool arguments and results as highlighted JSON, with a copy control.
  *
  * Still wrapped rather than scrolled sideways — the reason `Field` wraps — and
- * capped at the same height, so a card is no taller than it was.
+ * capped at the same height, so a card is no taller than it was. The cap and the
+ * debug fold land on the scrolling `pre`, which is the element that has a height.
  */
 function JsonBlock({
   json,
@@ -729,19 +767,14 @@ function JsonBlock({
   className?: string | undefined;
 }) {
   return (
-    <CodeBlock
+    <HighlightedCode
       code={json}
       language="json"
-      className={cn(
-        'max-h-64 overflow-y-auto rounded-lg border-border/60 bg-background [&_code]:text-xs [&_pre]:!bg-transparent [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:p-2.5 [&_pre]:pr-9 [&_pre]:text-xs',
-        className,
-      )}
-    >
-      <CodeBlockCopyButton
-        aria-label={`Copy ${label.toLowerCase()}`}
-        className="absolute top-1 right-1 z-10 size-6"
-      />
-    </CodeBlock>
+      wrap
+      copyLabel={`Copy ${label.toLowerCase()}`}
+      className="bg-background dark:bg-background"
+      contentClassName={cn('max-h-64 overflow-y-auto pr-9', className)}
+    />
   );
 }
 

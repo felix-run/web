@@ -4,7 +4,7 @@ import { RotateCwIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { workspaceDelete, workspaceRead, workspaceRename, workspaceWrite } from '@/api';
-import { CodeBlock } from '@/components/ai-elements/code-block';
+import { HighlightedCode } from '@/components/highlighted-code';
 import {
   outcomeLine,
   savedLine,
@@ -464,18 +464,8 @@ export function FileView({
 }
 
 function SourceView({ path, text }: { path: string; text: string }) {
-  const language = languageFor(path);
-  return language ? (
-    <CodeBlock
-      code={withoutFinalNewline(text)}
-      language={language}
-      showLineNumbers
-      className="text-xs"
-    />
-  ) : (
-    <pre className="overflow-x-auto rounded-lg border border-border/60 bg-code-surface p-3 font-mono text-xs whitespace-pre">
-      {withoutFinalNewline(text)}
-    </pre>
+  return (
+    <HighlightedCode code={withoutFinalNewline(text)} language={languageFor(path)} lineNumbers />
   );
 }
 

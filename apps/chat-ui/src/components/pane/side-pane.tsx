@@ -24,7 +24,7 @@ import {
   useState,
 } from 'react';
 import { getArtifact } from '@/api';
-import { CodeBlock } from '@/components/ai-elements/code-block';
+import { HighlightedCode } from '@/components/highlighted-code';
 import { FileView } from '@/components/pane/file-view';
 import { FilesView } from '@/components/pane/files-view';
 import {
@@ -506,7 +506,7 @@ function ArtifactView({
             </Button>
           </div>
         ) : json ? (
-          <CodeBlock code={json} language="json" showLineNumbers className="text-xs" />
+          <HighlightedCode code={json} language="json" lineNumbers />
         ) : (
           <pre className="rounded-lg border border-border/60 bg-code-surface p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
             {state.text}
@@ -528,30 +528,6 @@ function prettyJson(text: string): string | null {
   }
 }
 
-/**
- * Whether Shiki has a grammar for a fence's language. A language it lacks makes
- * the highlighter reject, and the code block does not catch that — so the
- * answer is asked of Shiki itself, which the reply that held the block has
- * already loaded.
- */
-function useShikiKnows(language: string): boolean | null {
-  const [known, setKnown] = useState<boolean | null>(null);
-  useEffect(() => {
-    let live = true;
-    import('shiki')
-      .then((m) => {
-        if (live) setKnown(Object.hasOwn(m.bundledLanguages, language));
-      })
-      .catch(() => {
-        if (live) setKnown(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [language]);
-  return known;
-}
-
 function CodeView({
   threadId,
   item,
@@ -559,7 +535,6 @@ function CodeView({
   threadId: string;
   item: Extract<PaneItem, { kind: 'code' }>;
 }) {
-  const known = useShikiKnows(item.language);
   const code = withoutFinalNewline(item.code);
   const [saving, setSaving] = useState(false);
   const name = suggestedName(item.code, extensionFor(item.language));
@@ -585,18 +560,7 @@ function CodeView({
         />
       )}
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-        {known ? (
-          <CodeBlock
-            code={code}
-            language={item.language as never}
-            showLineNumbers
-            className="text-xs"
-          />
-        ) : (
-          <pre className="overflow-x-auto rounded-lg border border-border/60 bg-code-surface p-3 font-mono text-xs whitespace-pre">
-            {code}
-          </pre>
-        )}
+        <HighlightedCode code={code} language={item.language} lineNumbers />
       </div>
     </div>
   );

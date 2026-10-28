@@ -1,13 +1,20 @@
 import type { PlanState, StepState } from '@felix/client';
-import { CheckCircle2Icon, CircleDashedIcon, CircleIcon, CircleXIcon } from 'lucide-react';
 import {
-  Plan,
-  PlanContent,
-  PlanDescription,
-  PlanHeader,
-  PlanTitle,
-  PlanTrigger,
-} from '@/components/ai-elements/plan';
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@felix/ui/trace';
+import {
+  CheckCircle2Icon,
+  CircleDashedIcon,
+  CircleIcon,
+  CircleXIcon,
+  ListChecksIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STEP: Record<StepState, { Icon: typeof CircleIcon; tone: string }> = {
@@ -24,32 +31,33 @@ const STEP: Record<StepState, { Icon: typeof CircleIcon; tone: string }> = {
  * tenant-wide, newest first — so on a busy harness the plan on screen was not
  * necessarily this thread's. This one is read off the turn's own `plan_*` calls.
  *
- * The header's value is the count (`3 of 7 done`), because that is the glance;
- * the steps are a list with the state as an icon *and* the agent's own status
- * word, never the colour alone. Open by default while any step is still to do.
+ * A Trace row (`@felix/ui/trace`), like reasoning and the tool calls beside it:
+ * the line is the title and the count (`3 of 7 done`), because that is the glance,
+ * and it shimmers while the run is live and steps remain. Open, the goal, then the
+ * steps as a list with the state as an icon *and* the agent's own status word,
+ * never the colour alone. Open by default while any step is still to do.
+ *
+ * It used to be a card whose header wrapped the count under the goal at 390px.
+ * One line cannot wrap, so the goal moved inside, and the title truncates before
+ * the count does.
  */
 export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
   const done = plan.steps.filter((s) => s.state === 'done').length;
   const open = done < plan.steps.length;
+  const title = plan.title || 'Plan';
   return (
-    <Plan
-      defaultOpen={open}
-      className="@container/plan gap-0 rounded-xl border-border/60 bg-transparent py-0 text-sm"
-      data-plan-id={plan.id}
-    >
-      <PlanHeader className="flex items-start gap-2 px-3 py-2">
-        {/* The chips wrap under the description where the card is narrow: beside it at
-            390px they squeezed the goal to a word or two a line (2026-10-16). A container
-            query, since what is narrow is the card. The toggle stays top-right either way. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-          <div data-plan-heading className="min-w-0 flex-1 basis-full @md/plan:basis-0">
-            <PlanTitle className="truncate text-sm font-medium">{plan.title || 'Plan'}</PlanTitle>
-            {plan.goal && plan.goal !== plan.title ? (
-              <PlanDescription className="mt-0.5 text-xs text-muted-foreground">
-                {plan.goal}
-              </PlanDescription>
-            ) : null}
-          </div>
+    <TraceCollapsible defaultOpen={open} data-plan-id={plan.id} className="text-sm">
+      <TraceCollapsibleTrigger>
+        <TraceLine status={live && open ? 'running' : undefined}>
+          <TraceIcon>
+            <ListChecksIcon />
+          </TraceIcon>
+          <TraceTitle data-plan-heading className="font-medium text-foreground">
+            {title}
+          </TraceTitle>
+          <TraceDescription className="font-mono text-xs text-muted-foreground">
+            {done} of {plan.steps.length} done
+          </TraceDescription>
           {plan.edited && (
             // A person changed this plan by hand (felix-run/felix#605): said where the plan is
             // drawn, so steps the agent did not write never read as the agent's.
@@ -60,18 +68,14 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
               edited
             </span>
           )}
-          <span
-            className={cn(
-              'shrink-0 font-mono text-xs tabular-nums text-muted-foreground',
-              live && open && 'shimmer shimmer-color-foreground',
-            )}
-          >
-            {done} of {plan.steps.length} done
-          </span>
-        </div>
-        <PlanTrigger className="size-7 shrink-0" />
-      </PlanHeader>
-      <PlanContent className="border-t border-border/50 px-3 py-2">
+        </TraceLine>
+      </TraceCollapsibleTrigger>
+      <TraceCollapsibleContent>
+        {plan.goal && plan.goal !== plan.title ? (
+          <p data-plan-goal className="mb-1.5 text-xs">
+            {plan.goal}
+          </p>
+        ) : null}
         <ol className="space-y-1.5">
           {plan.steps.map((step, index) => {
             const { Icon, tone } = STEP[step.state];
@@ -95,7 +99,7 @@ export function PlanCard({ plan, live }: { plan: PlanState; live: boolean }) {
             );
           })}
         </ol>
-      </PlanContent>
-    </Plan>
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   );
 }
