@@ -1022,6 +1022,10 @@ Flows worth knowing before editing the app:
   line (`GreetingRepo` in `thread-repo.tsx`) that opens a checkout before the first message —
   the harness takes a thread no message has made (its e2e opens one on an unrun `t1`). It reads
   nothing on load, as `ThreadRepoSection` does not for an empty thread; only the click asks.
+  With a repository open, the starters gain *Start from an issue or PR* (`start-from-item.tsx`,
+  `GET /github/repos/{o}/{r}/items[/{n}]`, `felix-run/felix#694`), which fills the composer
+  through `draftMessage` and **never sends**: the description is a third party's text. Both it and
+  `GreetingRepo` are lazy — static, they put the repo picker in every first load (~6 kB).
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 

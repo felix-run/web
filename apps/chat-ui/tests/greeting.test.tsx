@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Greeting } from '../src/components/chat/greeting';
+import { itemMessage } from '../src/components/chat/start-from-item';
 import { resetMountState } from '../src/lib/mount-state';
 import { ShellProvider, type ShellValue } from '../src/shell-context';
 
@@ -45,6 +46,32 @@ const repos = vi.hoisted(() => ({
     branch: null,
   })),
   getThreadRepo: vi.fn(),
+  listRepoItems: vi.fn(async () => ({
+    repository: 'acme/widgets',
+    items: [
+      {
+        number: 12,
+        kind: 'issue',
+        title: 'Crash on empty input',
+        state: 'open',
+        html_url: 'https://github.com/acme/widgets/issues/12',
+        author: 'octo',
+        updated_at: '2026-10-27T00:00:00Z',
+      },
+    ],
+    truncated: false,
+  })),
+  getRepoItem: vi.fn(async () => ({
+    number: 12,
+    kind: 'issue',
+    title: 'Crash on empty input',
+    state: 'open',
+    html_url: 'https://github.com/acme/widgets/issues/12',
+    author: 'octo',
+    updated_at: '2026-10-27T00:00:00Z',
+    body: 'Steps:\n1. submit nothing',
+    body_truncated: false,
+  })),
 }));
 vi.mock('../src/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/api')>()),
@@ -271,7 +298,7 @@ describe('choosing where the thread runs', () => {
     expect(screen.getByText('Repository')).toBeTruthy();
     // Nothing is asked of the harness on load: the thread has no message yet.
     expect(repos.getThreadRepo).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Open a repository' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open a repository' }));
     fireEvent.click(await screen.findByRole('button', { name: /acme\/widgets/ }));
     await waitFor(() =>
       expect(repos.openThreadRepo).toHaveBeenCalledWith('a1b2c3', 'acme/widgets'),
@@ -283,5 +310,61 @@ describe('choosing where the thread runs', () => {
     github.session = { login: 'octo' };
     mount(agent('client'));
     expect(screen.queryByText('Repository')).toBeNull();
+  });
+});
+
+/**
+ * "Start from an issue or PR": one of the open repository's items, put in the composer for
+ * the operator to add to. Its description is whoever opened the issue, so unlike a starter
+ * it is never sent on a click.
+ */
+describe('starting from an issue or pull request', () => {
+  const server = {
+    manifestEntries: [{ id: 'cowork', workspace: { tools: 'server', scope: 'thread' } }],
+  } as unknown as Partial<ShellValue>;
+
+  it('is offered only once a repository is open, and fills the composer without sending', async () => {
+    github.session = { login: 'octo' };
+    const draftMessage = vi.fn();
+    const shell = mount({ ...server, draftMessage });
+    expect(screen.queryByRole('button', { name: /Start from an issue or PR/ })).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open a repository' }));
+    fireEvent.click(await screen.findByRole('button', { name: /acme\/widgets/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Start from an issue or PR/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Crash on empty input/ }));
+
+    await waitFor(() => expect(draftMessage).toHaveBeenCalledOnce());
+    expect(repos.getRepoItem).toHaveBeenCalledWith('acme/widgets', 12);
+    expect(draftMessage.mock.calls[0]?.[0]).toBe(
+      'Issue acme/widgets#12: Crash on empty input\nhttps://github.com/acme/widgets/issues/12\n\nSteps:\n1. submit nothing\n\n',
+    );
+    expect(shell.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('itemMessage', () => {
+  const base = {
+    number: 3,
+    kind: 'pull' as const,
+    title: 'Add dark mode',
+    state: 'open',
+    html_url: 'https://github.com/acme/widgets/pull/3',
+    author: 'octo',
+    updated_at: '',
+    body: '',
+    body_truncated: false,
+  };
+
+  it('names the item and links it, and adds no instruction of its own', () => {
+    expect(itemMessage('acme/widgets', base)).toBe(
+      'Pull request acme/widgets#3: Add dark mode\nhttps://github.com/acme/widgets/pull/3\n\n',
+    );
+  });
+
+  it('says when the harness cut the description', () => {
+    expect(itemMessage('acme/widgets', { ...base, body: 'long…', body_truncated: true })).toContain(
+      '(The description was cut at 20,000 characters.)',
+    );
   });
 });

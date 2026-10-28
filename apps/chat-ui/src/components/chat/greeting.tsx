@@ -1,6 +1,5 @@
-import { type ReactNode, useSyncExternalStore } from 'react';
+import { lazy, type ReactNode, Suspense, useState, useSyncExternalStore } from 'react';
 import { CutId } from '@/components/cut-id';
-import { GreetingRepo } from '@/components/workspace/thread-repo';
 import { getSession, subscribeCredentials } from '@/lib/auth';
 import { getMountLabel, supportsDirectoryPicker } from '@/lib/cowork';
 import { mountFolder, reconnectFolder, useMount } from '@/lib/mount-state';
@@ -8,6 +7,16 @@ import { cn } from '@/lib/utils';
 import { inBrowser, onHarness } from '@/lib/workspace-tools';
 import { useShell } from '@/shell-context';
 import { StarterPrompts } from './starter-prompts';
+
+// Both are drawn only for a GitHub sign-in with an agent that works on the harness, so they
+// load then: imported statically they put the repository picker and its file tree in every
+// first load (~6 kB gzipped), for a line most empty threads never show.
+const GreetingRepo = lazy(() =>
+  import('@/components/workspace/thread-repo').then((m) => ({ default: m.GreetingRepo })),
+);
+const StartFromItem = lazy(() =>
+  import('@/components/chat/start-from-item').then((m) => ({ default: m.StartFromItem })),
+);
 
 /**
  * The empty thread: a welcome, the agent's starter prompts, and a readout of
@@ -35,6 +44,8 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
   // The polled label covers a mount made elsewhere; the store's is at once after a click here.
   const folder = useMountLabel() ?? mount.label;
   const canMount = supportsDirectoryPicker();
+  // The repository opened from the readout below, which the starters gain a card for.
+  const [repo, setRepo] = useState<string | null>(null);
   // The manifest's own words, when it has them (`metadata.greeting`); each half
   // falls back on its own, so a manifest can change the headline and keep the
   // sentence that names the agent.
@@ -106,6 +117,11 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
           </div>
 
           <StarterPrompts manifest={manifest} />
+          {repo && (
+            <Suspense fallback={null}>
+              <StartFromItem repo={repo} />
+            </Suspense>
+          )}
         </>
       )}
 
@@ -147,7 +163,7 @@ export function Greeting({ manifest, blocked = false }: { manifest: string; bloc
         ) : null}
         {onHarness(tools) && (
           // Its own component decides whether to draw: only for a GitHub sign-in.
-          <RepositoryLine threadId={threadId} />
+          <RepositoryLine threadId={threadId} onRepo={setRepo} />
         )}
         <div className="flex min-w-0 gap-1.5">
           <dt>Thread</dt>
@@ -207,14 +223,22 @@ function ReadoutAction({ onClick, children }: { onClick: () => void; children: R
 }
 
 /** The Repository line, only for a person whose sign-in can clone one. */
-function RepositoryLine({ threadId }: { threadId: string }) {
+function RepositoryLine({
+  threadId,
+  onRepo,
+}: {
+  threadId: string;
+  onRepo: (fullName: string | null) => void;
+}) {
   const session = useSyncExternalStore(subscribeCredentials, getSession);
   if (!session?.login) return null;
   return (
     <div className="flex min-w-0 gap-1.5">
       <dt>Repository</dt>
       <dd className="flex min-w-0 gap-1.5">
-        <GreetingRepo threadId={threadId} />
+        <Suspense fallback={null}>
+          <GreetingRepo threadId={threadId} onRepo={onRepo} />
+        </Suspense>
       </dd>
     </div>
   );

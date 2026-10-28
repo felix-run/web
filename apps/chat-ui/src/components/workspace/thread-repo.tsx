@@ -42,7 +42,7 @@ import { useOptionalShellPick } from '@/shell-context';
 const CLONING_POLL_MS = 2_000;
 
 /** What each refusal code means to the person, where the harness's own message is not enough. */
-function refusalText(err: unknown): string {
+export function refusalText(err: unknown): string {
   if (err instanceof RepoRouteError) {
     switch (err.code) {
       case 'github_not_connected':
@@ -252,9 +252,19 @@ function RepoStatus({
  *
  * Nothing for a person not signed in with GitHub: the clone acts as them.
  */
-export function GreetingRepo({ threadId }: { threadId: string }) {
+export function GreetingRepo({
+  threadId,
+  onRepo,
+}: {
+  threadId: string;
+  /** The repository once one is open here, for the greeting's "Start from an issue or PR". */
+  onRepo?: (fullName: string | null) => void;
+}) {
   const session = useSyncExternalStore(subscribeCredentials, getSession);
   const [repo, setRepo] = useState<ThreadRepo | null>(null);
+  // A clone that failed or expired is no repository to start from.
+  const usable = repo && (repo.state === 'cloning' || repo.state === 'ready') ? repo.repo : null;
+  useEffect(() => onRepo?.(usable), [usable, onRepo]);
   const [error, setError] = useState<string | null>(null);
   // A clone finishes in the background: ask until it says how it went.
   useEffect(() => {
