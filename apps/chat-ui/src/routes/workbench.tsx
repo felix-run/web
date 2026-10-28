@@ -2,7 +2,7 @@ import type { BranchPoint } from '@felix/client';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInRouterContext, useSearchParams } from 'react-router';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
@@ -36,6 +36,8 @@ import type { Turn, TurnFeedback } from '@/types';
  * and the primitives they draw with — were a block of the entry chunk every one
  * of those visits paid for.
  */
+// Loaded the first time someone repeats a message: the job form is the Jobs page's.
+const RepeatJobDialog = lazy(() => import('@/components/jobs/repeat-job-dialog'));
 const Inspector = lazy(() =>
   import('@/components/inspector/inspector').then((m) => ({ default: m.Inspector })),
 );
@@ -208,6 +210,10 @@ export function Workbench() {
     (from: number, to: number) => openInPane(threadId, { kind: 'changes', from, to }),
     [threadId],
   );
+  // "Repeat on a schedule": the message being made a job, or null. Stable setter, so a
+  // row's memo holds.
+  const [repeatPrompt, setRepeatPrompt] = useState<string | null>(null);
+  const repeatAsJob = useCallback((text: string) => setRepeatPrompt(text), []);
   // Stable, for the memoised Inspector: an inline closure redrew it on every frame.
   const closeInspector = useCallback(() => setInspectorOpen(false), [setInspectorOpen]);
   const inRouter = useInRouterContext();
@@ -216,6 +222,16 @@ export function Workbench() {
   return (
     <>
       {inRouter && <OpenLink threadId={threadId} items={pane.items} active={pane.active} />}
+      {inRouter && repeatPrompt !== null && (
+        <Suspense fallback={null}>
+          <RepeatJobDialog
+            prompt={repeatPrompt}
+            manifest={manifest}
+            manifestOptions={manifestOptions}
+            onClose={() => setRepeatPrompt(null)}
+          />
+        </Suspense>
+      )}
       <div ref={row} className="flex min-h-0 flex-1">
         <main className="relative isolate flex min-w-0 flex-1 flex-col">
           {/* Who denied each denied call and when, and its "Ask again" — offered only
@@ -269,6 +285,7 @@ export function Workbench() {
                   changedFiles={reply?.files ?? 0}
                   replyFrom={reply?.from ?? 0}
                   reviewChanges={reviewChanges}
+                  repeatAsJob={inRouter ? repeatAsJob : undefined}
                 />
               );
             })}
@@ -561,6 +578,7 @@ function TurnRow({
   changedFiles,
   replyFrom,
   reviewChanges,
+  repeatAsJob,
 }: {
   turn: Turn;
   /** The row's position, which is how a reply's changes are scoped. */
@@ -587,6 +605,8 @@ function TurnRow({
   /** Where that reply begins. */
   replyFrom: number;
   reviewChanges: (from: number, to: number) => void;
+  /** Open "Repeat on a schedule" with this text. Absent where no job can be made. */
+  repeatAsJob: ((text: string) => void) | undefined;
 }) {
   const eventId = t.eventId;
   return (
@@ -604,6 +624,9 @@ function TurnRow({
         onRewind={drives && !streaming && eventId && !isLast ? () => rewindTo(eventId) : undefined}
         {...(drives && !streaming && t.role === 'user' && (!first || t.parentEventId)
           ? { onEdit: (text: string) => void editTurn(t.id, text) }
+          : {})}
+        {...(repeatAsJob && t.role === 'user' && t.content.trim()
+          ? { onRepeat: () => repeatAsJob(t.content) }
           : {})}
         {...(label !== undefined ? { label } : {})}
         {...(drives && eventId ? { onLabel: (next) => labelTurn(eventId, next) } : {})}

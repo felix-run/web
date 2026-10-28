@@ -59,6 +59,7 @@ export function Message({
   onRegenerate,
   onRewind,
   onEdit,
+  onRepeat,
   branch,
   onSwitchBranch,
   feedback,
@@ -90,6 +91,8 @@ export function Message({
   onRewind?: () => void;
   /** Replace a user turn's text and run from it. Absent while that cannot happen. */
   onEdit?: (text: string) => void;
+  /** Make a user turn's text a scheduled job. */
+  onRepeat?: () => void;
   /** This answer's rating, from the snapshot. */
   feedback?: TurnFeedback;
   /** Rate it. Provided for assistant turns only. */
@@ -165,6 +168,7 @@ export function Message({
         {...(branch ? { branch } : {})}
         {...(onSwitchBranch ? { onSwitchBranch } : {})}
         {...(onEdit ? { onEdit } : {})}
+        {...(onRepeat ? { onRepeat } : {})}
         {...(label === undefined ? {} : { label })}
         {...(onLabel ? { onLabel } : {})}
       />
@@ -337,6 +341,7 @@ function UserTurn({
   onLabel,
   onRewind,
   onEdit,
+  onRepeat,
   branch,
   onSwitchBranch,
 }: {
@@ -348,6 +353,7 @@ function UserTurn({
   onLabel?: (label: string | null) => void;
   onRewind?: () => void;
   onEdit?: (text: string) => void;
+  onRepeat?: () => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const editing = draft !== null && !!onEdit;
@@ -426,6 +432,7 @@ function UserTurn({
           content={turn.content}
           onRewind={onRewind}
           {...(onEdit ? { onEdit: () => setDraft(turn.content) } : {})}
+          {...(onRepeat ? { onRepeat } : {})}
           {...(label === undefined ? {} : { label })}
           {...(onLabel ? { onLabel } : {})}
         />

@@ -331,6 +331,17 @@ draws `ReplyChanges`, the instrument's list over that slice, headed by the messa
 `TurnRow` takes the count as numbers (`changedFiles`, `replyFrom`) and a stable `reviewChanges`,
 so a reply whose count did not move keeps its memo. `tests/reply-changes.test.tsx`.
 
+**A message can become a job without the harness pages** (2026-10-27). *Repeat on a schedule*
+on an operator turn's actions opens `components/jobs/repeat-job-dialog.tsx` (lazy, from
+`routes/workbench.tsx`, only under a router — it navigates on success), which is the Jobs page's
+own `JobCreateForm` (`components/jobs/job-create-form.tsx`, pulled out of `jobs-sheet.tsx` so the
+two cannot drift) with the message as the prompt, the thread's agent and a slug name, and
+`agentOnly` (no workflow switch). It reads the job list on the Needs-you band's `JOBS_POLL_KEY`,
+so it costs no request of its own; that band is also where a failing job reaches Everyday, which
+is why no Jobs row was added to the sidebar. **The dialog's description is load-bearing**: a job
+runs on `job:<name>` (or a fresh thread each run), never the conversation it came from, and a
+prompt like "do the same again" means nothing there. `tests/repeat-job.test.tsx` pins the request.
+
 `/harness` is the second address, and the split is by lifetime.** The inspector's eight sections
 divided into the three that describe the run on screen — approvals, plans, tool metrics, which stayed
 in the right rail (approvals have since moved to the attention line alone) — and the five that outlive every run: memory, corpus, skills, and what the harness

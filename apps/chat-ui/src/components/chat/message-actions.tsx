@@ -1,7 +1,15 @@
 import { Button } from '@felix/ui/button';
 import { Input } from '@felix/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
-import { CheckIcon, CopyIcon, PencilIcon, RefreshCwIcon, TagIcon, Undo2Icon } from 'lucide-react';
+import {
+  CalendarClockIcon,
+  CheckIcon,
+  CopyIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  TagIcon,
+  Undo2Icon,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmButton } from '@/components/confirm-button';
 import { cn } from '@/lib/utils';
@@ -10,7 +18,8 @@ import { cn } from '@/lib/utils';
  * Hover / focus actions for a transcript turn. Copy on any text turn;
  * Regenerate only on the last assistant turn; Rewind and Label when a server
  * event id is known — both address the turn by that id. Edit on a user turn
- * opens it for rewriting in place; the turn owns that editor.
+ * opens it for rewriting in place; the turn owns that editor. Repeat, on a user
+ * turn, opens that text as a scheduled job's prompt.
  */
 export function MessageActions({
   content,
@@ -19,6 +28,7 @@ export function MessageActions({
   onRegenerate,
   onRewind,
   onEdit,
+  onRepeat,
   className,
 }: {
   content: string;
@@ -29,6 +39,7 @@ export function MessageActions({
   onRegenerate?: () => void;
   onRewind?: () => void;
   onEdit?: () => void;
+  onRepeat?: () => void;
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -45,7 +56,7 @@ export function MessageActions({
     }
   }
 
-  if (!content && !onRegenerate && !onRewind && !onLabel && !onEdit) return null;
+  if (!content && !onRegenerate && !onRewind && !onLabel && !onEdit && !onRepeat) return null;
 
   const commit = () => {
     const next = draft.trim();
@@ -120,6 +131,22 @@ export function MessageActions({
             </Button>
           </TooltipTrigger>
           <TooltipContent>Edit and resend</TooltipContent>
+        </Tooltip>
+      )}
+      {onRepeat && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7 text-muted-foreground coarse:size-10 dark:hover:bg-solid-accent/50"
+              onClick={onRepeat}
+              aria-label="Repeat this message on a schedule"
+            >
+              <CalendarClockIcon className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Repeat on a schedule</TooltipContent>
         </Tooltip>
       )}
       {onLabel && (
