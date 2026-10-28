@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.16.1"
+    "version": "0.18.0"
   },
   "paths": {
     "/health": {
@@ -519,6 +519,12 @@
       "delete": {}
     },
     "/github/repos": {
+      "get": {}
+    },
+    "/github/repos/{owner}/{repo}/items": {
+      "get": {}
+    },
+    "/github/repos/{owner}/{repo}/items/{number}": {
       "get": {}
     },
     "/chat/sessions/{thread_id}/workspace/repo": {

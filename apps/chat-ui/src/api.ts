@@ -517,6 +517,63 @@ export async function listMyRepos(q = ''): Promise<GitHubRepos> {
   return (await res.json()) as GitHubRepos;
 }
 
+/** An issue or pull request in a repository you can reach (`GET /github/repos/{o}/{r}/items`). */
+export interface RepoItem {
+  number: number;
+  kind: 'issue' | 'pull';
+  title: string;
+  state: string;
+  /** Built by the harness from the repository and number, never copied from GitHub's answer. */
+  html_url: string;
+  /** Empty for a deleted account. */
+  author: string;
+  updated_at: string;
+}
+
+export interface RepoItems {
+  repository: string;
+  items: RepoItem[];
+  /** More match than one listing returns: narrow with `q`. */
+  truncated: boolean;
+}
+
+export interface RepoItemDetail extends RepoItem {
+  /** Its author's markdown, as data: whoever wrote the issue wrote this. */
+  body: string;
+  /** Cut at the harness's 20,000 characters. */
+  body_truncated: boolean;
+}
+
+/**
+ * Owner and name, each encoded for its own path segment. Interpolated as two segments in each
+ * route literal rather than one helper's output, which `check-api-drift` reads as one segment.
+ */
+function repoSegments(fullName: string): [string, string] {
+  const [owner = '', name = ''] = fullName.split('/');
+  return [encodeURIComponent(owner), encodeURIComponent(name)];
+}
+
+/**
+ * GET /github/repos/{owner}/{repo}/items → its open issues and pull requests, newest updated
+ * first, at most 30, filtered by title (`q`). Read as you, through the GitHub App.
+ */
+export async function listRepoItems(fullName: string, q = ''): Promise<RepoItems> {
+  const [owner, name] = repoSegments(fullName);
+  const res = await apiFetch(
+    `/api/github/repos/${owner}/${name}/items?${new URLSearchParams(q ? { q } : {}).toString()}`,
+  );
+  if (!res.ok) throw await problem(res, 'repository items');
+  return (await res.json()) as RepoItems;
+}
+
+/** GET /github/repos/{owner}/{repo}/items/{number} → one issue or pull request, with its body. */
+export async function getRepoItem(fullName: string, number: number): Promise<RepoItemDetail> {
+  const [owner, name] = repoSegments(fullName);
+  const res = await apiFetch(`/api/github/repos/${owner}/${name}/items/${number}`);
+  if (!res.ok) throw await problem(res, 'repository item');
+  return (await res.json()) as RepoItemDetail;
+}
+
 export interface ThreadRepo {
   state: 'cloning' | 'ready' | 'failed' | 'expired';
   repo: string;
