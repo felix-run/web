@@ -1135,6 +1135,11 @@ each firing then gets a thread of its own, so one run's transcript never sits in
 context. Both are fields on the web UI's job form, and a stored job's row says which mode it runs
 in.
 
+chat-ui opens the same form from a conversation: **Repeat on a schedule**, in an operator
+message's actions, fills the prompt with that message and selects the thread's agent. The job still
+runs on its own thread, as above, never on the conversation it was made from, so none of that
+conversation's history reaches its runs. The dialog says so before anything is saved.
+
 `POST /jobs/{name}/run` fires a job at once and **waits for it**: the response is the finished run
 (`{job_name, run_id, status, error, started_at, finished_at, result}`, with the agent's reply in
 `result.answer`), recorded with the rest but `result.trigger: "manual"`. It runs a disabled job
