@@ -1017,6 +1017,11 @@ Flows worth knowing before editing the app:
   this folder?" — over a readout saying *none mounted*. For an agent whose tools work in the
   browser (`inBrowser`) with no folder mounted, `Greeting` uses its own headline and says the
   tools work in the tab's storage until one is; the starters stay.
+  **The readout is also where the thread's place is chosen** (2026-10-27): *Mount a folder* /
+  *Reconnect* on the Folder line, and for an `onHarness` agent with a GitHub sign-in a Repository
+  line (`GreetingRepo` in `thread-repo.tsx`) that opens a checkout before the first message —
+  the harness takes a thread no message has made (its e2e opens one on an unrun `t1`). It reads
+  nothing on load, as `ThreadRepoSection` does not for an empty thread; only the click asks.
 
 Each turn sends **only the new user message** — Felix replays thread history server-side.
 
