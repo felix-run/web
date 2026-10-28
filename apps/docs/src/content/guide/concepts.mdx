@@ -198,10 +198,31 @@ An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`n
 body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
 
 Skills are disclosed progressively. The compiled system prompt carries only the catalog, as an
-`<available_skills>` block of names and descriptions. `activate_skill` returns a skill's body to the
-model **as instructions**, and lists its bundle files; `read_skill_file(name, path)` reads one (text
-only, at most 64 KiB, with a `truncated` flag). `deactivate_skill` switches one off. Activation is
-per `(tenant, manifest)` and only reaches skills in the manifest's catalog.
+`<available_skills>` block of names and descriptions, sorted by name. A skill with
+`disable-model-invocation`, or a declared ref no source answered, is left out of it, and the skill
+tools answer `unknown_skill` for it as for any other name. `activate_skill` returns a skill's body
+to the model **as instructions** (at most 256K characters, `truncated` past that), with its
+`license`, `compatibility` and `allowed-tools` as information only (`allowed-tools` is never
+enforced), and lists its bundle files; `read_skill_file(name, path)` reads one (text only, at most
+64 KiB, with a `truncated` flag). `deactivate_skill` switches one off.
+
+**Activation belongs to the conversation.** A skill is active in a thread when the thread's session
+log holds its `activate_skill` result on the active branch — the newest per name, minus a later
+`deactivate_skill`. Nothing else is stored, so `list_skills` reports that conversation's own state,
+a rewind or fork past an activation takes it away, and a result that content screening quarantined
+or an approval refused never counts. Activation only reaches skills in the manifest's catalog.
+
+**Activated instructions stay in view** for the rest of the conversation:
+
+- `clear_tool_results` never stubs an `activate_skill` result, and `spec.artifacts` never spills one.
+- When a window or compaction drops the turn that activated a skill, the logged result is re-shown
+  ahead of the history: at most 128K characters per model call, newest activation first, every `<`
+  escaped so a body cannot close its block, and an imported skill labelled `untrusted="true"`.
+- Only skills the catalog still offers are re-shown, so archiving, unpublishing or undeclaring a
+  skill takes it out of old threads. A skill that changed since it was activated, or one past the
+  budget, is named rather than repeated, and the model is told to activate it again.
+- Activating instructions the conversation already holds answers `already_active` rather than
+  sending them again.
 
 ### Where skills come from
 
@@ -212,6 +233,17 @@ per `(tenant, manifest)` and only reaches skills in the manifest's catalog.
 | Operator upload | object-store keys `skills/{tenant}/{name}/SKILL.md` or `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | `store` | the operator, outside Felix |
 | Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, an import from GitHub, or a promotion from a personal library, through review |
 | Personal library | the live version of each skill in the caller's own library, under `skill-library/{tenant}/~{digest}/` | `library` | the caller, or an agent under `spec.personal_skills: write` |
+
+A host directory follows the agentskills.io layout: only `<dir>/SKILL.md` packages are skills, and a
+loose `*.md` at the directory's root is not one. A skill directory is a leaf, so a `SKILL.md` kept
+under its `references/` belongs to that skill; the root of the skills directory is the exception and
+is walked below. Hidden directories, `node_modules` and symlinked directories are skipped, the walk
+stops at 6 levels and 2000 directories, and a shadowed name is logged. Loading is lenient: a missing
+description or unreadable YAML skips the skill, while a name that is not lowercase (loaded lowercased), a
+name unlike its directory, or a description over 1024 characters (the catalog lists the first 1024)
+logs a warning and loads.
+`felix skills validate <dir>` runs the stricter check a skill library applies on save against a
+local skill, sending nothing anywhere, and exits 1 on any issue.
 
 A catalog is built in this order, and the first source to hold a name answers it:
 
@@ -263,6 +295,12 @@ gets three more tools:
 | `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` (to the caller's own under [`spec.personal_skills: write`](/guide/manifest-reference/#specskill_authoring)) |
 | `update_skill` | `name`, `body`, `reason`, `parent_version`, `description?` | Saves a new version with a new body; every other file is kept from the parent |
 | `submit_skill_feedback` | `name`, `body`, `suggested_patch?` | Files feedback on a library skill in this agent's catalog; changes nothing |
+
+A `create_skill` or `update_skill` result says when the agent can use what it saved, as `available`
+with an `available_note`: `next_turn` once published (the turn that saved it compiled its catalog
+before the skill existed), `after_publish` while a draft, naming who must publish it (an operator, or
+the person whose library it is), and `never` when `skills_declared_only` leaves the name out of the
+manifest's catalog.
 
 `parent_version` is required and must be the skill's newest version that was not a rejected draft
 (`newest_version` in `list_skills` and `activate_skill`). A stale one is refused `parent_changed`;
