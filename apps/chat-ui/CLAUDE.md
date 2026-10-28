@@ -613,26 +613,23 @@ near-black page). The block's own surface is ours: Shiki tries to pass its dark 
 ## AI Elements and the side pane
 
 
-**AI Elements are vendored, not wired** (`apps/chat-ui/src/components/ai-elements/`, 48
-components, 2026-10-03; `snippet` and `web-preview` were deleted unused on 2026-10-16, and the xyflow `canvas`, `connection`, `edge`, `node`, `panel` and `toolbar` on 2026-10-21 — the workflow canvas is its own, and uses `controls` alone). They are presentational shadcn components and **do not need the AI
-SDK at runtime**: twelve import from `ai`, and only *types* (`UIMessage`, `ToolUIPart`, …), so
-`ai` is a **dev** dependency pinned to `^6` — the version they are written against (v7 renamed
+**Six vendored AI Elements are left** (`apps/chat-ui/src/components/ai-elements/`):
+`prompt-input` (the ported composer, edited heavily since), `context` (the meter's breakdown),
+`terminal` (a shell result's streams), `checkpoint`, `file-tree` and `controls` (the workflow
+canvas). The other 33 of the AI SDK Elements set vendored on 2026-10-03 were deleted unused on
+2026-10-28, once shadcn's AI Elements replaced that set upstream — new patterns are built on
+`@felix/ui`'s Trace and Code Block instead (below) — and with them twelve dependencies only they
+used (`motion`, `react-jsx-parser` and its `@types/react-dom` override, `media-chrome`,
+`@rive-app/react-webgl2`, `use-stick-to-bottom`, …). They **do not need the AI SDK at runtime**:
+`context.tsx` imports a *type* from `ai`, a **dev** dependency pinned to `^6` (v7 renamed
 `LanguageModelUsage` fields). `tests/ai-elements.test.tsx` mocks `ai` with a module that throws,
-so a component that starts importing it for real fails there. Using one with Felix means mapping
-`Turn`/`ToolCall` into those shapes (e.g. `type` as `tool-<name>`, `state` as `'output-available'`),
-not adopting `useChat`. `prompt-input.tsx` predates the rest and was **not** overwritten — it is
-the ported composer, edited heavily since. Four things were changed on the way in: `message.tsx`
-and `reasoning.tsx` drop Streamdown 2's `plugins` (this repo pins streamdown 1.6.11, where code,
-math and mermaid are built in); `conversation.tsx` uses `appendChild` (the Worker types in scope
-shadow DOM `append`); `jsx-preview.tsx` avoids ES2023's `toReversed`. `react-jsx-parser` ships
-React 18's DOM types as a hard dependency, so `pnpm-workspace.yaml` **overrides** it to 19 —
-without that a second `@types/react` broke JSX types in unrelated files. **`shadcn add` does not
+loads every file in the folder, and pins the six by name. **`shadcn add` does not
 work in this monorepo** for a registry like this one: it resolved `@felix/ui` to `packages/ui`,
 installed every npm dependency there (plus a bogus `cn` package, the registry's import alias),
 rewrote the catalog in `pnpm-workspace.yaml` stripping its comments, and hung. Install by reading
 the registry JSON and writing files with imports rewritten, as this one was.
 
-**Wired in (2026-10-03):** FileTree (below); **Terminal** in the tool card — a shell result's
+**Wired in (2026-10-03, some since replaced):** FileTree (below); **Terminal** in the tool card — a shell result's
 streams with ANSI colour; **Plan**, drawn in the turn from the `deep` pattern's `plan_create`/`plan_update_step`/`plan_get`
 calls, each of which returns the whole plan (`plansInTurn` in `@felix/client`; one card per plan where it
 first appears, newest state, the later calls folded except in debug); a **version switcher** on
@@ -649,9 +646,7 @@ reply's code and a workspace file in the pane — is `HighlightedCode`
 in both themes (the primitive's `dark:bg-input/30` would otherwise win in dark). A tool card's fold
 and height cap land on the block's scrolling `pre`, not its frame. Reasoning (`chat/reasoning.tsx`)
 and the plan (`chat/plan-card.tsx`) are Trace rows; the plan's goal moved inside the row, since one
-line cannot wrap the count under it at 390px. `ai-elements/plan.tsx` is deleted;
-`ai-elements/code-block.tsx` stays only because the unused vendored `agent.tsx` and `tool.tsx`
-import it.
+line cannot wrap the count under it at 390px. `ai-elements/plan.tsx` and `code-block.tsx` are deleted.
 
 **Patterns on Trace (2026-10-28).** Three of AI Elements' patterns, where Felix has the data:
 - **A run of routine calls folds** (`ToolRun`, `components/chat/tool-run.tsx`): `groupRuns` in
@@ -682,13 +677,13 @@ than before. Compare `dist/assets/index-*.js` against main, not just the total.
 
 **FileTree was the first wired in**, for the workspace's Files list, which was a flat column of
 up to 200 paths (`buildTree` in `src/lib/file-tree.ts` reads both stores' `d <path>` / `f <path>`
-entries — the old list printed those prefixes verbatim). Every other component either duplicates
-something chat-ui already renders with Felix-specific behaviour — message, conversation, tool,
-reasoning, attachments, confirmation (the approval card), context (the meter), model-selector
-(the agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the
-eval run cards), speech-input — or has no Felix data to show (stack-trace, commit, package-info,
-environment-variables). Adopting one of the first group means *replacing* a
-component its tests pin, not filling a gap. `context.tsx` was edited too: its rows printed `$0.00`
+entries — the old list printed those prefixes verbatim). The components deleted unused had either
+duplicated something chat-ui already renders with Felix-specific behaviour — message,
+conversation, tool, reasoning, attachments, confirmation (the approval card), model-selector (the
+agent picker), suggestion (starters), queue (the queued-messages tray), test-results (the eval
+run cards), speech-input — or had no Felix data to show (stack-trace, package-info,
+environment-variables). Adopting a pattern of the first kind means *replacing* a component its
+tests pin, not filling a gap. `context.tsx` was edited too: its rows printed `$0.00`
 with no model to price against, which reads as free rather than unpriced. `file-tree.tsx` was edited on the way in: folder icons
 were `text-blue-500` (blue is `running` here), and each folder was three Tab stops — its wrapper,
 an unlabelled chevron and a name button that did nothing without `onSelect` — so a folder is now

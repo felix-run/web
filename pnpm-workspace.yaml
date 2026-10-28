@@ -55,9 +55,3 @@ catalog:
   # Cloudflare
   wrangler: 4.149.0
   '@cloudflare/workers-types': ^4.20260511.1
-
-# react-jsx-parser (AI Elements' jsx-preview) lists React 18's DOM types as a hard
-# dependency, which pulls a second @types/react into chat-ui and breaks JSX types
-# repo-wide. Keep it on the React 19 types everything else uses.
-overrides:
-  'react-jsx-parser>@types/react-dom': ^19.2.0
