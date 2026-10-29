@@ -562,6 +562,20 @@ its `tool_end`. A background child sends only `subagent_start`, with `background
 `parentSessionId`); it finishes after the turn that started it, and its answer is read with
 `task_result`.
 
+Between the two, each call a foreground child makes arrives as a pair of `subagent_tool` frames,
+matched by `tool_call_id`: `start` with its arguments, `end` with the first line of its result
+(cut at 240 characters, or `[error/<Type>]` when the call raised). The parent's own calls, the
+`task` call among them, are never reported this way.
+
+```text
+data: {"event":"subagent_tool","data":{"agent":"researcher","tool_call_id":"call_7","tool_name":"read_file","phase":"start","args":{"path":"notes.md"}}}
+data: {"event":"subagent_tool","data":{"agent":"researcher","tool_call_id":"call_7","tool_name":"read_file","phase":"end","result":"# Release notes"}}
+```
+
+They are live only: they are not written to the session log, so a thread rebuilt from its
+snapshot shows the `task` call without them, and a durable run sends none. A forked skill's child
+sends them too.
+
 ### Frame format
 
 Almost every frame is a bare `data:` line, and the stream ends with a literal
@@ -641,6 +655,9 @@ dot do not change it.
   <dt id="event-subagent_end">[`subagent_end`](#event-subagent_end)</dt>
   <dd>A foreground child agent finished</dd>
   <dd class="event-data">`{"agent","outcome":"ok"|"error"}`</dd>
+  <dt id="event-subagent_tool">[`subagent_tool`](#event-subagent_tool)</dt>
+  <dd>A call a foreground child agent made, once at its start and once at its end, matched by `tool_call_id`. Live only: not in the session log, and not sent from a durable run</dd>
+  <dd class="event-data">`{"agent","tool_call_id","tool_name","phase":"start","args"}` or `{"agent","tool_call_id","tool_name","phase":"end","result"}`</dd>
   <dt id="event-permission_mode_changed">[`permission_mode_changed`](#event-permission_mode_changed)</dt>
   <dd>An approved `exit_plan_mode` moved the thread out of plan mode mid-run. `POST /chat/mode` emits none; the snapshot's `permissionMode` carries it</dd>
   <dd class="event-data">`{"mode"}`</dd>

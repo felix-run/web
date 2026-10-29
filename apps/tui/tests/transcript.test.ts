@@ -331,6 +331,42 @@ describe('a tool card', () => {
     }
   });
 
+  it('names the call a working child agent is in the middle of', async () => {
+    const ui = await mount(
+      createElement(Transcript, {
+        theme: testTheme,
+        turns: [
+          {
+            id: 'a4',
+            role: 'assistant',
+            content: '',
+            tools: [
+              {
+                name: 'task',
+                input: { agent: 'researcher', prompt: 'go' },
+                done: false,
+                subagent: {
+                  agent: 'researcher',
+                  state: 'running',
+                  calls: [
+                    { callId: 'r1', name: 'read_file', input: {}, done: true, result: 'ok' },
+                    { callId: 'r2', name: 'web_search', input: {}, done: false },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      { width: 80, height: 6 },
+    );
+    try {
+      expect(shows(ui.frame(), 'researcher working · web_search')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
   it('marks a tool the browser ran, and one waiting on a decision', async () => {
     const ui = await mount(
       createElement(Transcript, {

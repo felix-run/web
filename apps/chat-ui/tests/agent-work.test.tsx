@@ -125,6 +125,75 @@ describe('a task call', () => {
     expect(badge.closest('[title]')?.getAttribute('title')).toBe('Task tok9');
     expect(screen.queryByText('done')).toBeNull();
   });
+
+  const call = (n: number, done = true, result = 'ok') => ({
+    callId: `r${n}`,
+    name: 'read_file',
+    input: { path: `notes/${n}.md` },
+    done,
+    ...(done ? { result } : {}),
+  });
+
+  it('shows the child’s calls under the card, outside the fold, the running one shimmering', () => {
+    draw(
+      [
+        {
+          name: 'task',
+          input: { agent: 'researcher', prompt: 'go' },
+          done: false,
+          subagent: {
+            agent: 'researcher',
+            state: 'running',
+            calls: [call(1), call(2, true, '[error/TimeoutError] took too long'), call(3, false)],
+          },
+        },
+      ],
+      true,
+    );
+    const lines = Array.from(document.querySelectorAll('[data-slot=subagent-call]'));
+    expect(lines.map((l) => l.textContent)).toEqual([
+      'read_filenotes/1.md',
+      expect.stringMatching(/^read_filenotes\/2\.md.+/),
+      'read_filenotes/3.md',
+    ]);
+    expect(lines.map((l) => l.getAttribute('data-status'))).toEqual([null, 'error', 'running']);
+    // On the card itself, not inside its collapsed body.
+    expect(lines[0]?.closest('[data-slot=collapsible-content]')).toBeNull();
+  });
+
+  it('folds all but the newest five calls into one line, and keeps them once the child is done', () => {
+    draw([
+      {
+        name: 'task',
+        input: { agent: 'researcher', prompt: 'go' },
+        output: 'Found it.',
+        done: true,
+        subagent: {
+          agent: 'researcher',
+          state: 'ok',
+          calls: [1, 2, 3, 4, 5, 6, 7].map((n) => call(n)),
+        },
+      },
+    ]);
+    expect(screen.getByText('2 earlier calls')).toBeTruthy();
+    const visible = () =>
+      Array.from(document.querySelectorAll('[data-slot=subagent-call]')).map((l) => l.textContent);
+    expect(visible()).toEqual([3, 4, 5, 6, 7].map((n) => `read_filenotes/${n}.md`));
+    fireEvent.click(screen.getByText('2 earlier calls'));
+    expect(visible()).toHaveLength(7);
+  });
+
+  it('draws no lines for a task call the stream reported no calls for', () => {
+    draw([
+      {
+        name: 'task',
+        input: { agent: 'researcher', prompt: 'go' },
+        output: 'Found it.',
+        done: true,
+      },
+    ]);
+    expect(document.querySelector('[data-slot=subagent-calls]')).toBeNull();
+  });
 });
 
 describe('the permission mode in the composer', () => {

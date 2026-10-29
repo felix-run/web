@@ -713,7 +713,11 @@ Flows worth knowing before editing the app:
   id, so they mark the open `task` call by agent name (`ToolCall.subagent`); `subagentOf` reads
   the same from the call's `agent`/`background` arguments and a background result's task id, and
   a background child reads *in background*, never *done*, because nothing on this thread's stream
-  says when it ends. The permission mode is `EngineState.permissionMode` (null is the default),
+  says when it ends. A foreground child's own calls arrive as `subagent_tool` start/end pairs and
+  land on the running child (`SubagentRun.calls`, `recordSubagentCall`): chat-ui draws them as
+  Trace lines under the `task` card (`subagent-calls.tsx`, newest five, the rest folded), the
+  terminal names the open one on the working line. They are live only — not in the session log —
+  so a rebuilt card has none. The permission mode is `EngineState.permissionMode` (null is the default),
   filled from the snapshot's `permissionMode` when the key is present and by
   `permission_mode_changed` (an approved `exit_plan_mode`; `POST /chat/mode` emits none). The
   composer draws a chip off the default that returns the thread to default, and `/plan` toggles

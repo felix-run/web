@@ -196,6 +196,70 @@ describe('a task call’s child agent', () => {
     ).toEqual({ agent: 'researcher', state: 'ok' });
     expect(subagentOf({ ...logged, name: 'read_file' })).toBeNull();
   });
+
+  const child = (agent: string, id: string, name: string, end?: string) => ({
+    event: 'subagent_tool',
+    data:
+      end === undefined
+        ? { agent, tool_call_id: id, tool_name: name, phase: 'start', args: { path: `${id}.md` } }
+        : { agent, tool_call_id: id, tool_name: name, phase: 'end', result: end },
+  });
+
+  it('puts each call a child makes on its own task call, in order, and keeps them once done', async () => {
+    const engine = engineOn([
+      task('c1', 'researcher'),
+      task('c2', 'reviewer'),
+      { event: 'subagent_start', data: { agent: 'researcher', background: false } },
+      { event: 'subagent_start', data: { agent: 'reviewer', background: false } },
+      child('researcher', 'r1', 'read_file'),
+      child('reviewer', 'v1', 'grep'),
+      child('researcher', 'r1', 'read_file', '# Notes'),
+      child('researcher', 'r2', 'web_search'),
+      child('reviewer', 'v1', 'grep', '[error/TimeoutError]'),
+      // A child that is not running here (started before this stream attached): dropped.
+      child('planner', 'p1', 'read_file'),
+      { event: 'subagent_end', data: { agent: 'reviewer', outcome: 'ok' } },
+      { event: 'tool_end', data: { name: 'task', output: 'Found it.', id: 'c2' } },
+    ]);
+    await run(engine);
+
+    const [researcher, reviewer] = engine.state.turns.at(-1)?.tools ?? [];
+    expect(researcher?.subagent?.calls).toEqual([
+      { callId: 'r1', name: 'read_file', input: { path: 'r1.md' }, done: true, result: '# Notes' },
+      { callId: 'r2', name: 'web_search', input: { path: 'r2.md' }, done: false },
+    ]);
+    // Finished, the card reads the call; the calls the stream reported stay on it.
+    expect(reviewer && subagentOf(reviewer)).toEqual({
+      agent: 'reviewer',
+      state: 'ok',
+      calls: [
+        {
+          callId: 'v1',
+          name: 'grep',
+          input: { path: 'v1.md' },
+          done: true,
+          result: '[error/TimeoutError]',
+        },
+      ],
+    });
+  });
+
+  it('gives a second child of the same agent its own calls once the first has ended', async () => {
+    const engine = engineOn([
+      task('c1', 'researcher'),
+      { event: 'subagent_start', data: { agent: 'researcher', background: false } },
+      child('researcher', 'r1', 'read_file'),
+      child('researcher', 'r1', 'read_file', 'ok'),
+      { event: 'subagent_end', data: { agent: 'researcher', outcome: 'ok' } },
+      { event: 'tool_end', data: { name: 'task', output: 'one', id: 'c1' } },
+      task('c2', 'researcher'),
+      { event: 'subagent_start', data: { agent: 'researcher', background: false } },
+      child('researcher', 'r2', 'grep'),
+    ]);
+    await run(engine);
+    const tools = engine.state.turns.at(-1)?.tools ?? [];
+    expect(tools.map((t) => t.subagent?.calls?.map((c) => c.callId))).toEqual([['r1'], ['r2']]);
+  });
 });
 
 describe('the permission mode', () => {

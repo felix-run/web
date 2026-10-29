@@ -243,6 +243,11 @@ function ToolCard({ tool, spill, theme }: { tool: ToolCall; spill?: Spill; theme
     ? childSummary(child.agent, tool.input, widths.arg)
     : summarize(tool.input, widths.arg);
   const spinner = useSpinner(!tool.done);
+  // The call a working child is in the middle of (`subagent_tool`), so a child making
+  // progress reads differently from one stuck on its first call. Live only.
+  const childCall = tool.done
+    ? undefined
+    : [...(child?.calls ?? [])].reverse().find((c) => !c.done);
   // A spill's preview is the part the harness kept inline; everything else is
   // the output as it stands.
   const body = spill ? spill.ref.preview : typeof tool.output === 'string' ? tool.output : '';
@@ -272,7 +277,9 @@ function ToolCard({ tool, spill, theme }: { tool: ToolCall; spill?: Spill; theme
         {name}
         {arg ? ` ${arg}` : ''}
         {kind ? ` · ${kind}` : ''}
-        {!tool.done && child ? ` · ${child.agent} working` : ''}
+        {!tool.done && child
+          ? ` · ${child.agent} working${childCall ? ` · ${childCall.name}` : ''}`
+          : ''}
         {!tool.done && !child && tool.phase ? ` · ${tool.phase}` : ''}
       </text>
       {tool.done && (result || spill) ? (

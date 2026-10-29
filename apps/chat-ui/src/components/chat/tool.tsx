@@ -33,6 +33,7 @@ import { useOptionalShellPick } from '@/shell-context';
 import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/types';
 import { useDenial } from './denial-context';
 import { StackTraceView } from './stack-trace';
+import { SubagentCalls } from './subagent-calls';
 import { PublishLine, ToolSources } from './tool-sources';
 import { ToolTable } from './tool-table';
 import { DebugId } from './turn-debug';
@@ -227,6 +228,8 @@ export const Tool = memo(function Tool({
           hiding it behind the chevron made every browser call read as text. */}
       {tool.images?.length ? <ToolImages images={tool.images} label={target ?? tool.name} /> : null}
       {published && <PublishLine result={published} />}
+      {/* Outside the fold: what a child is doing is what a person waiting on it wants to see. */}
+      {child?.calls?.length ? <SubagentCalls calls={child.calls} targetOf={toolTarget} /> : null}
       {/* Outside the fold too: who said no and when is the first thing asked of a
           denied call, and the way forward has to be on screen when the agent's
           reply asks "would you like to approve this?" in prose nothing can answer. */}
