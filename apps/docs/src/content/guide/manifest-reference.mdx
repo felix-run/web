@@ -1069,9 +1069,10 @@ names, not again on each child. Put the admission you need on the router — a c
 person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) is the exception at run
 time: it runs in a child only when the caller passes the child's own `spec.auth.inbound` and
 credential pin, so a parent's callers do not reach the child's manual-only skills. The other
-exception is checked at compile: a parent that sets `allow_anonymous: true` while a child it names
-sets it to `false` is refused, since it would hand anonymous callers an agent that turns them away.
-That is why the bundled `router` requires a caller — it names `deep`. Everything
+exception is checked at compile: a parent an anonymous caller may enter is refused when a child it
+names would turn that caller away — by `allow_anonymous: false`, by `required_scopes`, or by
+`schemes`. That is why the bundled `router` requires a caller — it names `deep`. A child found under
+one name whose manifest calls itself another is refused too (`the names must match`). Everything
 else a child declares (tools, policies, approvals, screening, limits) is compiled into it and applies
 however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
 decider and falls back to its model classifier when the decider is unsure.
