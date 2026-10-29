@@ -409,6 +409,39 @@ plugin must issue under its own issuer. A **JWT without `sub`** takes its subjec
 which some identity providers let users edit, so point a verifier only at an issuer whose tokens
 carry `sub`.
 
+## Stored connections
+
+A tool that acts as a person at another service -- reads their calendar, drafts their mail -- needs
+that person's own grant. `felix.auth.connections` keeps one row per person key, provider and account
+(table `connections`, tenant RLS), written by a provider's consent flow or a credential the person
+hands over, and read by tools at run time for `AuthContext.person`. GitHub's connection predates it
+and keeps its own table ([Revoking](#revoking)).
+
+- **Keyed by the [person key](#person-keys)**, never aliased. A token another issuer signs with the
+  `sub` of a Felix sign-in is someone else, and a caller whose key is none -- a sub-less API key, a
+  workflow, a trigger, a machine actor acting for no one -- holds no connections (403 `not_a_person`).
+- **Sealed at rest** with `FELIX_CONNECTION_TOKEN_KEY` (falling back to `FELIX_GITHUB_TOKEN_KEY`),
+  AES-GCM with the tenant, person, provider, account and column bound in, so a sealed value copied
+  elsewhere does not open.
+- **Two kinds.** `oauth` keeps a refresh token and mints access tokens from it through the
+  provider registered for it (`register_connection_provider`); `secret` keeps something the person
+  handed over, such as an app password.
+- **One writer at a time.** A refresh, a re-consent and a removal take the row's lock (a Postgres
+  advisory lock), so a rotating refresh token is spent once and a removal never orphans a grant. A
+  refresh the provider refuses marks the row `revoked`; an outage revokes nothing, and its error is
+  Felix's own words, never the provider's or the database's.
+- **No route returns a credential.**
+
+| Route | Who | |
+|---|---|---|
+| `GET /connections` | the caller | Their connections: provider, account, label, kind, status, scopes, times. |
+| `DELETE /connections/{provider}/{account}` | the caller | Remove one and withdraw its grant at the provider. |
+| `GET /connections/tenant` | `connections:admin` | Every connection in the tenant, newest first, with its person key. |
+| `POST /connections/tenant/revoke` | `connections:admin` | `{person, provider, account}`: remove anyone's and withdraw its grant. |
+
+Every store, removal, refused refresh and expiry is audited (`connection`), naming the person and
+the provider, never the credential.
+
 ## Manifest gates
 
 Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
