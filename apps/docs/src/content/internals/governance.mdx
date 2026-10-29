@@ -364,6 +364,23 @@ granted by a call id the harness mints, good once and only while that round runs
 route marks as the person's is read for `/name`, so a model cannot write one into a `task` prompt
 or plan step to run a skill hidden from it.
 
+A [forked skill](/guide/concepts/#running-a-skill-in-a-subagent) (`context: fork`) runs as a call of
+the manifest's *governed* `task` tool, bound once every wrapper has wrapped it, so every control that
+names `task` holds for it: an approval, a policy, the limits and their `max_peer_hops`, the
+permission mode, the child's own inbound auth, `subagent_stop`. Only the child's answer returns, as
+untrusted output content screening reads, and a deny is passed on as one. The tool runner's own
+per-call layer is the exception: it runs around `activate_skill`, the call the model made, not around
+the `task` call the fork makes inside it. So manifest `pre_tool_use` / `post_tool_use` hooks, plugin
+`before_tool` / `after_tool` hooks and the `tool_call` audit row keyed on `task` do not see a fork;
+the skill's own `skill_activation` row with `action: fork` does, and the compile warns about manifest
+hooks on `task`. Name `activate_skill` too where such a hook must hold. A fork counts as two tool
+calls against `max_tool_calls` (the activation and its `task` call) and one peer hop. The inner
+call's id is `<id>:fork`, derived from the activation's, so an approval it waits on is withdrawn when
+the run is interrupted, like any other call's. A `model:` the skill asks for reaches the `task`
+handler by a harness-minted call id, never through the model-facing schema. An imported skill nobody
+has adopted never forks, since its instructions would become the subagent's own turn, and a forked
+skill is never preloaded.
+
 `create_skill` and `update_skill` are trusted local tools and are not content-screened by default;
 their output is the library's own JSON. What they *save* is scanned on save and again on publish,
 and their approval preview is the SKILL.md the harness renders from the arguments, so an approver

@@ -195,7 +195,8 @@ manifest declares those instead. See [Patterns](/internals/patterns/).
 
 An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`name`,
 `description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`,
-`disable-model-invocation`, `user-invocable`, `argument-hint`) and a Markdown body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
+`disable-model-invocation`, `user-invocable`, `argument-hint`, and `context`, `agent`, `model` for a
+[forked skill](#running-a-skill-in-a-subagent)) and a Markdown body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
 
 Skills are disclosed progressively. The compiled system prompt carries only the catalog, as an
 `<available_skills>` block of names and descriptions, sorted by name. A skill with
@@ -262,10 +263,62 @@ screened tool result, never with the authority of the person's own words.
 **Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/#specskills) entry
 activates that skill the same way at the start of a conversation, once: a skill the thread has ever
 activated, even one since deactivated, is not activated again. An imported skill nobody adopted is
-never preloaded. Only `react` agents run preloads; any other pattern logs a warning at compile.
+never preloaded, and neither is a forked skill. Only `react` agents run preloads; any other
+pattern logs a warning at compile.
 
 Each activation's `skill_activation` audit row records who asked as `by`: `person`, `preload` or
 `model`.
+
+### Running a skill in a subagent
+
+A skill whose frontmatter says `context: fork` runs in a subagent instead of in the conversation.
+`activate_skill` — the model's call, with a `task` argument saying what the job is, or a person's
+`/skill-name args` — hands the skill to one of the manifest's
+[`spec.delegation.agents`](/guide/manifest-reference/#specdelegation) and returns only that agent's
+answer, as `{ran, agent, result}`.
+
+```markdown
+---
+name: dependency-audit
+description: Audits the lockfile for outdated and vulnerable packages.
+context: fork
+agent: researcher
+model: claude-haiku
+---
+Read the lockfile and report …
+```
+
+- **Which agent.** The delegation agent `agent:` names, else the first one listed.
+- **What it is handed.** The body inside a `<skill_instructions name="…">` block, followed by the
+  model's `task`. A person's arguments are substituted into the body as for any `/name` run, and the
+  model's `task` is not added.
+- **`model:`.** Applies only to a fork, and only when it names a model route the deployment
+  defines (built in or added by `FELIX_MODEL_ROUTES`) that passes the rules a request's `model`
+  override is held to — `spec.auth.outbound.providers` and the cost cap's pricing
+  ([`POST /chat`](/guide/rest-api/#post-chat)) — on this manifest and every agent below it.
+  Otherwise it is dropped with a warning and the agent's own model runs. It reaches the `task`
+  handler by a call id the harness mints, never through an argument the model can set.
+- **A call of `task`.** The fork is a call of the manifest's governed `task` tool, so everything that
+  holds for `task` holds for it: approvals, policies, the permission mode, the limits and their
+  `max_peer_hops`, the child's own inbound auth, and `subagent_stop`. See
+  [Governance → Skills](/internals/governance/#skills).
+- **Never an activation.** The instructions never enter the conversation: nothing is retained,
+  `list_skills` never shows a forked skill active, and running it again runs the subagent again.
+  The answer is untrusted output for content screening, as a `task` answer is.
+
+The catalog marks a forked skill `<skill name="…" context="fork">` and tells the model to pass a
+`task`. `context`, `agent` and `model` are read only from the top level of the frontmatter, never from
+a nested `metadata:` block. A fork that cannot run answers an error instead:
+
+| `error` | When |
+|---|---|
+| `fork_refused` | An imported skill nobody adopted: its text would become the subagent's own turn |
+| `fork_unavailable` | The manifest has no `spec.delegation`, or `agent:` names an agent outside it |
+| `fork_failed` | The subagent or a control on `task` failed or refused with an error; carries `agent` |
+
+A governance deny on `task` (an approval refused, a policy) is passed on as the deny it is. The
+compile logs a warning for a forked skill on a manifest without `spec.delegation` and for an `agent:`
+outside it.
 
 ### Where skills come from
 
