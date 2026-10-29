@@ -543,21 +543,32 @@ web client or the API), Telegram, and per-user linking.
 
 ## Connector tools
 
-The optional `felix-connectors` plugin adds tools that reach everyday services — weather today —
+The optional `felix-connectors` plugin adds tools that reach everyday services — weather and maps —
 for a manifest to list in [`spec.tools`](/guide/manifest-reference/#connector-tools). Install it
 in both the API and the Worker image: `FELIX_EXTRAS=connectors` when building, or
 `uv sync --extra connectors` from a checkout. The defaults need no key: Open-Meteo for the
-forecast, the US National Weather Service for alerts.
+forecast and a point's time zone, the US National Weather Service for alerts, OpenStreetMap's
+Nominatim for places, and the FOSSGIS OSRM instances for routes.
 
 | Setting | Default | |
 |---|---|---|
 | `FELIX_WEATHER_BACKEND` | `open-meteo` | The forecast backend. A plugin can register another (`felix_connectors.weather.register_weather_backend`); a name nothing registered fails the first compile that lists a weather tool, by name. |
 | `FELIX_WEATHER_UNITS` | `metric` | `metric` or `imperial`, when the model asks for neither. |
+| `FELIX_MAPS_GEOCODER` | `nominatim` | The place lookup behind geocode, reverse geocode and places search. A plugin can register another (`felix_connectors.maps.register_geocoder`). |
+| `FELIX_MAPS_ROUTER` | `osrm` | The router behind `connectors__route` (`register_router`). |
 | `FELIX_CONNECTORS_CONTACT` | empty | An email or URL appended to the User-Agent every connector sends; the National Weather Service's and OpenStreetMap's usage policies ask for one. Printable ASCII, or the boot fails. |
 
 A tool is built once per process, so a changed setting takes effect at the next restart. Each tool
 declares the hosts it reaches and is held to them on every request; a manifest's
 `network.allow_hosts` must cover them or the compile refuses it.
+
+Nominatim's and FOSSGIS's public instances allow one request a second, so each is paced to that,
+per process; a call that would wait more than five seconds for its turn answers `rate_limited`
+instead. The budget is shared by every tenant on the process, and an install running several API
+or Worker processes sends a multiple of the rate: a busy or multi-tenant install should run its
+own Nominatim and OSRM and register backends pointed at them
+(`register_geocoder("mine", lambda s: NominatimGeocoder(base_url=…, user_agent=…))`); only the
+public hosts are paced.
 
 ## Skill library
 

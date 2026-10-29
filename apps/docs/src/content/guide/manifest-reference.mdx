@@ -411,7 +411,7 @@ the model names.
 
 ```yaml
 spec:
-  tools: [connectors__weather_current, connectors__weather_forecast, connectors__weather_alerts]
+  tools: [connectors__geocode, connectors__weather_forecast, connectors__route]
   content_screening:
     enabled: true
 ```
@@ -430,6 +430,22 @@ read-only, so they run in plan mode. Their output is untrusted: with
 off it reaches the model as is, as an MCP server's would. Under [`spec.network`](#specnetwork) each
 needs its host listed: `api.open-meteo.com` for the first two with the default backend,
 `api.weather.gov` for alerts.
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__geocode` | `{query, limit?, country_codes?}` | Places for an address or name, with coordinates to hand to the weather and route tools. `limit` 1–10, default 3; `country_codes` are ISO two-letter codes. |
+| `connectors__reverse_geocode` | `{latitude, longitude}` | The address at a point. A point in the sea answers `no places found`. |
+| `connectors__places_search` | `{query, latitude, longitude, radius_km?, limit?}` | Places matching `query` inside a box `radius_km` (default 5, at most 50) around the point, each with its distance. |
+| `connectors__route` | `{origin: {latitude, longitude}, destination: {…}, profile?}` | Distance, travel time and up to fifteen steps. `profile` is `driving` (default), `walking` or `cycling`. No route between the points is an answer, not an error. |
+| `connectors__timezone_at` | `{latitude, longitude}` | The IANA zone and the current local time there. |
+
+The weather tools take coordinates, not a place name, so an agent that is asked about a city calls
+`connectors__geocode` first. Under `spec.network` the maps tools need `nominatim.openstreetmap.org`
+(the first three), `routing.openstreetmap.de` (routes) and `api.open-meteo.com` (time zones) with
+the default backends. Answers name OpenStreetMap as their source, which is also the attribution
+its licence requires. OpenStreetMap is edited by anyone, so a place or road name is
+user-generated text: a manifest offering these tools should turn on
+[`content_screening`](#speccontent_screening).
 
 ### `spec.workspace`
 
