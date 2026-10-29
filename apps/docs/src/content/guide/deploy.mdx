@@ -543,12 +543,13 @@ web client or the API), Telegram, and per-user linking.
 
 ## Connector tools
 
-The optional `felix-connectors` plugin adds tools that reach everyday services — weather and maps —
+The optional `felix-connectors` plugin adds tools that reach everyday services — weather, maps, markets and exchange rates —
 for a manifest to list in [`spec.tools`](/guide/manifest-reference/#connector-tools). Install it
 in both the API and the Worker image: `FELIX_EXTRAS=connectors` when building, or
 `uv sync --extra connectors` from a checkout. The defaults need no key: Open-Meteo for the
 forecast and a point's time zone, the US National Weather Service for alerts, OpenStreetMap's
-Nominatim for places, and the FOSSGIS OSRM instances for routes.
+Nominatim for places, the FOSSGIS OSRM instances for routes, and Frankfurter for exchange rates.
+Stock quotes are the exception: every free stock API needs a key.
 
 | Setting | Default | |
 |---|---|---|
@@ -556,6 +557,9 @@ Nominatim for places, and the FOSSGIS OSRM instances for routes.
 | `FELIX_WEATHER_UNITS` | `metric` | `metric` or `imperial`, when the model asks for neither. |
 | `FELIX_MAPS_GEOCODER` | `nominatim` | The place lookup behind geocode, reverse geocode and places search. A plugin can register another (`felix_connectors.maps.register_geocoder`). |
 | `FELIX_MAPS_ROUTER` | `osrm` | The router behind `connectors__route` (`register_router`). |
+| `FELIX_MARKET_BACKEND` | `finnhub` | The stock backend: `finnhub` (quotes and search; its free plan has no daily history, so `connectors__quote_history` says so) or `alphavantage` (all three, 25 requests a day on its free plan). A plugin can register another (`felix_connectors.markets.register_market_backend`). |
+| `FELIX_MARKET_API_KEY` | empty | The stock backend's key. Without one, a manifest listing a stock tool fails its compile, naming this setting; manifests that do not list one are unaffected. One key, shared by every tenant on the install, and so is its quota. It can come from a secrets backend as `MARKET_API_KEY` and is masked like any credential. Finnhub's travels in a header; Alpha Vantage takes it only in the URL's query string, which is why Felix keeps HTTP client request logging at WARNING. |
+| `FELIX_FX_BACKEND` | `frankfurter` | The exchange-rate backend (`register_fx_backend`): the European Central Bank's daily reference rates, keyless. |
 | `FELIX_CONNECTORS_CONTACT` | empty | An email or URL appended to the User-Agent every connector sends; the National Weather Service's and OpenStreetMap's usage policies ask for one. Printable ASCII, or the boot fails. |
 
 A tool is built once per process, so a changed setting takes effect at the next restart. Each tool

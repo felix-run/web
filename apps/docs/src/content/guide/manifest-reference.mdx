@@ -447,6 +447,17 @@ its licence requires. OpenStreetMap is edited by anyone, so a place or road name
 user-generated text: a manifest offering these tools should turn on
 [`content_screening`](#speccontent_screening).
 
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__quote` | `{symbol}` | The latest price, change, open, high, low and previous close, with the time it is from and how long ago that was. Never called real-time: whether a plan's prices are delayed is the plan's. Needs `FELIX_MARKET_API_KEY`. |
+| `connectors__quote_history` | `{symbol, days?}` | Daily open, high, low, close and volume, oldest first; `days` 1–100, default 30. On the default Finnhub backend this answers that it has no daily history. |
+| `connectors__symbol_search` | `{query, limit?}` | Ticker symbols for a company name; `limit` 1–10, default 5. |
+| `connectors__fx_rate` | `{base, symbols?, amount?, day?}` | Converts `amount` (default 1) of `base` into each of `symbols` (all if empty, at most 10) at the ECB's reference rate. `day` asks for a past fixing (from 1999-01-04); a weekend or holiday answers with the nearest published fixing and names its day. A code Frankfurter does not quote is named (`no rate for XYZ`). Keyless. |
+
+A symbol a backend does not know answers `no data for …`, not a price of zero. Under
+`spec.network` the stock tools need `finnhub.io` (or `www.alphavantage.co`) and the exchange-rate
+tool `api.frankfurter.dev`.
+
 ### `spec.workspace`
 
 Which directory the workspace tools, [`shell_tools`](#specshell_tools), an image tool's `path` and
