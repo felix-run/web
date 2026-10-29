@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Tool } from '../src/components/chat/tool';
@@ -20,8 +20,10 @@ const call = (output: unknown, name = 'query_db'): ToolCall => ({
 /** Verbose expands the card, which is how its contents are on screen to assert on. */
 const mount = (tool: ToolCall) => render(<Tool tool={tool} verbose />);
 
+// Unmount, not only empty the page: a mounted card's code block is still loading its highlighter,
+// and that load landing after the environment is torn down fails the run ("window is not defined").
 afterEach(() => {
-  document.body.innerHTML = '';
+  cleanup();
 });
 
 describe('a tabular result', () => {
