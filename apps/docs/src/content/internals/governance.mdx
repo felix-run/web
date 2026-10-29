@@ -390,7 +390,18 @@ the skill's instructions.
 A [forked skill](/guide/concepts/#running-a-skill-in-a-subagent) (`context: fork`) runs as a call of
 the manifest's *governed* `task` tool, bound once every wrapper has wrapped it, so every control that
 names `task` holds for it: an approval, a policy, the limits and their `max_peer_hops`, the
-permission mode, the child's own inbound auth, `subagent_stop`. Only the child's answer returns, as
+permission mode, the child's own inbound auth, `subagent_stop`. A manifest with no
+`spec.delegation` runs a fork that names no `agent:` (or names the manifest) in itself: a `task`
+tool is bound to the manifest as its own subagent, wrapped by every wrapper like any `task`, and
+then withheld from the model, which was given no delegation to call. The subagent is compiled on
+the first fork, once per request, against its own copy of the build state, and a failed compile is
+not retried. It runs in a fresh conversation with the manifest's whole toolset; the model's `task`
+text is its user turn, passing the door check and the manifest's inbound screening as a delegation
+child's prompt does. Its skills, prompt files and MCP tool lists load at that compile, not when the
+request was admitted. Its own forks are `fork_unavailable`, so a fork is one level deep, and its
+compile repeats none of the manifest's compile-time warnings or `felix_rule_targets_nothing`
+counters. A composite (`sub_agents`) has no tool loop to run it in, and a provider tool already
+named `task` is left alone; there the compile warns that the forks have nowhere to run. Only the child's answer returns, as
 untrusted output content screening reads, and a deny is passed on as one. The tool runner's own
 per-call layer is the exception: it runs around `activate_skill`, the call the model made, not around
 the `task` call the fork makes inside it. So manifest `pre_tool_use` / `post_tool_use` hooks, plugin

@@ -1148,7 +1148,10 @@ must be unique.
   [`peers`](#specpeers).
 - **Forked skills.** A skill with `context: fork` in its frontmatter runs in one of `agents` (the one
   its `agent:` names, else the first) as a call of this `task` tool, so every rule above holds for it.
-  Without `spec.delegation` such a skill answers `fork_unavailable`
+  Without `spec.delegation`, a forked skill that names no `agent:` (or names this manifest) runs in
+  the manifest itself, compiled on the first fork through a governed `task` tool the model is never
+  offered, one level deep; a composite, or a manifest with a provider tool already named `task`,
+  answers `fork_unavailable`
   ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
 
 **Background children.** With `background: true` (and optionally `max_background`) beside `agents`, the model may pass
@@ -1321,8 +1324,8 @@ adopted is never preloaded. A person can also run a skill as `/skill-name args` 
 any pattern: a composite carries the turn into each child step, which activates the skill under its
 own catalog, and a parent's `spec.skills` does not reach the child
 ([Concepts → running a skill](/guide/concepts/#running-a-skill-as-skill-name)). A skill whose frontmatter says
-`context: fork` runs in one of [`spec.delegation`](#specdelegation)'s agents instead and is never
-preloaded ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
+`context: fork` runs in one of [`spec.delegation`](#specdelegation)'s agents instead (or, with no
+`spec.delegation`, in the manifest itself as its own subagent) and is never preloaded ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
 
 | Field | Type | Default | Notes |
 |---|---|---|---|

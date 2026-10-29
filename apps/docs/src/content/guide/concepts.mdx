@@ -292,8 +292,9 @@ Each activation's `skill_activation` audit row records who asked as `by`: `perso
 A skill whose frontmatter says `context: fork` runs in a subagent instead of in the conversation.
 `activate_skill` — the model's call, with a `task` argument saying what the job is, or a person's
 `/skill-name args` — hands the skill to one of the manifest's
-[`spec.delegation.agents`](/guide/manifest-reference/#specdelegation) and returns only that agent's
-answer, as `{ran, agent, result}`.
+[`spec.delegation.agents`](/guide/manifest-reference/#specdelegation), or, in a manifest that
+delegates to nothing, to the manifest itself, and returns only that agent's answer, as
+`{ran, agent, result}`.
 
 ```markdown
 ---
@@ -307,6 +308,15 @@ Read the lockfile and report …
 ```
 
 - **Which agent.** The delegation agent `agent:` names, else the first one listed.
+- **No `spec.delegation`.** A forked skill that names no `agent:`, or names the manifest itself,
+  runs in the manifest: the same manifest, compiled as its own subagent on the first fork of a
+  request (once per request, not when the request is admitted), in a fresh conversation, with the
+  manifest's whole toolset; `agent` in the result is the manifest's name. It reaches that subagent
+  through a `task` tool that every governance wrapper wraps and the model is never offered. The
+  subagent's own forks are `fork_unavailable`, so a fork is one level deep. Its skills, prompt files
+  and MCP tool lists load when it is compiled, at the first fork. A composite (`spec.sub_agents`)
+  has no tool loop to run it in, and a manifest whose provider already binds a tool named `task` is
+  left alone; there a fork is `fork_unavailable`.
 - **What it is handed.** The body inside a `<skill_instructions name="…">` block, followed by the
   model's `task`. A person's arguments are substituted into the body as for any `/name` run, and the
   model's `task` is not added.
@@ -331,12 +341,12 @@ a nested `metadata:` block. A fork that cannot run answers an error instead:
 | `error` | When |
 |---|---|
 | `fork_refused` | An imported skill nobody adopted: its text would become the subagent's own turn |
-| `fork_unavailable` | The manifest has no `spec.delegation`, or `agent:` names an agent outside it |
+| `fork_unavailable` | `agent:` names an agent the manifest does not delegate to (with no `spec.delegation`, anything but the manifest itself); the manifest has no `spec.delegation` and cannot run the fork itself (a composite, or a provider tool already named `task`); or the fork is inside the manifest's own forked subagent |
 | `fork_failed` | The subagent or a control on `task` failed or refused with an error; carries `agent` |
 
 A governance deny on `task` (an approval refused, a policy) is passed on as the deny it is. The
-compile logs a warning for a forked skill on a manifest without `spec.delegation` and for an `agent:`
-outside it.
+compile logs a warning when a manifest's forked skills have nowhere to run (no `spec.delegation`
+and no way to run them in the manifest itself) and for an `agent:` outside where they run.
 
 ### Running a skill's scripts
 
