@@ -182,7 +182,10 @@ then tails the thread, sending `: keep-alive` comments while idle and closing af
 A `session_event` carries `id`, `seq`, `kind`, `role`, `content`, `name`, and — on the messages that
 have them — `tool_calls` and `tool_call_id`. Those last two are what a tool card is built from: read
 `tool_calls` off an assistant message to open one per call, and match `tool_call_id` on the following
-`tool_result` to close it.
+`tool_result` to close it. Each result is logged as its call returns, so a call that finishes early
+closes its card while the rest of the batch runs, and with `tool_execution: parallel` results arrive
+in the order the calls finished: match on `tool_call_id`, never on position. A run that dies mid-batch
+keeps the results that had landed; the next run closes only the calls with none.
 
 On an assistant message with readable reasoning, it also carries `metadata: {"thinking": [{"type":
 "thinking", "thinking": str}, …]}` — the same key the `snapshot` frame's `metadata` already uses, so
