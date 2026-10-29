@@ -59,6 +59,13 @@ A control that cannot run has not cleared anything, so unavailability is never t
   - At the door, images on a caller's non-user messages (`role: tool`, `assistant`) are removed,
     because inbound screening reads only user turns. The same applies to a queue write-back to
     `/internal` that is not a user message.
+- **Summary screening** (`content_screening.enabled`) holds every conversation summary a session
+  strategy writes to the rule a user turn is, before it is stored: the markers, then `model` and the
+  decider. A flagged summary is stored as `[summary withheld: content screening flagged it]`, which
+  settles its range so it is not summarised and screened again every turn. One that cannot be
+  screened is unavailable: nothing is stored, `POST /chat/compact` answers `502 compaction_failed`,
+  and a later turn retries. Both count `felix_summary_withheld{reason}`. A sub-agent's screen adds
+  to its router's.
 - **Decider judges** fall back to the model judge and then the heuristic on any failure, and do not
   judge text longer than 8,000 characters — a prefix judge would pass filler followed by a payload.
 - **The PII guardrail** falls back to three regexes (email, US SSN, card-like digit runs) when
