@@ -320,6 +320,29 @@ A governance deny on `task` (an approval refused, a policy) is passed on as the 
 compile logs a warning for a forked skill on a manifest without `spec.delegation` and for an `agent:`
 outside it.
 
+### Running a skill's scripts
+
+A skill's `scripts/` run through `run_skill_script(name, script, args)`, which
+[`spec.skill_scripts`](/guide/manifest-reference/#specskill_scripts) binds. It runs a script only
+from a skill active in the calling conversation, so beside the instructions that say when to run
+it, and only under an interpreter that both the manifest (by extension) and the operator's
+`FELIX_SKILL_SCRIPT_INTERPRETERS` allow. That list is empty by default, so nothing runs.
+
+- **Whose skills.** Writing a skill is a grant to write instructions; a script is code. So
+  `FELIX_SKILL_SCRIPT_SOURCES` defaults to `host`, the bundled skills and `FELIX_SKILLS_DIR`.
+  `library` and `personal` are opt-in. An imported skill nobody has adopted never runs scripts.
+- **Where.** Where a shell tool's command would: the shell runner, or the API process on a
+  development box. The bundle is written to the workspace for that one call, the script runs from
+  the workspace root, and the bundle is removed after.
+- **Governed as a shell command.** Command screening reads every argument, and content screening
+  reads the output as untrusted. Each decision writes a `skill_script` audit row.
+
+`run_skill_script` is not one of the four read-only skill tools, so plan mode does not run it.
+
+Not yet: an operator-uploaded (object-store) skill cannot run scripts, since the store has no
+listing to write a bundle from; a library skill's binary assets are not written; a forked skill is
+never active, so its scripts never run; and the hosted workspace backend's sandbox is refused.
+
 ### Where skills come from
 
 | Source | Where | `source` | Written by |
