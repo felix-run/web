@@ -560,6 +560,20 @@ A version whose security scan fails never publishes, whatever these say. They ar
 floor: a tenant's own policy (`PATCH /skill-library/-/policy`) can tighten every one and loosen none.
 A rollback is judged without the two evaluation settings.
 
+### Skill scripts
+
+A skill's `scripts/` run only through [`spec.skill_scripts`](/guide/manifest-reference/#specskill_scripts),
+and only under interpreters the operator lists.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_SCRIPT_INTERPRETERS` | empty | Comma-separated interpreters (`python3,bash`), each one word: a bare name or an absolute path. Empty disables skill scripts. Needs the isolation a shell tool needs (`FELIX_SHELL_RUNNER_URL` off a development box), or boot fails, and must be set on the shell runner too: it admits a script only under an interpreter of its own list. |
+| `FELIX_SKILL_SCRIPT_SOURCES` | `host` | Whose skills may run scripts: `host` (bundled and `FELIX_SKILLS_DIR`), `library`, `personal`. Adding `library` lets whoever holds `skills:write`, or adopts an import, run code on the runner; `personal` does the same for every caller with `skills:personal`. |
+
+`felix doctor` prints the interpreter list. List only interpreters that stop reading options at the
+script; `node` is not a default because it loads `node_modules` from the workspace root the model
+writes. See [Governance → Skill scripts](/internals/governance/#skill-scripts).
+
 ### Skill imports
 
 Browsing and importing skills from GitHub (`GET /skill-library/-/browse`,
