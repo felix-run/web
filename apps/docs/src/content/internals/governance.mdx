@@ -364,6 +364,29 @@ granted by a call id the harness mints, good once and only while that round runs
 route marks as the person's is read for `/name`, so a model cannot write one into a `task` prompt
 or plan step to run a skill hidden from it.
 
+Composites carry that turn, not the model's. `plan_execute`, `parallel` and `groupchat` pass the
+person's `/name` turn beside each step's own messages (`InvokeInput.person_command`), and the step's
+preamble runs it under that step's catalog: one `activate_skill` call and one audit row per subtask,
+per specialist, per speaker per round. A threadless `reflect` runs it again for each draft. The
+carried text is taken only from a turn a route marked as the person's, or from one already carried,
+so a `task` prompt written `/secret-ops` that reaches a `plan_execute` child runs nothing. Three
+rules keep a child its own manifest:
+
+- **Its own catalog.** The child resolves the name against its catalog and its own `spec.skills`;
+  a `disable-model-invocation` skill the parent declares is not the child's to run.
+- **Its own door.** The route checked only the root manifest's `auth.inbound`. The preamble checks
+  the child's — anonymity, `schemes`, `required_scopes` and the credential's `felix_manifests` pin,
+  the check `task` makes on every call — and refuses the activation when the caller fails it, or
+  when there is no request context to check. A router's pick is held to the same rule; before, a
+  parent open to more callers handed them its child's manual-only skills.
+- **Its own screen.** A child with inbound controls of its own — one stricter than its parent, say —
+  screens the carried turn as it does its own messages; a quarantined turn no longer parses as a
+  command.
+
+A composite with no tool loop of its own (`router`, `parallel`, `groupchat`) still cannot run its
+own `preload`; its compile warns. A `plan_execute` planner reads `/name args` as written, without
+the skill's instructions.
+
 A [forked skill](/guide/concepts/#running-a-skill-in-a-subagent) (`context: fork`) runs as a call of
 the manifest's *governed* `task` tool, bound once every wrapper has wrapped it, so every control that
 names `task` holds for it: an approval, a policy, the limits and their `max_peer_hops`, the

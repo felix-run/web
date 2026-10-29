@@ -241,7 +241,23 @@ screened tool result, never with the authority of the person's own words.
   `/v1/chat/completions` and a durable `/chat` run. Only the last message, and only a text-only one.
   `/name` in a `task` prompt, a plan step, an A2A message, a scheduled job's prompt or a workflow
   step runs nothing.
-- **Which agents.** Only `react` agents run it.
+- **Which agents.** Every pattern. A `react` agent, and what wraps one (`deep`, `reflect`,
+  `plan_execute`), runs it before its first step. A composite carries the person's `/name` turn
+  into each step it runs, and each step starts with the skill activated under its own manifest's
+  catalog: every `plan_execute` subtask, every `parallel` specialist, every `groupchat` speaker in
+  every round. That is one `activate_skill` call, and one audit row, per step. A `router` hands its
+  pick the person's turn itself. A threaded `reflect` reads the activation back from the log for
+  its next draft; a threadless one (a composite's step, or `/v1` with no `user`) runs it again for
+  each draft. Only the person's own turn is carried, never a `task` prompt a model wrote, and a
+  parent's `spec.skills` does not reach its child: a `disable-model-invocation` skill runs in a
+  child only if the child declares it.
+- **Whose door.** A person's `/name` runs in a manifest only when the caller passes that manifest's
+  own [`spec.auth.inbound`](/guide/manifest-reference/#specauth) — anonymity, `schemes`,
+  `required_scopes` — and any `felix_manifests` pin on the credential. A router's pick or a
+  composite's child is checked on its own door even though the rest of the request
+  [inherits the parent's admission](/guide/manifest-reference/#specsub_agents-and-specaggregator_prompt),
+  so a parent open to more callers than its child does not hand them the child's manual-only
+  skills. Refused, the skill is not activated and the turn runs without it.
 - **Which names.** A declared [prompt](/guide/manifest-reference/#slash-commands) of the same name
   wins, since prompts are expanded before the agent runs. A name that is no skill the person may run
   is sent as written. The name matches exactly.
@@ -263,8 +279,10 @@ screened tool result, never with the authority of the person's own words.
 **Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/#specskills) entry
 activates that skill the same way at the start of a conversation, once: a skill the thread has ever
 activated, even one since deactivated, is not activated again. An imported skill nobody adopted is
-never preloaded, and neither is a forked skill. Only `react` agents run preloads; any other
-pattern logs a warning at compile.
+never preloaded, and neither is a forked skill. Preloads run where `/name` runs before a first
+step: a `react` agent and what wraps one (`deep`, `reflect`, `plan_execute`). A composite with no
+tool loop of its own (`router`, `parallel`, `groupchat`) cannot run its own preload, and its
+compile logs a warning saying so.
 
 Each activation's `skill_activation` audit row records who asked as `by`: `person`, `preload` or
 `model`.

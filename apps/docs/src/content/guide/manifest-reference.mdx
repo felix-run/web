@@ -1065,7 +1065,10 @@ parents name it, nesting deeper than four routers is refused, and so is a cycle.
 
 A child **inherits the caller's admission**: `spec.auth.inbound` is checked on the manifest a request
 names, not again on each child. Put the admission you need on the router — a child's own
-`required_scopes` apply when it is called by name, not when a router hands it a request. The one
+`required_scopes` apply when it is called by name, not when a router hands it a request. A
+person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) is the exception at run
+time: it runs in a child only when the caller passes the child's own `spec.auth.inbound` and
+credential pin, so a parent's callers do not reach the child's manual-only skills. The other
 exception is checked at compile: a parent that sets `allow_anonymous: true` while a child it names
 sets it to `false` is refused, since it would hand anonymous callers an agent that turns them away.
 That is why the bundled `router` requires a caller — it names `deep`. Everything
@@ -1280,8 +1283,11 @@ the catalog's); it is surfaced on the A2A agent card. `version` pins an operator
 `skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
 name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
 `preload: true` starts every conversation with the skill activated, once, before the model's first
-step; only `react` agents run it, and an imported skill nobody adopted is never preloaded. A person
-can also run a skill as `/skill-name args` in a chat turn
+step; a `react` agent and what wraps one (`deep`, `reflect`, `plan_execute`) run it, while a
+`router`, `parallel` or `groupchat` manifest cannot and its compile warns. An imported skill nobody
+adopted is never preloaded. A person can also run a skill as `/skill-name args` in a chat turn, in
+any pattern: a composite carries the turn into each child step, which activates the skill under its
+own catalog, and a parent's `spec.skills` does not reach the child
 ([Concepts → running a skill](/guide/concepts/#running-a-skill-as-skill-name)). A skill whose frontmatter says
 `context: fork` runs in one of [`spec.delegation`](#specdelegation)'s agents instead and is never
 preloaded ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
@@ -2428,7 +2434,13 @@ content_screening:
   model_tools: ["github__get_*", "browser__*"]
 ```
 
-Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well.
+Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well. The screen is part of the
+compiled agent, and those routes run it once more before the agent exists, to refuse a turn before a
+stream opens; the mark that saves the agent a second screen names the manifest the route screened
+for, and only that manifest's screen honours it. A composite with no inbound controls of its own
+(neither `content_screening.enabled` nor a `pii` guardrail on `input`) therefore does not let its first child (a router's pick, a `parallel` specialist) skip the child's screening.
+A child with inbound controls also screens a person's carried `/skill-name` turn as it does its
+own; quarantined, the turn no longer runs a skill.
 
 #### Images
 
