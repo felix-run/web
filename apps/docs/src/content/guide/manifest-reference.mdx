@@ -1065,7 +1065,10 @@ parents name it, nesting deeper than four routers is refused, and so is a cycle.
 
 A child **inherits the caller's admission**: `spec.auth.inbound` is checked on the manifest a request
 names, not again on each child. Put the admission you need on the router — a child's own
-`required_scopes` apply when it is called by name, not when a router hands it a request. Everything
+`required_scopes` apply when it is called by name, not when a router hands it a request. The one
+exception is checked at compile: a parent that sets `allow_anonymous: true` while a child it names
+sets it to `false` is refused, since it would hand anonymous callers an agent that turns them away.
+That is why the bundled `router` requires a caller — it names `deep`. Everything
 else a child declares (tools, policies, approvals, screening, limits) is compiled into it and applies
 however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
 decider and falls back to its model classifier when the decider is unsure.
@@ -1351,8 +1354,7 @@ spec:
 In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
 published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
 catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
-The self-build `contributor` manifest enables authoring in `draft` mode; `governed` carries the
-`skill-author` approval rule above.
+The self-build `contributor` manifest enables authoring in `draft` mode.
 
 ### `spec.memory`
 

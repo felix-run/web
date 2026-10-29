@@ -66,8 +66,8 @@ The request-path resolver walks four layers and returns the first hit:
 4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
 So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
-are cached for 30 seconds. Ten manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
-`oss-only`, `hybrid-router`, `support`, `decider-support`, `cowork` and `governed`. `assistant` is
+are cached for 30 seconds. Eleven manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
+`oss-only`, `hybrid-router`, `support`, `decider-support`, `cowork`, `governed` and `kids`. `assistant` is
 `quick` with long-term memory — see [Memory](#memory).
 
 `contributor` and `triage`, the agents that build Felix itself, are in the image but not bundled.
