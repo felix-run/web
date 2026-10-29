@@ -458,6 +458,27 @@ A symbol a backend does not know answers `no data for …`, not a price of zero.
 `spec.network` the stock tools need `finnhub.io` (or `www.alphavantage.co`) and the exchange-rate
 tool `api.frankfurter.dev`.
 
+With the `google` extra (`felix-connectors[google]`), a person's own Google, acting as the person
+the run acts for with the account they connected ([Connecting Google](/internals/auth/#connecting-google)):
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__calendar_list_events` | `{start?, days?, limit?, account?}` | Upcoming events in the primary calendar. Needs `calendar_read` or `calendar_events`. |
+| `connectors__calendar_find_free_time` | `{start, end, duration_minutes?, account?}` | Free windows of at least the duration between two times with offsets (at most 31 days apart). |
+| `connectors__calendar_create_event` | `{summary, start, end, description?, location?, account?}` | Not read-only. Creates an event with no guests and no notification: an invitation is mail from the person's account. A repeat of the same title and time finds the event already made. Needs `calendar_events`. |
+| `connectors__gmail_search` | `{query, limit?, account?}` | Gmail search syntax; date, sender, subject and snippet. Needs `gmail_read`. |
+| `connectors__gmail_read` | `{message_id, account?}` | One message as plain text, cut at 8000 characters. |
+| `connectors__gmail_draft` | `{to, subject, body, account?}` | Not read-only. Saves a draft; nothing is ever sent. Needs only `gmail_compose`. |
+| `connectors__drive_search` | `{query, limit?, account?}` | Files whose text or name contains the words. Needs `drive_read`. |
+| `connectors__drive_read` | `{file_id, account?}` | Docs and Slides as text, Sheets as CSV, text files as they are; anything else is named and left alone. |
+
+A run that acts for no one person, a person with no Google account connected, or one whose grant
+lacks the scope a tool needs, gets that said in words. `account` names one when a person has
+connected several. Mail and shared files are text anyone could have written: turn on
+`content_screening`, and put `connectors__calendar_create_event` and `connectors__gmail_draft`
+behind approvals. Under `spec.network` the tools need `www.googleapis.com` (Calendar, Drive) and
+`gmail.googleapis.com`.
+
 ### `spec.workspace`
 
 Which directory the workspace tools, [`shell_tools`](#specshell_tools), an image tool's `path` and
