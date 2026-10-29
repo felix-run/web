@@ -344,8 +344,11 @@ fails the compile. Child agents do not inherit a parent's credentials.
 
 The list bounds the requests Felix sends for the model. It does not reach a process that opens
 its own connections — `shell_tools`, a sandbox, a stdio MCP server — nor what a listed MCP server
-or A2A peer fetches on its side, nor tools a plugin binds. Hooks, webhooks, push and model calls
-are the operator's traffic, not the agent's.
+or A2A peer fetches on its side. A tool a plugin binds is held to it only if it declares the hosts
+it reaches: the [connector tools](#connector-tools) do, and an agent whose list does not cover them
+is refused at compile (`binds tools that reach hosts its network.allow_hosts … does not allow`). A
+plugin tool that declares nothing is not bounded. Hooks, webhooks, push and model calls are the
+operator's traffic, not the agent's.
 
 On a host many people publish to — `*.github.io`, `*.vercel.app`, `docs.google.com` — a listed
 host still admits pages anyone wrote. Pair it with an `http_tools` `path_prefix` there.
@@ -399,6 +402,34 @@ writing the workspace swap a directory for a link between the two. `list_dir` re
 
 Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
 `remember_procedure` when procedural memory is on.
+
+#### Connector tools
+
+With the optional [`felix-connectors` plugin](/guide/deploy/#connector-tools) installed, these
+names can be listed in `spec.tools` too. Each reaches a host the operator configured, never one
+the model names.
+
+```yaml
+spec:
+  tools: [connectors__weather_current, connectors__weather_forecast, connectors__weather_alerts]
+  content_screening:
+    enabled: true
+```
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__weather_current` | `{latitude, longitude, units?}` | Conditions now, with the time the upstream observed them. `units` is `metric` or `imperial`; the operator's default when omitted. |
+| `connectors__weather_forecast` | `{latitude, longitude, days?, units?}` | One line a day, today included: conditions, high, low, precipitation and its chance, wind. `days` is 1–16, default 3. |
+| `connectors__weather_alerts` | `{latitude, longitude}` | Active US National Weather Service alerts, at most five. A point it does not cover answers `no active alerts (coverage: US states and territories)`, not "all clear". |
+
+Every answer starts with its `source:`. Upstream text is flattened to one capped line per field, so
+an alert cannot write lines of its own; a failure is a tool error naming the service and its status
+(`US National Weather Service answered 502`), never the upstream's own words. The tools are
+read-only, so they run in plan mode. Their output is untrusted: with
+[`content_screening`](#speccontent_screening) on it is screened without listing them, and with it
+off it reaches the model as is, as an MCP server's would. Under [`spec.network`](#specnetwork) each
+needs its host listed: `api.open-meteo.com` for the first two with the default backend,
+`api.weather.gov` for alerts.
 
 ### `spec.workspace`
 

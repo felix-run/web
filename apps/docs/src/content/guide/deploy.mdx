@@ -541,6 +541,24 @@ web client or the API), Telegram, and per-user linking.
 | `FELIX_CHANNELS` | empty | The registry above, as JSON. Read by the `felix-channels` plugin. |
 | `FELIX_SECRET_NAMES` | empty | Add the channel's secret names (`SLACK_SIGNING_SECRET,SLACK_BOT_TOKEN`), so the Worker, where channel runs execute, masks them from boot rather than from its first reply. |
 
+## Connector tools
+
+The optional `felix-connectors` plugin adds tools that reach everyday services — weather today —
+for a manifest to list in [`spec.tools`](/guide/manifest-reference/#connector-tools). Install it
+in both the API and the Worker image: `FELIX_EXTRAS=connectors` when building, or
+`uv sync --extra connectors` from a checkout. The defaults need no key: Open-Meteo for the
+forecast, the US National Weather Service for alerts.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_WEATHER_BACKEND` | `open-meteo` | The forecast backend. A plugin can register another (`felix_connectors.weather.register_weather_backend`); a name nothing registered fails the first compile that lists a weather tool, by name. |
+| `FELIX_WEATHER_UNITS` | `metric` | `metric` or `imperial`, when the model asks for neither. |
+| `FELIX_CONNECTORS_CONTACT` | empty | An email or URL appended to the User-Agent every connector sends; the National Weather Service's and OpenStreetMap's usage policies ask for one. Printable ASCII, or the boot fails. |
+
+A tool is built once per process, so a changed setting takes effect at the next restart. Each tool
+declares the hosts it reaches and is held to them on every request; a manifest's
+`network.allow_hosts` must cover them or the compile refuses it.
+
 ## Skill library
 
 Agent Skills come from the image's bundled `skills/`, from `FELIX_SKILLS_DIR`, from `SKILL.md` keys
