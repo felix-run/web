@@ -1,5 +1,5 @@
 import { classifyToolResult } from './tool-results';
-import type { SubagentRun, TodoItem, ToolCall } from './turns';
+import type { SubagentCall, SubagentRun, TodoItem, ToolCall } from './turns';
 
 /**
  * Two things an agent does that the stream announces beside its tool calls: the
@@ -115,6 +115,38 @@ export function endSubagent(
   return next;
 }
 
+/**
+ * Put a call a child made on the `task` call running that child. A `start` opens it on
+ * the oldest running child of that name — the frame names the agent, not the `task`
+ * call, so two children of one agent at once are told apart only by start order — and
+ * an `end` settles whichever child holds its id. A frame for no running child (one
+ * started before this stream was attached) is dropped.
+ */
+export function recordSubagentCall(
+  tools: ToolCall[] | undefined,
+  data: { agent: string; callId: string; name: string } & (
+    | { phase: 'start'; input: unknown }
+    | { phase: 'end'; result: string }
+  ),
+): ToolCall[] {
+  const next = [...(tools ?? [])];
+  const i =
+    data.phase === 'start'
+      ? next.findIndex((t) => t.subagent?.state === 'running' && t.subagent.agent === data.agent)
+      : next.findIndex((t) => t.subagent?.calls?.some((c) => c.callId === data.callId));
+  const tool = i === -1 ? undefined : next[i];
+  if (!tool?.subagent) return next;
+  const calls = tool.subagent.calls ?? [];
+  const updated: SubagentCall[] =
+    data.phase === 'start'
+      ? [...calls, { callId: data.callId, name: data.name, input: data.input, done: false }]
+      : calls.map((c) =>
+          c.callId === data.callId ? { ...c, done: true, result: data.result } : c,
+        );
+  next[i] = { ...tool, subagent: { ...tool.subagent, calls: updated } };
+  return next;
+}
+
 function agentOf(tool: ToolCall): string | null {
   const agent = (tool.input as { agent?: unknown } | undefined)?.agent;
   return typeof agent === 'string' && agent ? agent : null;
@@ -141,7 +173,8 @@ export function subagentOf(tool: ToolCall): SubagentRun | null {
         (typeof tool.output === 'string' ? BACKGROUND_STARTED.exec(tool.output)?.[1] : undefined);
       return { agent, state: 'background', ...(taskId ? { taskId } : {}) };
     }
-    return { agent, state: failed ? 'failed' : 'ok' };
+    const calls = tool.subagent?.calls;
+    return { agent, state: failed ? 'failed' : 'ok', ...(calls ? { calls } : {}) };
   }
   return tool.subagent ?? { agent, state: background ? 'background' : 'running' };
 }

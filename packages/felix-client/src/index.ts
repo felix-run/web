@@ -240,6 +240,7 @@ export {
   markToolPhase,
   type Notice,
   type ReasoningBlock,
+  type SubagentCall,
   type SubagentRun,
   type TodoItem,
   type ToolCall,

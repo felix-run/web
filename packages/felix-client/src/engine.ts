@@ -26,7 +26,13 @@ import {
   type SessionEvent,
   type StreamEvent,
 } from '@felix/protocol';
-import { confirmTodos, endSubagent, readTodos, startSubagent } from './agent-work';
+import {
+  confirmTodos,
+  endSubagent,
+  readTodos,
+  recordSubagentCall,
+  startSubagent,
+} from './agent-work';
 import {
   type ApprovalRequest,
   describeGate,
@@ -927,6 +933,23 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         if (typeof data.agent !== 'string') break;
         const end = { agent: data.agent, outcome: String(data.outcome ?? '') };
         patch((t) => ({ ...t, tools: endSubagent(t.tools, end) }));
+        break;
+      }
+      // A call the foreground child made, start and end: the `task` card shows the
+      // child's work as it happens rather than only that it is working.
+      case 'subagent_tool': {
+        const data = ev.data as Record<string, unknown>;
+        const { agent, tool_call_id: callId, tool_name: name, phase } = data;
+        if (typeof agent !== 'string' || typeof callId !== 'string' || typeof name !== 'string') {
+          break;
+        }
+        const call =
+          phase === 'start'
+            ? { agent, callId, name, phase: 'start' as const, input: data.args }
+            : phase === 'end'
+              ? { agent, callId, name, phase: 'end' as const, result: String(data.result ?? '') }
+              : null;
+        if (call) patch((t) => ({ ...t, tools: recordSubagentCall(t.tools, call) }));
         break;
       }
       // An approved `exit_plan_mode` moved the thread out of plan mode mid-run.

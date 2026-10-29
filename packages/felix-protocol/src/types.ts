@@ -190,6 +190,18 @@ export type StreamEvent =
     }
   | { event: 'subagent_end'; data: { agent: string; outcome: 'ok' | 'error' } }
   /**
+   * A call a foreground child made, between its `subagent_start` and `subagent_end`:
+   * `start` with its arguments, `end` with the first line of its result (cut at 240
+   * characters, `[error/<Type>]` when the call raised). Live only — not in the session
+   * log, and not sent from a durable run — so a rebuilt transcript has none.
+   */
+  | {
+      event: 'subagent_tool';
+      data:
+        | { agent: string; tool_call_id: string; tool_name: string; phase: 'start'; args: unknown }
+        | { agent: string; tool_call_id: string; tool_name: string; phase: 'end'; result: string };
+    }
+  /**
    * The thread's permission mode changed mid-run — an approved `exit_plan_mode`.
    * A change through `POST /chat/mode` emits nothing; the snapshot's
    * `permissionMode` carries it.

@@ -76,6 +76,17 @@ export interface SubagentRun {
   state: 'running' | 'ok' | 'failed' | 'background';
   /** A background child's id, which `task_result` reads it by. */
   taskId?: string;
+  /** What a foreground child called, in order, as `subagent_tool` frames reported it. */
+  calls?: SubagentCall[];
+}
+
+/** One call a child agent made. `result` is the first line of what it returned. */
+export interface SubagentCall {
+  callId: string;
+  name: string;
+  input: unknown;
+  done: boolean;
+  result?: string;
 }
 
 /**
