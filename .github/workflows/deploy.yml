@@ -1,0 +1,105 @@
+name: Deploy
+
+# Deploys the two Workers: docs.felix.run (apps/docs) and make.felix.run (apps/chat-ui).
+#
+#   - After CI passes on a push to main: both, from exactly the commit CI checked.
+#   - On `felix-deployed` from felix-run/ops, sent after it rolls api.felix.run to a new
+#     release: docs only. The docs render the OpenAPI document of the version production
+#     reports, so they are rebuilt after a production roll, not after a felix release.
+#   - By hand from the Actions tab: either app or both.
+#
+# The docs build downloads the spec of the release api.felix.run runs (FELIX_OPENAPI_SPEC is left
+# unset on purpose; CI's build uses the committed snapshot), and the run then checks that the
+# deployed site reports that same version.
+#
+# Credentials are the `production` environment's: CLOUDFLARE_API_TOKEN (Workers Scripts edit on the
+# account, Workers Routes edit on felix.run) and CLOUDFLARE_ACCOUNT_ID. The environment admits main
+# only, and every trigger here runs on main.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  repository_dispatch:
+    types: [felix-deployed]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which Worker to deploy
+        type: choice
+        options: [both, docs, chat-ui]
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.app }}
+    # A workflow_run fires for every completed CI run on main, failed and cancelled ones included,
+    # and for CI runs started by a pull request whose head branch is called main.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    strategy:
+      fail-fast: false
+      matrix:
+        app: >-
+          ${{ fromJSON(
+            github.event_name == 'repository_dispatch' && '["docs"]' ||
+            (github.event_name == 'workflow_dispatch' && inputs.app != 'both') && format('["{0}"]', inputs.app) ||
+            '["docs", "chat-ui"]'
+          ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    # One deploy per Worker at a time, and none cancelled part-way.
+    concurrency:
+      group: deploy-${{ matrix.app }}
+      cancel-in-progress: false
+    env:
+      APP: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # The commit CI passed, not whatever main has moved to since.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter="@felix/$APP"
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || {
+            echo "::error::set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the production environment"; exit 1; }
+          pnpm --filter "@felix/$APP" exec wrangler deploy
+
+      - name: The docs show production's version
+        if: matrix.app == 'docs'
+        run: |
+          set -euo pipefail
+          live="$(curl -fsS --max-time 20 https://api.felix.run/health | jq -r .version)"
+          built="$(tr -d '[:space:]' < apps/docs/public/api-version.txt)"
+          test "$built" = "$live" || {
+            echo "::error::the build rendered v$built but production reports v$live"; exit 1; }
+          # The edge can serve the previous version for a moment after a deploy.
+          for _ in $(seq 1 12); do
+            served="$(curl -fsS --max-time 10 "https://docs.felix.run/api-version.txt?ci=$GITHUB_RUN_ID" | tr -d '[:space:]' || true)"
+            [ "$served" = "$live" ] && { echo "docs.felix.run serves the v$live reference"; exit 0; }
+            sleep 5
+          done
+          echo "::error::docs.felix.run/api-version.txt says ${served:-nothing}, production reports v$live"
+          exit 1

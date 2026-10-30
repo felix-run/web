@@ -67,7 +67,8 @@ attachments are inlined as base64 `data:` URLs — verify size and MIME handling
 
 `wrangler.jsonc` `vars` are public — only `FELIX_ORIGIN` belongs there. Verify no secret landed in
 `vars`, in a tracked `.dev.vars`, in `index.html`, or in the client bundle (`VITE_`-prefixed env is
-public by construction). `.dev.vars` and both app `wrangler.jsonc` files must stay gitignored.
+public by construction). `.dev.vars` must stay gitignored. Both app `wrangler.jsonc` files are tracked and deployed by CI,
+so they must hold no secret and no account or resource id.
 
 ## Output
 

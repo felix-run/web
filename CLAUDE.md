@@ -1113,10 +1113,9 @@ the `toolkit-authoring` skill is how to extend it.
 - **Git: never commit to `main`; never stack PRs.** Every change goes on a `<type>/<slug>` branch and
   a PR into `main`, and merging is the human's call. Enforced by `.claude/hooks/block-main-commit.sh`;
   full procedure in the `branch-pr-workflow` skill and `.claude/rules/git-workflow.md`.
-- **Deploy config is local-only.** `apps/chat-ui/wrangler.jsonc` is gitignored; the app ships a
-  tracked `wrangler.example.jsonc` to copy. `apps/docs/wrangler.jsonc`
-  is tracked because it holds no ids. `vars` is public — only `FELIX_ORIGIN` belongs there; secrets
-  go through `wrangler secret put`.
+- **Deploy config is tracked and deployed by CI.** Both apps' `wrangler.jsonc` hold no ids, and
+  `.github/workflows/deploy.yml` deploys them. `vars` is public — only `FELIX_ORIGIN` belongs
+  there; secrets go through `wrangler secret put`.
 - Biome, not ESLint/Prettier: single quotes, semicolons, trailing commas, 2-space indent, 100 cols.
   `noExplicitAny` is a warning; a11y rules are relaxed under `packages/ui/src` and
   `apps/chat-ui/src/components`.

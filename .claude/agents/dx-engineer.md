@@ -24,8 +24,8 @@ spec.
 ## Known friction in this repo — real candidates
 
 - Onboarding gaps of the "you cannot run it until you know a thing nobody wrote down" kind. Both
-  app `wrangler.jsonc` files are gitignored, so check that each app still ships a current
-  `wrangler.example.jsonc` and `.dev.vars.example` as its deploy config evolves.
+  app `wrangler.jsonc` files are tracked and deployed by CI; check that `.dev.vars.example` keeps
+  up with what `wrangler dev` needs as the deploy config evolves.
 - Test coverage reaches the VFS, the SSE reader, the proxy Workers, and a first slice of React
   (thread store, theme provider, `usePoll`, Gate) under happy-dom. The remaining gap is the **chat
   surface**: the composer and the inspector panels, which need a live harness or a lot of mocking.

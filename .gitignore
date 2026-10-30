@@ -11,7 +11,7 @@ packages/harness/src/skills/bundled.ts
 # self-issued JWT signing key (mint-jwt.ts)
 .secrets/
 
-# Real deployment config (copy from wrangler.example.jsonc; holds account/resource ids)
+# Deployment config that holds account/resource ids stays local.
 wrangler.jsonc
 # Docs + chat-ui checked-in configs use vars only (no account ids).
 !apps/docs/wrangler.jsonc

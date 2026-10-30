@@ -38,12 +38,10 @@ Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
   ```
   A failure names each call that would 404 in production — upgrade the harness first, or accept
   that those surfaces fail there. Exit 2 is the key or the network, not drift.
-- The config file exists. **`apps/chat-ui/wrangler.jsonc` is gitignored**, so a fresh clone has
-  none — copy the tracked example next to it:
-  ```bash
-  cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
-  ```
-  `apps/docs/wrangler.jsonc` is tracked and needs nothing.
+- Normally nothing to do by hand: `.github/workflows/deploy.yml` deploys both Workers after CI
+  passes on `main`, and the docs again on `felix-deployed` from felix-run/ops after a production
+  roll. Dispatch it (`gh workflow run deploy.yml -f app=docs|chat-ui|both`) to deploy now. Both
+  `wrangler.jsonc` files are tracked; a local `pnpm *:deploy` needs `wrangler login`.
 
 ## 2. Config and secrets
 

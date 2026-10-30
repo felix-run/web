@@ -89,8 +89,7 @@ Open http://localhost:5173.
 ## Deploy
 
 ```bash
-cp wrangler.example.jsonc wrangler.jsonc
-# set vars.FELIX_ORIGIN to your public Python Felix API
+# wrangler.jsonc is the make.felix.run deployment; for your own, change routes and vars.FELIX_ORIGIN
 pnpm --filter @felix/chat-ui build
 pnpm --filter @felix/chat-ui exec wrangler deploy
 ```

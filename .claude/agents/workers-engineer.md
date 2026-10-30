@@ -36,9 +36,8 @@ client possible at all. Same-origin in, HTTP out.
 
 ## Config facts
 
-- `apps/chat-ui/wrangler.jsonc` is **gitignored**; it ships a tracked `wrangler.example.jsonc` to copy, and a `.dev.vars.example` for `wrangler dev`. Keep the
-  examples in step with the real configs when you change bindings, vars, or routes — they are the
-  only deploy config a fresh clone gets. `apps/docs/wrangler.jsonc` is tracked because it holds no
+- `apps/chat-ui/wrangler.jsonc` is **tracked** and is what CI deploys to make.felix.run; it ships a `.dev.vars.example` for `wrangler dev`. Keep
+  that example in step when you change bindings or vars. `apps/docs/wrangler.jsonc` is tracked because it holds no
   account or resource ids.
 - Routes are custom domains: `make.felix.run`, `docs.felix.run`.
 - Local secrets for `wrangler dev` live in `.dev.vars` (gitignored; `.dev.vars.example` is tracked).
