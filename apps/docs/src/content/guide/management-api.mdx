@@ -1106,6 +1106,9 @@ means **`felix-scheduler` must be running alongside `felix-worker`**, or nothing
 | `GET` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
 | `PUT` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
 | `DELETE` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
+| `GET` | `/jobs/{name}/state` | the job's writer or an operator — no jobs scope |
+| `DELETE` | `/jobs/{name}/state` | the job's writer or an operator — no jobs scope |
+| `DELETE` | `/jobs/{name}/state/{key}` | the job's writer or an operator — no jobs scope |
 
 ```bash
 curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
@@ -1335,6 +1338,52 @@ else, a non-empty string of at most 8 KiB in UTF-8 bytes. `DELETE` clears them.
 | `409` | `{"error": "job_changed_hands"}` | Someone else re-saved the job between the check and the write. |
 | `422` | `{"error": "preferences_too_long", "max_bytes": 8192}` | The text is over 8 KiB in UTF-8 bytes. |
 | `422` | `{"error": "preferences_need_a_manifest"}` | The job names a workflow, whose firings have no prompt to carry them. |
+
+### A job's own state
+
+A job whose manifest sets [`spec.state`](/guide/manifest-reference/#specstate) keeps a few short text
+values its runs leave the next one — a bookmark per source, a ledger of what was posted — written
+only by the job's own firings through `state_set`. These routes let a person read them and reset
+them; none writes a value.
+
+```bash
+curl -s "$BASE_URL/jobs/release-watch/state" -H "authorization: Bearer $FELIX_KEY"
+```
+
+```json
+{ "name": "release-watch",
+  "items": [ { "key": "bookmark:releases", "value": "v1.4.0", "bytes": 6,
+               "updated_at": 1790000000000, "updated_by_thread": "acme:job:release-watch" } ] }
+```
+
+- **`GET /jobs/{name}/state`** returns every key the job holds, ordered by key, with its value, its
+  size in UTF-8 bytes, when it was written (epoch ms) and the thread of the firing that last wrote it
+  (`""` when none was recorded). A job with no state answers `items: []`.
+- **`DELETE /jobs/{name}/state`** clears every key, so the next firing starts from nothing — the way
+  to reset a bookmark that went wrong. It answers `{"name", "deleted": <keys removed>}`.
+- **`DELETE /jobs/{name}/state/{key}`** removes one key and answers `{"name", "deleted": 1}`.
+
+**Who.** The same rule as the [preferences](#a-jobs-readers-preferences): the job's current writer as a
+named person, who needs no jobs scope, or an operator (`admin` / `*`; everyone under
+`FELIX_AUTH_MODE=none`). A `jobs:read` or `jobs:write` holder may not, since values may be personal,
+and a sub-less API key is never the writer. Each delete is audited as `job.state` with the key count,
+never a value ([Observability](/internals/observability/#job-state)); a read is not audited.
+
+**Lifecycle.** `DELETE /jobs/{name}` deletes the job's state with it, so a job written later under
+the name starts empty. A `PUT /jobs/{name}` by anyone other than the job's writer — or any re-save
+under a sub-less API key — clears it, as it clears the preferences, and a firing still running then
+writes nothing more. **A job saved under a shared credential therefore loses its state on every
+re-save**: a deploy that re-PUTs its jobs with a sub-less API key resets their bookmarks each time,
+so save jobs that keep state as a named person (a key with a `sub`). A re-save by the job's own
+writer keeps it. `GET /jobs/{name}` shows `state_cleared_at`, when such a re-save last cleared it
+(`null` if never); it does not move on a `DELETE …/state`. `DELETE /jobs/{name}/state` takes no lock
+against the job's own firing, so a write from a firing already in flight can land just after it.
+
+| Status | `detail` | When |
+|---|---|---|
+| `403` | `missing scopes: admin` | The caller is neither the job's writer nor an operator — the same whether or not the job exists. |
+| `404` | `not_found` | An operator asked for a job that does not exist, or `DELETE …/state/{key}` names a key the job does not hold. |
+| `422` | `{"error": "invalid_key", "pattern": "^[a-z0-9][a-z0-9._:-]{0,63}$"}` | The `{key}` is outside the key grammar. |
 
 ### Tasks an agent scheduled
 
