@@ -1,0 +1,201 @@
+---
+title: "Integrations"
+description: "Credentials the model never holds, inbound triggers, Slack and connector tools on a self-hosted Felix."
+---
+
+Connecting a deployment to the systems around it: the credentials tools use without the model seeing them, triggers that start runs, Slack, and connector tools.
+
+## Credentials the model never holds
+
+An agent's `http_tools` can call an authenticated API without the model holding the key. Register
+the key once, per tenant, against one exact host; a manifest names the id in
+[`spec.network.credentials`](/guide/manifest-reference/tools/#credentials-the-model-never-holds):
+
+```bash
+FELIX_EGRESS_CREDENTIALS='{
+  "github": {"host": "api.github.com", "path_prefix": "/repos/acme/",
+             "secret": "secret:GITHUB_TOKEN", "scheme": "Bearer", "tenants": ["acme"]}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `host` | yes | One exact host; no wildcard, scheme, port or path. |
+| `port` | no | The port the API listens on; absent is the scheme's default. Another port on the host gets no key. |
+| `path_prefix` | no | Default `/`. Compared with the path as sent, after `..` is resolved; encoded traversal is refused. |
+| `header` | no | Default `Authorization`. `Host`, `Content-Length`, `Cookie` and the other transport headers are refused. |
+| `scheme` | no | A word put before the value, such as `Bearer`; empty sends the value alone. |
+| `secret` | yes | `secret:NAME` through `FELIX_SECRETS_BACKEND`, or a literal. Resolved when the agent compiles and masked everywhere from then. A value under 8 characters, with surrounding whitespace or a control character, or one the backend cannot find fails the compile (`422`), naming the id and never the value. |
+| `tenants` | yes | Tenant ids that may name it, or `"*"` for all. Any manifest in such a tenant may bind it; `"*"` and `default` include anonymous callers. |
+
+The egress transport attaches the header after the host check, over https only (plain http only
+with `FELIX_ENVIRONMENT=development` and `FELIX_ALLOW_INSECURE=true`), and judges each redirect hop
+again, and strips the header from any request the credential does not cover. A malformed registry fails the boot. The manifest must also set `network.allow_hosts`,
+naming the host, so what the agent reads with the key can only go where its list allows.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_EGRESS_CREDENTIALS` | empty | The registry above, as JSON. |
+
+## Inbound triggers
+
+An event from elsewhere (a pushed commit, a failed payment, an alert) can start a durable run.
+The operator registers each trigger; senders POST to `/triggers/{id}`
+([the endpoint](/guide/rest-api/#post-triggersid)):
+
+```bash
+FELIX_TRIGGERS='{
+  "gh-push": {"tenant": "acme", "manifest": "ci-triage", "scheme": "github",
+              "secret": "secret:GH_HOOK", "events": ["push", "pull_request"],
+              "prompt": "A {event} event arrived from GitHub ({delivery}). Triage it."},
+  "alerts":  {"tenant": "acme", "manifest": "oncall", "scheme": "standard",
+              "secret": ["whsec_old...", "whsec_new..."], "scopes": ["oncall:run"], "rate_limit": 20,
+              "prompt": "An alert fired. Investigate and summarise."}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `tenant` | yes | The tenant the run belongs to. |
+| `manifest` | yes | The agent that runs. It must list the `trigger_event` tool, or every delivery is refused with `503`. |
+| `scheme` | yes | `standard` ([Standard Webhooks](https://www.standardwebhooks.com/): `webhook-id`, `webhook-timestamp`, `webhook-signature`, a 5-minute window) or `github` (`X-Hub-Signature-256`). |
+| `secret` | yes | `secret:NAME`, or a list of them: any one verifies, so rotate by adding the new secret, switching the sender, then dropping the old. A literal is accepted only with `FELIX_ENVIRONMENT=development` and `FELIX_AUTH_MODE=none`. A key under 16 bytes, as written or as resolved, is refused: an unset variable behind `secret:NAME` answers every delivery `503` rather than verifying against an empty key. `whsec_…` values are base64-decoded (whitespace ignored), as Standard Webhooks libraries generate them. |
+| `prompt` | yes | The run's instruction. `{trigger}` is the id; `{event}` is the event type only when `events` lists it (else `unknown`), because GitHub does not sign that header; `{delivery}` is the delivery id when it is a short token. Nothing from the body is filled in. |
+| `events` | no | `github` only. Event types that start a run (GitHub's `X-GitHub-Event`). Others are answered `200 {"status":"ignored"}`. GitHub's `ping` is ignored unless listed, so creating a hook starts no run. |
+| `scopes` | no | Granted to the run's principal, `trigger:<id>`, for the manifest's `auth.inbound.required_scopes` and `spec.policies`. None by default. |
+| `rate_limit` | no | Runs started per minute, `1`–`10000`, default `60`. Counted only for new deliveries that would start a run: not for a bad signature, a replay or an ignored event. |
+
+A malformed registry fails the boot. The path takes no bearer, and only while `FELIX_TRIGGERS` is
+set; the signature is the credential. The payload never becomes the run's instruction: the model
+reads it by calling `trigger_event`, whose output content screening treats like an MCP server's, and
+a payload carrying a prompt-injection marker is withheld from it whatever the manifest's screening
+says. A manifest that limits `auth.inbound.schemes` must name `trigger`. Add
+`spec.execution.webhooks` to the manifest to send the run's result on: event in, result out.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_TRIGGERS` | empty | The registry above, as JSON. |
+| `FELIX_IDEMPOTENCY_TTL_SECONDS` | `86400` | How long a delivery is remembered, so a replay starts nothing. Per process without `FELIX_REDIS_URL`. GitHub signs no timestamp, so a captured GitHub delivery replayed after this starts a new run. |
+
+### A trigger that runs a workflow
+
+A trigger may name a `workflow` instead of a `manifest` and `prompt`, and map payload fields to the
+workflow's inputs by [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901):
+
+```bash
+FELIX_TRIGGERS='{
+  "gh-issue": {"tenant": "acme", "workflow": "triage", "scheme": "github",
+               "secret": "secret:GH_HOOK", "events": ["issues"],
+               "inputs": {"number": "/issue/number", "title": "/issue/title", "kind": "$event"},
+               "revision": "<the revision GET /workflows/triage returns>"}
+}'
+```
+
+Each value must be what the workflow declares for that input, or the delivery is `422
+invalid_payload` and starts nothing (checked before the rate limit). `$event` is a type `events`
+lists; `$delivery` is the delivery id as a short token. The sender's strings, objects and arrays are
+recorded on the run as `untrusted_inputs`, and every agent step of a trigger-started run reads what
+it is given inside a fence made new for each prompt — a convention the model is told to honour, so
+keep inbound screening on the manifests the workflow reaches.
+
+**`revision` is required.** A workflow trigger without one stops the API and the worker at boot
+(`felix doctor` reports it first). Read the workflow, then copy the `revision` that
+`GET /workflows/{id}` returns. Anyone with `workflows:write`, or an agent saving for its person
+([`spec.workflow_authoring`](/guide/manifest-reference/running/#specworkflow_authoring)), can save the
+workflow again; the trigger then answers `503 trigger_unavailable` until you pin the new revision,
+so no save changes what a sender starts under the trigger's `scopes`. The pin is checked before the
+payload, so a save that changes an input's type is that 503 too, not a `422`.
+
+## Slack
+
+With the optional `felix-channels` plugin installed, people can talk to an agent from Slack: a
+mention in a channel, or a DM to the app. Each message starts a [durable run](/guide/deploy/scheduling/#durable-runs) as
+its sender, a Slack thread is one Felix conversation, and the Worker posts the answer back in the
+thread when the run ends.
+The same app can also deliver an agent's [`post`](/guide/deploy/notifications/#shared-destinations) to a channel, as a
+`kind: slack` destination.
+
+**Install the plugin** in both the API and the Worker image: `FELIX_EXTRAS=channels` when building
+(`docker build --build-arg FELIX_EXTRAS="channels" .`), or `uv sync --extra channels` from a
+checkout. Without it, `FELIX_CHANNELS` is inert. The Worker must run with `felix-scheduler`, as
+for every durable run.
+
+**Create the Slack app** (api.slack.com/apps):
+1. Bot token scopes: `app_mentions:read`, `chat:write`, `im:history`. Install it to the workspace
+   and keep the bot token (`xoxb-…`) and, from *Basic Information*, the signing secret.
+2. *Event Subscriptions*: request URL `https://<your-felix>/channels/slack/<id>/events`, where
+   `<id>` is the key below. Slack sends a signed challenge, which Felix answers once the entry
+   exists. Subscribe to the bot events `app_mention` and `message.im`.
+3. *App Home*: allow users to send messages from the messages tab, for DMs.
+
+```bash
+FELIX_CHANNELS='{
+  "acme-slack": {"platform": "slack", "tenant": "acme", "manifest": "assistant",
+                 "team_id": "T0123ABCD",
+                 "signing_secret": "secret:SLACK_SIGNING_SECRET", "bot_token": "secret:SLACK_BOT_TOKEN"}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| `platform` | yes | `slack`. |
+| `tenant`, `manifest` | yes | Where the conversation runs. A manifest that limits `auth.inbound.schemes` must name `slack`. |
+| `team_id` | yes | The workspace (`T…`). A request from any other workspace is ignored. |
+| `signing_secret`, `bot_token` | yes | `secret:NAME`; a literal only with `FELIX_ENVIRONMENT=development` and `FELIX_AUTH_MODE=none`. A signing secret that does not resolve, or resolves under 16 bytes, answers `503`. |
+| `scopes` | no | Granted to every sender, `slack:<team>:<user>`, for `auth.inbound.required_scopes` and `spec.policies`. None by default; there is no per-user account linking yet, so everyone in the workspace has the same scopes. |
+| `channels`, `users` | no | Slack ids that may talk to the agent; anyone in the workspace when unset. |
+| `rate_limit` | no | Attempts per minute for the whole channel, `1`–`10000`, default `60`. |
+| `user_rate_limit` | no | Attempts per minute for one sender, at most `rate_limit`, default `10`, so one person cannot spend everyone's budget. |
+
+A malformed registry fails the boot. Requests are verified with the signing secret (a 5-minute
+window); Slack's retries are recognised by their event id and start nothing (across replicas only
+with `FELIX_REDIS_URL`). Edits, deletions and bots' messages, the app's own replies among them,
+are ignored, and so are people from other organisations in a Slack Connect channel (or another
+workspace of the same Enterprise Grid org). While a conversation's run is
+still going, a message there is told to wait, at most once a minute. If the manifest's inbound
+auth refuses the channel (its `scopes`, or `auth.inbound.schemes` without `slack`), every sender is
+refused alike: the conversation is told the agent isn't available, at most once a minute, and the
+log says `channel_misconfigured`. Replies are escaped (no `@channel` pings or disguised links from the
+model) and posted with link previews off; a failed or expired run is answered with a short note,
+never its error. Replies are sent once: if Slack is down when the run ends, that reply is lost.
+Not yet: approvals and `ask_user` as Slack buttons (a run waiting on an approval waits for the
+web client or the API), Telegram, and per-user linking.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_CHANNELS` | empty | The registry above, as JSON. Read by the `felix-channels` plugin. |
+| `FELIX_SECRET_NAMES` | empty | Add the channel's secret names (`SLACK_SIGNING_SECRET,SLACK_BOT_TOKEN`), so the Worker, where channel runs execute, masks them from boot rather than from its first reply. |
+
+## Connector tools
+
+The optional `felix-connectors` plugin adds tools that reach everyday services — weather, maps, markets and exchange rates —
+for a manifest to list in [`spec.tools`](/guide/manifest-reference/tools/#connector-tools). Install it
+in both the API and the Worker image: `FELIX_EXTRAS=connectors` when building, or
+`uv sync --extra connectors` from a checkout. The defaults need no key: Open-Meteo for the
+forecast and a point's time zone, the US National Weather Service for alerts, OpenStreetMap's
+Nominatim for places, the FOSSGIS OSRM instances for routes, and Frankfurter for exchange rates.
+Stock quotes are the exception: every free stock API needs a key.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_WEATHER_BACKEND` | `open-meteo` | The forecast backend. A plugin can register another (`felix_connectors.weather.register_weather_backend`); a name nothing registered fails the first compile that lists a weather tool, by name. |
+| `FELIX_WEATHER_UNITS` | `metric` | `metric` or `imperial`, when the model asks for neither. |
+| `FELIX_MAPS_GEOCODER` | `nominatim` | The place lookup behind geocode, reverse geocode and places search. A plugin can register another (`felix_connectors.maps.register_geocoder`). |
+| `FELIX_MAPS_ROUTER` | `osrm` | The router behind `connectors__route` (`register_router`). |
+| `FELIX_MARKET_BACKEND` | `finnhub` | The stock backend: `finnhub` (quotes and search; its free plan has no daily history, so `connectors__quote_history` says so) or `alphavantage` (all three, 25 requests a day on its free plan). A plugin can register another (`felix_connectors.markets.register_market_backend`). |
+| `FELIX_MARKET_API_KEY` | empty | The stock backend's key. Without one, a manifest listing a stock tool fails its compile, naming this setting; manifests that do not list one are unaffected. One key, shared by every tenant on the install, and so is its quota. It can come from a secrets backend as `MARKET_API_KEY` and is masked like any credential. Finnhub's travels in a header; Alpha Vantage takes it only in the URL's query string, which is why Felix keeps HTTP client request logging at WARNING. |
+| `FELIX_FX_BACKEND` | `frankfurter` | The exchange-rate backend (`register_fx_backend`): the European Central Bank's daily reference rates, keyless. |
+| `FELIX_ICS_HOSTS` | `outlook.office365.com,outlook.live.com,calendar.google.com,*.icloud.com` | Where a person's published calendar feed may live: comma-separated `allow_hosts` patterns, checked at boot. A feed link on any other host, or any port but 443, is refused when it is connected, and a kept one is checked again on every read. Empty reads no feeds. |
+| `FELIX_CONNECTORS_CONTACT` | empty | An email or URL appended to the User-Agent every connector sends; the National Weather Service's and OpenStreetMap's usage policies ask for one. Printable ASCII, or the boot fails. |
+
+A tool is built once per process, so a changed setting takes effect at the next restart. Each tool
+declares the hosts it reaches and is held to them on every request; a manifest's
+`network.allow_hosts` must cover them or the compile refuses it.
+
+Nominatim's and FOSSGIS's public instances allow one request a second, so each is paced to that,
+per process; a call that would wait more than five seconds for its turn answers `rate_limited`
+instead. The budget is shared by every tenant on the process, and an install running several API
+or Worker processes sends a multiple of the rate: a busy or multi-tenant install should run its
+own Nominatim and OSRM and register backends pointed at them
+(`register_geocoder("mine", lambda s: NominatimGeocoder(base_url=…, user_agent=…))`); only the
+public hosts are paced.

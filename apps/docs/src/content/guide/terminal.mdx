@@ -384,7 +384,7 @@ is watching. A message typed then is not sent; it goes back into the field with
 so nothing is lost. Slash commands still work, and a write one makes — `/think`, say — carries the
 observer's token, which the harness refuses as `lease_read_only`. Before this, a terminal refused at
 startup held no token at all, so its writes went out bare: refused with a confusing `lease_held`
-under [`FELIX_LEASE_ENFORCE=strict`](/guide/deploy/#session-leases-and-retried-sends), and accepted
+under [`FELIX_LEASE_ENFORCE=strict`](/guide/deploy/auth/#session-leases-and-retried-sends), and accepted
 as a second driver under the default.
 
 While watching, the terminal asks for the thread once per renewal interval and renews its observer

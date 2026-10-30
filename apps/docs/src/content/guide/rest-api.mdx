@@ -82,7 +82,7 @@ Omit it and the turn is stateless.
 | `GET` | `/health` | Liveness — `{"status":"ok","env":…,"version":…,"multi_region":false,"federation":null}` |
 | `GET` | `/live` | Liveness, named for what it is — the same static body as `/health`, no I/O |
 | `GET` | `/ready` | Readiness. Probes the dependencies and answers **503** when one is down, so a pod with a dead database leaves rotation instead of being restarted |
-| `GET` | `/health/scheduler` | Is `felix-scheduler` sweeping? `{"status","last_tick_age_s","stale_after_s"}`: `200` with `ok`, **503** with `stale`, `never` or `unknown` (Redis unreadable). For an external uptime monitor, not a probe — see [Deploy](/guide/deploy/#the-scheduler-heartbeat) |
+| `GET` | `/health/scheduler` | Is `felix-scheduler` sweeping? `{"status","last_tick_age_s","stale_after_s"}`: `200` with `ok`, **503** with `stale`, `never` or `unknown` (Redis unreadable). For an external uptime monitor, not a probe — see [Deploy](/guide/deploy/scheduling/#the-scheduler-heartbeat) |
 | `GET` | `/metrics` | Prometheus text exposition. **Authenticated** — see [Observability](/internals/observability/) |
 | `GET` | `/openapi.json` | OpenAPI 3.1 document |
 | `GET` | `/docs` | Rendered API reference (Scalar) |
@@ -365,7 +365,7 @@ def verify(secret: str, headers: dict[str, str], body: bytes) -> bool:
   same secret, when `FELIX_SKILL_UPDATE_WEBHOOKS` binds it to a tenant — see
   [Skill import → Update notifications](/guide/skill-import/#update-notifications). Those carry a
   `webhook-id` of `skill_update_<hex>` and no `run`.
-  A [`webhook` destination](/guide/deploy/#what-a-webhook-receiver-gets) sends `post.created`, with
+  A [`webhook` destination](/guide/deploy/notifications/#what-a-webhook-receiver-gets) sends `post.created`, with
   a `webhook-id` of `post_<hex>` that is stable per edition, and no `run`.
 
 ## `POST /chat/stream`
@@ -1273,7 +1273,7 @@ Felix's own MCP client (`spec.mcp_servers`).
 ## `POST /triggers/{id}`
 
 Starts a durable run from a signed event, for a trigger the operator registered in
-`FELIX_TRIGGERS` ([setup](/guide/deploy/#inbound-triggers)). No `Authorization` header: the
+`FELIX_TRIGGERS` ([setup](/guide/deploy/integrations/#inbound-triggers)). No `Authorization` header: the
 sender signs the body with the trigger's secret, as Standard Webhooks or GitHub specify. The body
 must be UTF-8 JSON of at most 256 KiB.
 

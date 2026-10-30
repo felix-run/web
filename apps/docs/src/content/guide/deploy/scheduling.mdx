@@ -1,0 +1,203 @@
+---
+title: "Scheduling and runs"
+description: "Timezones, cron schedules, durable runs and the job health watch on a self-hosted Felix."
+---
+
+What runs without a person asking: the clock it runs by, scheduled jobs, durable runs, and the watch that says when a job stopped running.
+
+## Date, time and timezone
+
+A model knows the world only up to its training data, so left alone it does date arithmetic
+against the year that data ends in. Every agent is told the date, and a react run the time, in
+`FELIX_TIMEZONE`:
+
+```bash
+FELIX_TIMEZONE=America/Chicago   # IANA zone name; default UTC
+```
+
+- **The date** ends the compiled system prompt: `Today is Tuesday, October 20, 2026 (2026-10-20,
+  America/Chicago).` It changes once a day, so it costs one prompt-cache write per conversation
+  per day.
+- **The time** is a note on the run's first model call, with its UTC offset:
+  `The current time is 2026-10-20T19:05-05:00 (America/Chicago).` It sits after the cache
+  breakpoints and is never written to the session log, so it costs nothing to change every run.
+  A durable run is told the time it resumed at.
+
+The zone is one per install: set it to where the people using it are, or an evening reads as
+tomorrow. An unknown name fails at boot. Anyone who can chat with an agent can ask it the time and
+learn the zone; a public manifest that should not say where the install is opts out, with
+[`system_prompt.include_datetime: false`](/guide/manifest-reference/model/#specsystem_prompt).
+
+The zone does not move a [cron schedule](#cron-schedules) already written: a job's cron is read in
+the job's own `timezone`, UTC when it names none. It is the zone an agent's
+[`schedule_task`](/guide/manifest-reference/running/#specscheduling) records on a cron or macro task when the
+agent names none, so "every morning at 8" is 08:00 as the person sees it; the name is stored on the
+job, so changing the setting later does not move those tasks. Write the canonical spelling
+(`America/Chicago`): the boot check accepts any name the host can load, `america/chicago` on a
+case-insensitive filesystem included, but a job's zone must be canonical, so such a setting has
+`schedule_task` refuse every cron task as `invalid_schedule`.
+
+## Cron schedules
+
+Scheduled jobs (`PUT /jobs/{name}`) use standard **five-field** cron, evaluated in UTC unless the
+job names an IANA `timezone`:
+
+```
+┌─ minute (0-59)
+│ ┌─ hour (0-23)
+│ │ ┌─ day of month (1-31)
+│ │ │ ┌─ month (1-12)
+│ │ │ │ ┌─ day of week (0-6, Sunday = 0)
+│ │ │ │ │
+* * * * *
+```
+
+| Expression | Meaning |
+|---|---|
+| `*/10 * * * *` | Every ten minutes |
+| `0 3 * * *` | Daily at 03:00 |
+| `0 9 * * 1` | Mondays at 09:00 |
+
+With `"timezone": "America/New_York"`, `0 8 * * 1-5` is 08:00 New York time on weekdays all year,
+not 13:00 UTC rewritten at every daylight-saving change. A zone moves only cron and the
+`@hourly`/`@daily`/… macros; an interval counts from the last firing and an `at:` carries its own
+offset, so a zone beside either (or beside an empty schedule) is refused with `422`. Across a
+daylight-saving change a cron fires once per matching local time: a time the clocks skip fires at
+the first instant after the gap (`30 2 * * *` in New York fires at 03:00 EDT on the spring day), and
+a time they repeat fires once, at its first occurrence. A daily job therefore fires once every local
+day, and `@hourly` fires 23 times on the spring day and 24 on the autumn one. The name must be
+canonical — `America/New_York`, not `america/new_york`, and never `Factory`, `posixrules` or
+`localtime` — so a name a case-insensitive filesystem would load is not stored to fail on a Linux
+Worker. A job with no zone runs in UTC, as every job written before zones existed does.
+
+Macros (`@daily`), intervals (`every:5m`) and a one-shot `at:2026-10-21T09:00:00Z` — an ISO-8601
+timestamp with a required offset — are accepted too; see [Jobs](/guide/management-api/#jobs). Tasks
+an agent schedules for itself ([`spec.scheduling`](/guide/manifest-reference/running/#specscheduling)) are
+jobs too, and run through the same sweep; the retention sweep deletes the ones that will not run
+again (a fired one-shot, a disabled task) once their last run is older than
+`FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30, `0` keeps them). Every job's run history is trimmed
+after each run, not nightly, to its newest `FELIX_JOB_RUNS_KEEP` (200, `0` keeps all); runs of the
+current UTC day that ran are kept until it ends, since a heartbeat's daily cap counts them — see
+[Run history](/guide/management-api/#run-history). The same nightly sweep forgets the `task`
+memories an agent wrote (`kind: task`, "the user wants to create notes.txt") once they are
+untouched for `FELIX_MEMORY_TASK_RETENTION_DAYS` (30, `0` keeps them); see
+[Memory](/guide/management-api/#memory).
+
+:::note
+The Worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
+`felix-scheduler`. [`GET /health/scheduler`](#the-scheduler-heartbeat) answers `503` once it stops. Run all three containers — API, Worker **and** scheduler — or no job, retention
+sweep, memory consolidation, skill evaluation or skill improvement ever fires. Durable runs are the exception: each Worker polls for them
+itself (below), and the scheduler's once-a-minute `fiber_scheduler` sweep is only the backstop.
+:::
+
+## Durable runs
+
+A durable run is a `pending` fiber until a Worker claims it, and nothing tells the Worker when one
+is submitted — so each Worker polls. The claim is the same lease plus `FOR UPDATE SKIP LOCKED` the
+cron sweep takes, so any number of Workers, polling or sweeping, never run one fiber twice.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_FIBER_POLL_SECONDS` | `1.0` | How often each Worker checks for due fibers. `0` turns the poll off and leaves only the once-a-minute sweep, which is how durable runs were started before 0.5.0 — each waited up to a minute before its first model call. |
+| `FELIX_FIBER_CONCURRENCY` | `8` | Fibers one Worker advances at once. A run parked on an approval holds its slot until someone answers, so this bounds how many such waits can pile up before a new run waits for a slot. A full Worker leaves further runs unclaimed for another Worker. |
+| `FELIX_FIBER_MAX_ATTEMPTS` | `5` | Consecutive failed steps before a fiber is `dead`; retries back off 1m doubling to 1h. |
+
+## Job health watch
+
+A job that stopped firing, or fires and fails every time, is recorded on its run history and tells
+nobody; a stopped `felix-scheduler` stops every periodic task, including any that would notice.
+Felix watches both, from two places.
+
+### The scheduler heartbeat
+
+Each completed `run_scheduled_jobs` sweep (every minute) stamps its time in Redis, and
+`GET /health/scheduler` answers from the stamp:
+
+```bash
+curl -s "$BASE_URL/health/scheduler"
+# {"status":"ok","last_tick_age_s":42,"stale_after_s":300}
+```
+
+| `status` | HTTP | When |
+|---|---|---|
+| `ok` | `200` | The last completed sweep is no older than `FELIX_SCHEDULER_STALE_SECONDS`. |
+| `stale` | `503` | It is older: the scheduler, the Worker or the database the sweep reads has stopped. |
+| `never` | `503` | No sweep was ever recorded; `last_tick_age_s` is `null`. |
+| `unknown` | `503` | The API could not read Redis and holds no stamp of its own. |
+
+A sweep stamps only once it got through its tenants: one that cannot list them, or that failed for
+every tenant (an image deployed ahead of `felix migrate head`, say), stamps nothing and fails its
+task, so the route goes stale on a dead database too. The stamp crosses from the Worker to the API
+through Redis, so set `FELIX_REDIS_URL` on both; an API without one sees only its own process, which
+runs no sweep, and answers `never`. The route is public and rate-limit exempt like `/ready`, and
+carries one age and one threshold — no tenant, job or host.
+
+**Point an uptime monitor at it, from outside the deployment — not a probe.** A stopped scheduler
+is not the API pod's fault: restarting it or taking it out of rotation fixes nothing, so the Helm
+chart deliberately does not wire it to a probe. `felix doctor` reads the same heartbeat and prints
+a note, not a failure, when it is not `ok`, since it is often run before the scheduler starts.
+
+### Overdue and failing jobs
+
+The Worker's `job_health_watch` cron (every 5 minutes, every tenant, the tenant bound for RLS) opens
+an *incident* on a job that is:
+
+- **`overdue`** — enabled, scheduled (not manual-only), due more than
+  `FELIX_JOB_OVERDUE_GRACE_SECONDS` ago, and still due after a scheduler sweep completed two
+  minutes past when the watch first saw it so. That second condition keeps a re-enabled job, a
+  first schedule and a scheduler outage's backlog from alerting before the scheduler had its chance.
+  A `running` mark does not exempt a job: a run killed with its Worker holds that mark for six hours.
+  A schedule that no longer parses — a zone tzdata has since dropped, say — counts, since the
+  scheduler refuses it and it never fires, including on a job no sweep has yet given a due time.
+- **`failing`** — its last `FELIX_JOB_FAILURE_THRESHOLD` runs that ran were all errors, `skipped`
+  runs ignored.
+
+Each incident is recorded on the job, as `health` on
+[`GET /jobs` and `GET /jobs/{name}`](/guide/management-api/#job-health), counted
+(`felix_job_health_incident{kind}`), audited (`job.health`, `open` and `cleared`), and — when
+`FELIX_JOB_ALERT_DESTINATION` names a destination — posted there **once**. An overdue incident
+clears when the job fires; a failing one when a run since it began succeeds; disabling a job clears
+both. A job that fails again after it cleared opens a new incident, which alerts again.
+
+The alert goes through the same edition ledger as `post`, under the reserved manifest id
+`felix:job-health` and the edition `job-health:<job>:<kind>:<since-ms>`, so a sweep that dies
+mid-delivery does not alert twice and an `unknown` outcome is not retried. Its text is fixed: the job
+and tenant (characters outside a plain set shown as `?`), the kind, since when, and the last error's
+*class* — `run_error`, `internal_error`, `cancelled`, `execution_failed`, `credential_expired`,
+`invalid_schedule`, `disabled_while_running` — never the run's error text, which can carry a
+refusal's own words. A `not_posted` delivery is tried again each sweep, twelve times in all. With no
+alert destination, or one not open to the job's tenant, nothing is sent and the incident is still
+recorded, counted and audited; it is tried again each sweep, so it alerts once routing exists.
+
+**Make the alert destination an operator destination.** `"operator": true` makes a destination the
+harness's own: no manifest may name it (`spec.destinations` answers it as an unknown id), its
+`tenants` is not read, and the watch posts there about every tenant.
+
+```bash
+FELIX_DESTINATIONS='{
+  "ops-alerts": {"kind": "slack", "channel": "ops-slack", "conversation": "C0OPSALRT", "operator": true}
+}'
+FELIX_JOB_ALERT_DESTINATION=ops-alerts
+```
+
+`ops-slack` is a [`FELIX_CHANNELS`](/guide/deploy/integrations/#slack) entry for the operator's own app, with every key that
+registry requires.
+
+The tenant checks a kind makes for a tenant's own post are skipped for an operator destination:
+for `webhook`, the endpoint's `tenants` is not consulted, so list there only the tenants whose
+manifests may announce runs to it; for `slack`, the app's tenant is not consulted, so the one app
+posts about every tenant. **Make that the operator's own Slack app and workspace, never a
+tenant's**, or that tenant's workspace reads every tenant's job names. A non-operator alert
+destination reaches only the tenants in its `tenants`, and that list is also a `post` grant: every
+manifest in those tenants may post to the ops channel.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SCHEDULER_STALE_SECONDS` | `300` | At least `120`. Past this, `GET /health/scheduler` answers `stale`. |
+| `FELIX_JOB_OVERDUE_GRACE_SECONDS` | `900` | At least `60`. How long past its due time a job may sit before it can be overdue. |
+| `FELIX_JOB_FAILURE_THRESHOLD` | `3` | `1`–`100`. Consecutive errored runs that make a job failing. One above a non-zero `FELIX_JOB_RUNS_KEEP` fails the boot: the streak would be trimmed before it could be read. |
+| `FELIX_JOB_ALERT_DESTINATION` | empty | A `FELIX_DESTINATIONS` id each new incident is posted to; empty posts nowhere. An id that is not in `FELIX_DESTINATIONS` fails the boot. The watch runs in the Worker, so set both there. |
+
+Prometheus users can page on the same signal instead: the bundled rules carry
+`FelixJobHealthIncident`, firing on `increase(felix_job_health_incident_total[15m]) > 0` by `kind`
+(see [Observability](/internals/observability/#alert-rules)).
