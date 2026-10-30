@@ -90,10 +90,11 @@ export default defineConfig({
       ],
       // Explicit sidebar (Starlight autogenerate expects src/content/docs/).
       // Grouped by what the reader is doing, not by where the page lives: the
-      // path to a first run, then the pages you look things up in, then how it
-      // works. Starlight's prev/next follows this order, so Start reads as a
-      // sequence. Slugs are unchanged — chat-ui links into these pages and
-      // `apps/chat-ui/tests/docs-links.test.ts` checks every one.
+      // path to a first run, then guides to skills and the clients, then the
+      // pages you look things up in, then how it works. Starlight's prev/next
+      // follows this order, so Start reads as a sequence. Slugs are unchanged —
+      // chat-ui links into these pages and `apps/chat-ui/tests/docs-links.test.ts`
+      // checks every one.
       sidebar: [
         {
           label: 'Start',
@@ -101,7 +102,15 @@ export default defineConfig({
             { label: 'Getting started', slug: 'guide/getting-started' },
             { label: 'Concepts', slug: 'guide/concepts' },
             { label: 'Deploy', slug: 'guide/deploy' },
+          ],
+        },
+        {
+          // Using what an agent is made of, and the clients that drive it.
+          label: 'Guides',
+          items: [
+            { label: 'Skills', slug: 'guide/skills' },
             { label: 'Skill import', slug: 'guide/skill-import' },
+            { label: 'Chat UI', slug: 'guide/chat-ui' },
             { label: 'Terminal client', slug: 'guide/terminal' },
             { label: 'Phones and iPads', slug: 'guide/phones-and-tablets' },
           ],

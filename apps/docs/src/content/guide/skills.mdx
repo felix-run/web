@@ -1,0 +1,341 @@
+---
+title: "Skills"
+description: "Agent Skills in Felix — how a skill reaches the model, running one by name or in a subagent, its scripts, where skills come from, the ones an agent writes, and evaluating them."
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`name`,
+`description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`,
+`disable-model-invocation`, `user-invocable`, `argument-hint`, and `context`, `agent`, `model` for a
+[forked skill](#running-a-skill-in-a-subagent)) and a Markdown body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
+
+## How a skill reaches the model
+
+Skills are disclosed progressively. The compiled system prompt carries only the catalog, as an
+`<available_skills>` block of names and descriptions, sorted by name. A skill with
+`disable-model-invocation`, or a declared ref no source answered, is left out of it, and the skill
+tools answer `unknown_skill` for it as for any other name. `activate_skill` returns a skill's body
+to the model **as instructions** (at most 256K characters, `truncated` past that), with its
+`license`, `compatibility` and `allowed-tools` as information only (`allowed-tools` is never
+enforced), and lists its bundle files; `read_skill_file(name, path)` reads one (text only, at most
+64 KiB, with a `truncated` flag). `deactivate_skill` switches one off.
+
+**Activation belongs to the conversation.** A skill is active in a thread when the thread's session
+log holds its `activate_skill` result on the active branch — the newest per name, minus a later
+`deactivate_skill`. Nothing else is stored, so `list_skills` reports that conversation's own state,
+a rewind or fork past an activation takes it away, and a result that content screening quarantined
+or an approval refused never counts. Activation only reaches skills in the manifest's catalog.
+
+**Activated instructions stay in view** for the rest of the conversation:
+
+- `clear_tool_results` never stubs an `activate_skill` result, and `spec.artifacts` never spills one.
+- When a window or compaction drops the turn that activated a skill, the logged result is re-shown
+  ahead of the history: at most 128K characters per model call, newest activation first, every `<`
+  escaped so a body cannot close its block, and an imported skill labelled `untrusted="true"`.
+- Only skills the catalog still offers are re-shown, so archiving, unpublishing or undeclaring a
+  skill takes it out of old threads. A skill that changed since it was activated, or one past the
+  budget, is named rather than repeated, and the model is told to activate it again.
+- Activating instructions the conversation already holds answers `already_active` rather than
+  sending them again.
+
+The skill tools change nothing outside the conversation's log, so all four are read-only and run in
+[plan mode](/guide/manifest-reference/governance/#specpermissions).
+
+## Running a skill as `/skill-name`
+
+A person runs a skill by sending `/skill-name args` as the last message of their turn. The harness
+then calls `activate_skill` for them before the model's first step, through the same tool round the
+model's calls take: every governance wrapper, approvals with their stream frames, `before_tool`
+hooks and the audit. The call and its result are logged as an assistant turn, as if the model had
+made it. The person's turn is sent as written (`/triage ACME 900`); the body reaches the model as a
+screened tool result, never with the authority of the person's own words.
+
+- **Which turns.** Only a turn a chat route marks as the person's: `POST /chat`, `/chat/stream`,
+  `/v1/chat/completions` and a durable `/chat` run. Only the last message, and only a text-only one.
+  `/name` in a `task` prompt, a plan step, an A2A message, a scheduled job's prompt or a workflow
+  step runs nothing.
+- **Which agents.** Every pattern. A `react` agent, and what wraps one (`deep`, `reflect`,
+  `plan_execute`), runs it before its first step. A composite carries the person's `/name` turn
+  into each step it runs, and each step starts with the skill activated under its own manifest's
+  catalog: every `plan_execute` subtask, every `parallel` specialist, every `groupchat` speaker in
+  every round. That is one `activate_skill` call, and one audit row, per step. A `router` hands its
+  pick the person's turn itself. A threaded `reflect` reads the activation back from the log for
+  its next draft; a threadless one (a composite's step, or `/v1` with no `user`) runs it again for
+  each draft. Only the person's own turn is carried, never a `task` prompt a model wrote, and a
+  parent's `spec.skills` does not reach its child: a `disable-model-invocation` skill runs in a
+  child only if the child declares it.
+- **Whose door.** A person's `/name` runs in a manifest only when the caller passes that manifest's
+  own [`spec.auth.inbound`](/guide/manifest-reference/running/#specauth) — anonymity, `schemes`,
+  `required_scopes` — and any `felix_manifests` pin on the credential. A router's pick or a
+  composite's child is checked on its own door even though the rest of the request
+  [inherits the parent's admission](/guide/manifest-reference/agents/#specsub_agents-and-specaggregator_prompt),
+  so a parent open to more callers than its child does not hand them the child's manual-only
+  skills. Refused, the skill is not activated and the turn runs without it.
+- **Which names.** A declared [prompt](/guide/manifest-reference/model/#slash-commands) of the same name
+  wins, since prompts are expanded before the agent runs. A name that is no skill the person may run
+  is sent as written. The name matches exactly.
+- **Which skills.** Any resolved skill unless its frontmatter sets `user-invocable: false`, which
+  keeps it for the model only. A `disable-model-invocation` skill is runnable by `/name` only where
+  the manifest declares it in `spec.skills`; it still never reaches the model, and an undeclared one
+  stays unavailable to everyone. On `/v1`, whose caller is as often an agent as a person, it also
+  needs a caller holding `skills:invoke`; without it the turn is sent as written. `/chat` needs no
+  scope for it, and an A2A or MCP caller's message runs no skill.
+- **Arguments.** What follows the name goes into the body: `$ARGUMENTS` is the whole text,
+  `$ARGUMENTS[N]` and `$N` the Nth argument from 0, split as a shell would (one past the end is
+  empty). A body that never names `$ARGUMENTS` gets `ARGUMENTS: <text>` appended, so they are never
+  dropped. `activate_skill` takes `arguments` (at most 16,000 characters) only on a call the harness
+  made for a person; `arguments` the model passes itself are ignored, and the result says
+  `arguments_ignored`. Running the same skill again with other arguments sends it again rather than
+  answering `already_active`.
+
+`argument-hint` is read as written (`argument-hint: [issue-number]` is the hint `[issue-number]`), and
+[`GET /skills/{manifest}`](/guide/management-api/#skills) reports it with `user_invocable`.
+
+**Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/memory/#specskills) entry
+activates that skill the same way at the start of a conversation, once: a skill the thread has ever
+activated, even one since deactivated, is not activated again. An imported skill nobody adopted is
+never preloaded, and neither is a forked skill. Preloads run where `/name` runs before a first
+step: a `react` agent and what wraps one (`deep`, `reflect`, `plan_execute`). A composite with no
+tool loop of its own (`router`, `parallel`, `groupchat`) cannot run its own preload, and its
+compile logs a warning saying so.
+
+Each activation's `skill_activation` audit row records who asked as `by`: `person`, `preload` or
+`model`.
+
+## Running a skill in a subagent
+
+A skill whose frontmatter says `context: fork` runs in a subagent instead of in the conversation.
+`activate_skill` — the model's call, with a `task` argument saying what the job is, or a person's
+`/skill-name args` — hands the skill to one of the manifest's
+[`spec.delegation.agents`](/guide/manifest-reference/agents/#specdelegation), or, in a manifest that
+delegates to nothing, to the manifest itself, and returns only that agent's answer, as
+`{ran, agent, result}`.
+
+```markdown
+---
+name: dependency-audit
+description: Audits the lockfile for outdated and vulnerable packages.
+context: fork
+agent: researcher
+model: claude-haiku
+---
+Read the lockfile and report …
+```
+
+- **Which agent.** The delegation agent `agent:` names, else the first one listed.
+- **No `spec.delegation`.** A forked skill that names no `agent:`, or names the manifest itself,
+  runs in the manifest: the same manifest, compiled as its own subagent on the first fork of a
+  request (once per request, not when the request is admitted), in a fresh conversation, with the
+  manifest's whole toolset; `agent` in the result is the manifest's name. It reaches that subagent
+  through a `task` tool that every governance wrapper wraps and the model is never offered. The
+  subagent's own forks are `fork_unavailable`, so a fork is one level deep. Its skills, prompt files
+  and MCP tool lists load when it is compiled, at the first fork. A composite (`spec.sub_agents`)
+  has no tool loop to run it in, and a manifest whose provider already binds a tool named `task` is
+  left alone; there a fork is `fork_unavailable`.
+- **What it is handed.** The model's `task`, followed by the body inside a
+  `<skill_instructions name="…">` block, so an approver of the `task` call reads the job first. A person's arguments are substituted into the body as for any `/name` run, and the
+  model's `task` is not added.
+- **`model:`.** Applies only to a fork, and only when it names a model route the deployment
+  defines (built in or added by `FELIX_MODEL_ROUTES`) that passes the rules a request's `model`
+  override is held to — `spec.auth.outbound.providers` and the cost cap's pricing
+  ([`POST /chat`](/guide/rest-api/#post-chat)) — on this manifest and every agent below it.
+  Otherwise it is dropped with a warning and the agent's own model runs. It reaches the `task`
+  handler by a call id the harness mints, never through an argument the model can set.
+- **A call of `task`.** The fork is a call of the manifest's governed `task` tool, so everything that
+  holds for `task` holds for it: approvals, policies, the permission mode, the limits and their
+  `max_peer_hops`, the child's own inbound auth, `subagent_stop`, and hooks on `task`. It counts as
+  one call against `max_tool_calls`, the model's `activate_skill`. See
+  [Governance → Skills](/internals/governance/#skills).
+- **Never an activation.** The instructions never enter the conversation: nothing is retained,
+  `list_skills` never shows a forked skill active, and running it again runs the subagent again.
+  The answer is untrusted output for content screening, as a `task` answer is.
+
+The catalog marks a forked skill `<skill name="…" context="fork">` and tells the model to pass a
+`task`. `context`, `agent` and `model` are read only from the top level of the frontmatter, never from
+a nested `metadata:` block. A fork that cannot run answers an error instead:
+
+| `error` | When |
+|---|---|
+| `fork_refused` | An imported skill nobody adopted: its text would become the subagent's own turn |
+| `fork_unavailable` | `agent:` names an agent the manifest does not delegate to (with no `spec.delegation`, anything but the manifest itself); the manifest has no `spec.delegation` and cannot run the fork itself (a composite, or a provider tool already named `task`); or the fork is inside the manifest's own forked subagent |
+| `fork_failed` | The subagent or a control on `task` failed or refused with an error; carries `agent` |
+
+A governance deny on `task` (an approval refused, a policy) is passed on as the deny it is. The
+compile logs a warning when a manifest's forked skills have nowhere to run (no `spec.delegation`
+and no way to run them in the manifest itself) and for an `agent:` outside where they run.
+
+## Running a skill's scripts
+
+A skill's `scripts/` run through `run_skill_script(name, script, args)`, which
+[`spec.skill_scripts`](/guide/manifest-reference/memory/#specskill_scripts) binds. It runs a script only
+from a skill active in the calling conversation, so beside the instructions that say when to run
+it, and only under an interpreter that both the manifest (by extension) and the operator's
+`FELIX_SKILL_SCRIPT_INTERPRETERS` allow. That list is empty by default, so nothing runs.
+
+- **Whose skills.** Writing a skill is a grant to write instructions; a script is code. So
+  `FELIX_SKILL_SCRIPT_SOURCES` defaults to `host`, the bundled skills and `FELIX_SKILLS_DIR`.
+  `library` and `personal` are opt-in. An imported skill nobody has adopted never runs scripts.
+- **Where.** Where a shell tool's command would: the shell runner, or the API process on a
+  development box. The bundle is written to the workspace for that one call, the script runs from
+  the workspace root, and the bundle is removed after.
+- **Governed as a shell command.** Command screening reads every argument, and content screening
+  reads the output as untrusted. Each decision writes a `skill_script` audit row.
+
+`run_skill_script` is not one of the four read-only skill tools, so plan mode does not run it.
+
+Not yet: an operator-uploaded (object-store) skill cannot run scripts, since the store has no
+listing to write a bundle from; a library skill's binary assets are not written; a forked skill is
+never active, so its scripts never run; and the hosted workspace backend's sandbox is refused.
+
+## Where skills come from
+
+| Source | Where | `source` | Written by |
+|---|---|---|---|
+| Bundled | the harness's `skills/` directory | `bundled` | the release |
+| Host directory | `FELIX_SKILLS_DIR` | `bundled` | the operator |
+| Operator upload | object-store keys `skills/{tenant}/{name}/SKILL.md` or `skills/{name}/SKILL.md`, and pinned `…/{name}/{version}/SKILL.md` | `store` | the operator, outside Felix |
+| Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, an import from GitHub, or a promotion from a personal library, through review |
+| Personal library | the live version of each skill in the caller's own library, under `skill-library/{tenant}/~{digest}/` | `library` | the caller, or an agent under `spec.personal_skills: write` |
+
+A host directory follows the agentskills.io layout: only `<dir>/SKILL.md` packages are skills, and a
+loose `*.md` at the directory's root is not one. A skill directory is a leaf, so a `SKILL.md` kept
+under its `references/` belongs to that skill; the root of the skills directory is the exception and
+is walked below. Hidden directories, `node_modules` and symlinked directories are skipped, the walk
+stops at 6 levels and 2000 directories, and a shadowed name is logged. Loading is lenient: a missing
+description or unreadable YAML skips the skill, while a name that is not lowercase (loaded lowercased), a
+name unlike its directory, or a description over 1024 characters (the catalog lists the first 1024)
+logs a warning and loads.
+`felix skills validate <dir>` runs the stricter check a skill library applies on save against a
+local skill, sending nothing anywhere, and exits 1 on any issue.
+
+A catalog is built in this order, and the first source to hold a name answers it:
+
+1. **The host wins.** Bundled skills, then `FELIX_SKILLS_DIR` (a skill there replaces a bundled one
+   of the same name). The library refuses to save a host name, or a name an operator uploaded at an
+   unversioned key (`409 name_shadows_host_skill`).
+2. **The caller's own library**, live versions only, where the manifest sets
+   [`spec.personal_skills: read`](/guide/manifest-reference/memory/#specskills). A caller with a verified
+   identity has a personal library; an anonymous caller, or an API key with no subject of its own,
+   has none. A personal skill shadows a tenant skill of the same name for that caller alone, and
+   only an ambient one: a name the manifest declares in `spec.skills` always resolves from the
+   tenant's library. In the web UI it is **My skills** on the Skills page (`?lib=me`): the same
+   list, editor and version actions as the team library, published by its owner through the same
+   gate with no review queue — writing needs `skills:personal` — and a version once published can
+   be **promoted** into the tenant library as a draft for its review queue. An administrator
+   finds everyone's under **Personal libraries** on the team library, listed only when they ask
+   because each listing is audited, and opens one read-only (`?lib=<digest>`): readable and
+   archivable, with no editor, decision, rollback or promotion.
+3. **The tenant library**, live versions only. Without `spec.skills_declared_only`, every live
+   library skill joins the catalog of every manifest in the tenant that builds one (any manifest
+   with `spec.skills`, a skill tool, or `spec.skill_authoring`); with it, only declared names do.
+4. **Operator uploads**, for a declared name nothing above holds: pinned key, then unversioned, the
+   tenant's keys before the shared ones.
+
+One exception to library-before-uploads: **an explicit version pin to an operator upload beats the
+library.** A `spec.skills` ref with `version: 0.1.0` is served `skills/{tenant}/{name}/0.1.0/SKILL.md`
+(or the shared `skills/{name}/0.1.0/SKILL.md`) when it exists, whatever the library's live version
+is. A pin no upload holds still gets the library's live version. The library reports
+`shadows_operator_upload` on a skill whose name is split this way.
+
+A **personal library** belongs to one principal within one tenant, and only its owner's turns load
+it. The owner saves and publishes in it through
+[`/skill-library/~me`](/guide/management-api/#personal-libraries) with the `skills:personal` scope,
+through the same publish gate as the tenant's library but without its review queue; an agent writes
+to it under `spec.personal_skills: write`. **Promotion** proposes a version the owner has published
+to the whole tenant: its files are copied, byte for byte, into a draft of the tenant's skill of the
+same name (`source: promoted`) that waits in the tenant's ordinary review queue. Promotion never
+publishes, and the draft is judged as strictly as an agent's draft: the copy rule runs on it, only
+its bundle's own `evals/` count toward an evaluation requirement, and it may not add, change or drop
+an `evals/` file. The personal skill stays as it was.
+
+## Skills an agent writes
+
+A manifest with [`spec.skill_authoring.enabled`](/guide/manifest-reference/memory/#specskill_authoring)
+gets three more tools:
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` (to the caller's own under [`spec.personal_skills: write`](/guide/manifest-reference/memory/#specskill_authoring)) |
+| `update_skill` | `name`, `body`, `reason`, `parent_version`, `description?` | Saves a new version with a new body; every other file is kept from the parent |
+| `submit_skill_feedback` | `name`, `body`, `suggested_patch?` | Files feedback on a library skill in this agent's catalog; changes nothing |
+
+A `create_skill` or `update_skill` result says when the agent can use what it saved, as `available`
+with an `available_note`: `next_turn` once published (the turn that saved it compiled its catalog
+before the skill existed), `after_publish` while a draft, naming who must publish it (an operator, or
+the person whose library it is), and `never` when `skills_declared_only` leaves the name out of the
+manifest's catalog.
+
+`parent_version` is required and must be the skill's newest version that was not a rejected draft
+(`newest_version` in `list_skills` and `activate_skill`). A stale one is refused `parent_changed`;
+naming a rejected draft is refused `parent_rejected`. Because it is an argument, an approval of the
+call binds it. Every refusal comes back to the model as `{"error": …}`.
+
+**Drafts are the default.** `activate_skill` hands a body to the model as instructions — a higher
+trust tier than recalled memory, which is fenced as reference. A skill an agent wrote from a turn
+that carried injected tool output would otherwise steer every later session in the tenant. So a save
+is an immutable draft that no catalog loads, and a person publishes it.
+
+<Steps>
+
+1. **Draft** — the save is validated, quality-reviewed (a 0–100 score) and security-scanned
+   (`pass`, `advisory` or `fail`), and written as a new semver version. `max_pending` caps one
+   manifest's undecided drafts.
+
+2. **Review** — an operator reads it in the review queue (`GET /skill-library/-/review`) and
+   publishes or rejects it with a note.
+
+3. **Publish** — the [publish gate](/internals/governance/#the-skill-publish-gate) re-reads the
+   bytes against their saved digests, re-validates and re-scans them, and applies the publish
+   policy. The version becomes `live_version`; the one it replaces is archived. A rollback makes a
+   once-published version live again.
+
+</Steps>
+
+`spec.skill_authoring.mode: publish` skips step 2: the draft is published at once if the gate passes,
+and stays a draft (with the reasons) if not. The manifest is refused unless an approvals rule gates
+every `create_skill` and `update_skill` call, so a person still reads each skill before it is saved.
+An agent's edit of a version an operator wrote, imported or promoted waits for review in either mode, as does an edit built on such a version through drafts nobody has decided yet.
+
+## Skills from GitHub
+
+An operator can import a skill published on GitHub into the library (`felix skills add
+github:owner/repo/path`). The import is a draft pinned to one commit of the repository's own
+history, and it is published like any other, after review. Nothing resolves a GitHub ref when a
+manifest compiles.
+
+Imported text is a third party's, so it stays marked as such: the version and everything built on it
+carry `lineage_import` until an operator adopts a version, the publish gate blocks it on an
+`advisory` scan whatever the policy says, the catalog and `list_skills` mark it `untrusted`, and
+what the skill tools relay of it is content-screened — at least by the injection markers even where
+the manifest turns screening off. A deployment allowlists the repositories each tenant may name, and
+can hold back files Felix first saw too recently. [Skill import](/guide/skill-import/) has the whole
+surface.
+
+## Evaluations and feedback
+
+An **evaluation** asks whether answers get better with the skill. The Worker answers each scenario
+twice with `FELIX_SKILL_EVAL_MODEL`, without the skill and with its body fenced as untrusted
+reference; `FELIX_SKILL_EVAL_JUDGE_MODEL` scores both 0–100, and uplift is with-skill minus
+baseline. Scenarios come from the bundle's `evals/`, else are generated from the SKILL.md, else are
+three defaults built around the description. The publish policy can require a succeeded evaluation
+(`require_eval`) and a minimum uplift (`min_eval_uplift`). Each evaluation says whether it
+`counts_for_gate`: for a version an agent wrote, only one on the bundle's own `evals/` scenarios
+counts, because generated and default scenarios are written from the agent's own text.
+`skill_authoring.auto_eval` queues one for every draft the agent saves.
+
+**Feedback** is filed by an agent (`submit_skill_feedback`) or an operator, on one version, and waits
+as `pending`. Only a person decides it. Accepting with `improve` (the default) queues an AI rewrite:
+the Worker asks `FELIX_SKILL_IMPROVE_MODEL` for a revised SKILL.md and saves it as a **draft** for
+review. Nothing in the loop publishes. Evaluations and improvements run in the Worker's `skill_jobs`
+task, so they need `felix-worker` and `felix-scheduler` running.
+
+## The Skills page
+
+chat-ui's Skills page is the operator surface over all of this: the library list, a review queue and
+feedback inbox, the tenant's publish policy, and for each skill its versions with diffs, the gate's
+verdict, evaluations and feedback. Every publish confirm states the gate's verdict before it asks.
+A skill is edited in the **side pane**, beside the skill's own page or a conversation: **Edit** on
+its page, *Edit to fix* on a draft the gate refused, and **New skill** all open it there, and an
+unsaved edit survives switching tabs or moving between pages. A `create_skill` or `update_skill` result renders in the
+chat as a proposal card with Publish, Reject and Edit. The routes underneath are in the [Management API](/guide/management-api/#skill-library).
