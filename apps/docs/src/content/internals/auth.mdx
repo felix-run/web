@@ -497,6 +497,37 @@ An app-specific password has no scopes: it opens the person's whole calendar and
 they revoke it at Apple. `DELETE /connections/icloud/{apple_id}` forgets it here; Felix cannot
 revoke it at Apple, so the person does that themselves.
 
+### Connecting a calendar feed
+
+A calendar with no OAuth here -- Outlook, a work account's, a shared one -- can be published as an
+`.ics` link that serves the whole calendar with no sign-in, and a person connects that link. The
+route comes with the `felix-connectors` plugin and its `ics` extra:
+
+`POST /connections/ics` `{label, url}`, as the person. `label` is the name the agent reads the feed
+by ("Work"): one line of at most 64 characters, no slash. `url` must be https on port 443 (a
+`webcal://` link is read as `https://`), with no credentials or fragment, on a host
+`FELIX_ICS_HOSTS` allows. Felix fetches it and keeps it only if it serves an iCalendar calendar, as a
+`secret` connection (provider `ics`, account the label lowercased, so "Work" and "work" are one
+feed), answering with the stored connection. Connecting a label again replaces its link; a person
+keeps at most five.
+
+**The link is the credential**: anyone holding it reads the calendar. It is never logged, returned,
+put in an error or shown to the model, and the body is never echoed.
+
+| Answer | When |
+|---|---|
+| 400 `invalid_body`, `label_invalid`, `url_invalid` | Not `{label, url}`, a label that is not one short line or holds a slash, a link that is not https on 443. |
+| 400 `host_not_allowed` | A host `FELIX_ICS_HOSTS` does not list (named in the message), or one the egress guard refuses. |
+| 400 `too_many_feeds` | The person already keeps five, and this label is not one of them. |
+| 400 `not_a_calendar`, `feed_too_large` | What the link serves is not iCalendar, or is over 3 MB. |
+| 403 `not_a_person` | The caller names no person. |
+| 404 | No vault key (`FELIX_CONNECTION_TOKEN_KEY`), or the `ics` extra is not installed. |
+| 429 `rate_limited` | Past ten tries by one person in an hour. |
+| 502 `feed_refused`, `feed_unavailable`, 503 `connect_failed` | The calendar service refused the link (a redirect included) or could not be reached, or the vault could not keep it. |
+
+`DELETE /connections/ics/{account}` forgets the link here. Only withdrawing it at the calendar
+service -- unpublishing, or resetting the secret address -- stops it working for anyone who copied it.
+
 ## Manifest gates
 
 Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
