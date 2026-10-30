@@ -1936,7 +1936,10 @@ and the approval preview show each task's zone; `next_run_at` and `last_run_at` 
 over HTTP does. `list_scheduled` and `cancel_scheduled` see only the tasks the caller scheduled from
 this manifest — never an operator's job or another person's task — and a name that is not the
 caller's gets the same `no_such_task` as one that does not exist. The jobs stay visible to an
-operator through `GET /jobs`.
+operator through `GET /jobs`. No argument sets the task's
+[reader's preferences](/guide/management-api/#a-jobs-readers-preferences): the person it was
+scheduled for writes those over `/jobs/{name}/preferences`, with no jobs scope, and every firing
+carries them whole.
 
 **Reporting back.** When a firing answers, the answer is added to the conversation the task was
 scheduled from, headed `[Scheduled task: <title>]` (the task's name when it has no title), so the
@@ -2208,7 +2211,10 @@ exactly as a [scheduled task](#specscheduling) does. In order:
 4. The prompt is `checklist` inside a fixed frame: use your tools to check this; if nothing needs the
    person, reply with exactly `HEARTBEAT_OK` and do not call `notify`; if something does, call
    `notify` once with a short title and message, then reply briefly. The job's payload is never read
-   for it, so re-saving the job over `PUT /jobs` puts no words in a firing.
+   for it, so re-saving the job over `PUT /jobs` puts no words in a firing. The person's own
+   [preferences for the output](/guide/management-api/#a-jobs-readers-preferences), when they wrote
+   any, follow the checklist whole, in a fence of their own; they steer what the notice says and
+   cannot widen what the firing may do.
 5. The inbound and compile-pin checks judge the manifest as stored; then the firing runs with
    `model` and the narrowed `max_turns` applied.
 6. It runs in a fresh thread (`{tenant}:job:<job name>:<hex>`), unattended: a tool behind an

@@ -281,6 +281,17 @@ it, as the principal `cron`, with `manifest_id` the job's manifest. An alert it 
 |---|---|---|---|
 | `job.health` | A [job health](/guide/deploy/#job-health-watch) incident opened or cleared | `open`, `cleared` | `job`, `kind` (`overdue` / `failing`), `since` (epoch ms), `error_class` — never the run's error text |
 
+### Job preferences
+
+[`PUT` and `DELETE /jobs/{name}/preferences`](/guide/management-api/#a-jobs-readers-preferences) write
+one row per write that landed, with `principal_subj` whoever it acts for (the person, when a machine
+writes for them) and `manifest_id` the job's manifest. A refused write — `403`, `409
+job_changed_hands`, `422` — writes none.
+
+| `event_type` | Emitted | `status` | Payload |
+|---|---|---|---|
+| `job.preferences` | A job's reader's preferences written or cleared | `saved`, `cleared` | `job`, `bytes` (the text's UTF-8 size; `0` when cleared) — never the text, which may be personal |
+
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.
 
