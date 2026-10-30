@@ -292,6 +292,19 @@ job_changed_hands`, `422` — writes none.
 |---|---|---|---|
 | `job.preferences` | A job's reader's preferences written or cleared | `saved`, `cleared` | `job`, `bytes` (the text's UTF-8 size; `0` when cleared) — never the text, which may be personal |
 
+### Job state
+
+[`DELETE /jobs/{name}/state` and `DELETE /jobs/{name}/state/{key}`](/guide/management-api/#a-jobs-own-state)
+write one row per delete that ran, with `principal_subj` whoever it acts for and `manifest_id` the
+job's manifest. Clearing a job with no state still writes one, `keys: 0`. A refused call — `403`,
+`404`, `422 invalid_key` — writes none, and neither does `GET /jobs/{name}/state`. A run's own
+`state_set` and `state_delete` write no `job.state` event, and a value never reaches the audit log
+or a log line.
+
+| `event_type` | Emitted | `status` | Payload |
+|---|---|---|---|
+| `job.state` | A person cleared a job's [state](/guide/manifest-reference/#specstate), or removed one key | `cleared`, `deleted` | `job`, `keys` (how many were removed) — never a key's value |
+
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.
 

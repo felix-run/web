@@ -418,6 +418,83 @@ and its runs, not alerted.
 made it, with the job and the byte count — never the text. `GET /jobs` shows `preferences_set`,
 never what they say.
 
+## A job's own state
+
+[`spec.state`](/guide/manifest-reference/#specstate) gives a scheduled job's runs a small store of
+their own (`jobs/state.py`, `jobs/state_tools.py`, migration `0053_job_state`) through `state_get`,
+`state_set`, `state_list` and `state_delete`. It replaces keeping a bookmark in the job thread's
+workspace by convention, or in per-person memory, which the agent can also write and a firing
+recalls by rank, so may miss.
+
+**Scoped by the job, reached only from its firing.** Rows are keyed by tenant, **job name** and key
+(`job_state`), not by manifest, so two jobs on one manifest keep separate bookmarks. A tool call
+learns its job from `extras[FIRING_JOB_EXTRA]` (`jobs/scheduler.py`), a `FiringJob` naming the
+tenant, the job, the manifest it fired, and the job's `created_by` and `state_cleared_at` as the
+firing read them. Only `scheduler._invoke_job_manifest` sets it, never a request, on every manifest
+job's firing — scheduled or `POST /jobs/{name}/run`, a heartbeat's included. `_JobState.firing`
+refuses with `not_a_job` unless that extra is present, the context is unattended, and its tenant and
+manifest are the tools' own. So a person's chat, a trigger's run, a workflow's step (even one a job
+started: its steps run in a context of their own and carry no job) and a durable or background
+child are refused, having no extra; a `task` child the firing runs in-process shares the firing's
+context, but its tools were bound for another manifest, so it cannot spend the job's state under
+caps of its own. `Spec._state_runs_in_its_firing` refuses `spec.state` beside
+`execution.mode: durable` at validation: a fiber resumes in a worker's context, which carries no job.
+`builder._bind_state` binds the four tools before the governance stack, so every wrapper applies,
+and refuses the compile when a tool of one of their names is already bound.
+
+**Caps.** `max_keys` (default 50, at most 200; a new key past it is refused, overwriting one is not)
+and `max_value_bytes` (default 4096 UTF-8 bytes, at most 16384); keys match
+`^[a-z0-9][a-z0-9._:-]{0,63}$`, checked with `\Z` so a trailing newline does not pass. One job holds
+at most `max_keys` × `max_value_bytes` (about 3.2 MB at the ceilings, 200 KiB at the defaults), and
+a tenant at most that times its jobs — which `jobs:write` and each manifest's
+`spec.scheduling.max_tasks` already bound.
+
+**Exact under concurrency.** `state_set` with `expected` is compare-and-set (`""` or `null`: the key
+must not exist yet), refused `conflict` otherwise. On Postgres every run's write and delete first
+locks the job's row (`_lock_job`, `FOR NO KEY UPDATE`) and checks it is still held as the firing read
+it, so writes to one job's state run one at a time: `max_keys` and compare-and-set cannot lose to an
+overlapping firing. The memory arm checks and writes with no await between.
+
+**Read back as data, marked untrusted.** A value may hold text a run copied from a source, so
+`state_get` returns it through `security/fencing.py:fence_as_data` — a region named anew per call,
+`<job_state-<12 hex>>`, whose close the value cannot forge in any spelling, followed by a line
+saying it is material, never instructions — and wraps the result in `untrusted_output`. The tool is
+`relays_untrusted`, so `apply_content_screening` screens that result as an untrusted tool's: with
+`spec.content_screening` on, the marker scan always and the scoring model and decider per
+`model_tools`; with it off, only the free marker floor a catalog holding an imported skill installs,
+and otherwise nothing. `state_list` returns keys, sizes and times, never values.
+
+**Who may read and clear it.** `GET /jobs/{name}/state` and `DELETE /jobs/{name}/state` /
+`DELETE /jobs/{name}/state/{key}` go through `routes/jobs.py:_writer_or_operator_job`, the rule the
+preferences routes use: the job's current writer as a named person, no jobs scope needed, or an
+operator. `jobs:write` holders included, everyone else gets the same `403 missing scopes: admin`
+whether the job exists or not, since values may be personal. Nobody but the job's runs writes a
+value.
+
+**It goes with the job and with its writer.** `jobs/store.py:delete_job` deletes the job's runs and
+row, then its state (`_drop_job_dependents`), in one transaction — after the row, whose lock orders
+it against a run's write: a write that took the lock first is deleted here, one after finds no job
+and is refused `job_changed`. `put_job` clears the state when `_new_writer` says the re-save is by
+another subject or a shared one, in `_reassign_writer`: the job row's `UPDATE` (new `created_by`, a
+new `state_cleared_at` from `_next_clear_stamp`, the clock but always past the previous stamp) is
+flushed first, taking the row lock, and only then are the rows deleted, so a write that held the
+lock first is removed and one after finds the new writer and stamp. Every run's write checks both,
+`RunHolder.holds`: the subject alone cannot tell two holders of one credential apart.
+
+**The shared credential.** Every holder of a sub-less API key is the one subject `api_key`, so
+`_new_writer` counts any re-save under one as a new writer: it clears the state and moves the stamp,
+and a firing already running for another holder passes the subject check but not the stamp. **So a
+job saved under a shared credential loses its state on every re-save** — a deploy that re-PUTs its
+jobs with a sub-less key resets their bookmarks each time. A named person re-saving their own job
+clears nothing and moves no stamp, so their firing in flight keeps writing.
+`DELETE /jobs/{name}/state` takes no row lock: a write from the writer's own firing already in
+flight can land just after it.
+
+**What is recorded.** Each person's delete is audited as `job.state` (`cleared` / `deleted`) with the
+job and the key count, never a value. A store failure inside a state tool is logged by the error's
+class, the job and the key alone, never with `exc_info`: a database driver's error renders the
+statement's parameters, the value among them.
+
 ## Shared destinations
 
 `post` ([`spec.destinations`](/guide/manifest-reference/#specdestinations),

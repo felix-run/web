@@ -2359,6 +2359,91 @@ tool named `post`.
 not read-only, so plan mode refuses it. Each delivery, and each edition found already there, is
 audited as [`post.sent`](/internals/observability/#posts) — never with its text.
 
+### `spec.state`
+
+```yaml
+spec:
+  pattern: react
+  state:
+    max_keys: 50           # keys one job may hold; 1–200
+    max_value_bytes: 4096  # the most one value may hold, in UTF-8 bytes; 64–16384
+```
+
+Gives a scheduled job's runs a small store of their own: what one firing leaves the next, such as a
+bookmark per source ("read up to item 4182") or a ledger of what was already posted, read back by
+key and whole. Per-person memory is recalled by rank, so a bookmark kept there can be missed. Binds
+four tools; unset binds nothing.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_keys` | int 1–200 | `50` | Keys one job may hold. A new key past it is refused (`too_many_keys`); overwriting an existing key never is. |
+| `max_value_bytes` | int 64–16384 | `4096` | The most one value may hold, in UTF-8 bytes. |
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `state_get` | `key` | `{"key", "found": false}` when the key holds nothing; else the value, fenced as data (below), with when it was written |
+| `state_set` | `key`, `value` (non-empty text), `expected` (optional) | `{"status": "saved", "key", "bytes", "created"}` — `created` is `true` for a new key |
+| `state_list` | none | `{"keys": [{key, bytes, updated_at}], "max_keys", "max_value_bytes"}` — never the values |
+| `state_delete` | `key` | `{"status": "deleted" \| "missing", "key"}` |
+
+A key is 1–64 characters of lowercase letters, digits and `._:-`, starting with a letter or digit
+(`^[a-z0-9][a-z0-9._:-]{0,63}$`), one per thing to remember: `bookmark:releases`,
+`done:2026-10-29`. `updated_at` is epoch ms.
+
+**The state is the job's, not the manifest's.** It is keyed by the tenant and the job's name, so two
+[jobs](/guide/management-api/#jobs) running one manifest against different sources keep separate
+bookmarks. A task an agent scheduled through [`spec.scheduling`](#specscheduling) is a job, and so is
+each person's [heartbeat](#specheartbeat), so each keeps its own. A job with
+`payload.fresh_thread: true` keeps one state across its fresh threads: the state is the job's, not
+the thread's.
+
+**Only that manifest's job firings reach it.** A call learns its job from the firing itself — set by
+the scheduler alone, on a scheduled firing or a [Run now](/guide/management-api/#run-a-job-now) of a
+job naming this manifest, a heartbeat's included. Every other run is refused with `not_a_job` and
+nothing is read or written: a person's chat, an [inbound trigger](/guide/deploy/#inbound-triggers)'s
+run, a [workflow](/guide/management-api/#workflows) step (even one a job started), a durable or
+background child, and a [`task`](#specdelegation) child the firing runs, which shares the firing but
+answers for its own manifest. `spec.state` beside [`execution.mode: durable`](#specexecution) does
+not validate: a durable run resumes in a worker's context, outside the firing, where the job cannot
+be reached.
+
+**Compare-and-set.** `state_set` without `expected` overwrites. With `expected` it writes only when
+the key holds exactly that value now; `""` or `null` means the key must not exist yet. Otherwise it
+is refused `conflict` and nothing is written, so the second of two overlapping firings learns the
+first moved the bookmark instead of overwriting it. On Postgres every write to one job's state takes
+the job's row lock first, so `max_keys` and compare-and-set are exact.
+
+**Read back as data.** A value may hold text a run copied from a source. `state_get` returns it in a
+region named anew per call (`<job_state-<12 hex>>`, whose close the value cannot forge), followed by
+a line saying it is material to work from, never instructions, and marks the result untrusted. With
+[`content_screening`](#speccontent_screening) on, it is screened as an untrusted tool's result is:
+the marker scan always, then the scoring model and decider when set and `model_tools`, if set,
+matches `state_get`. Values never reach
+the audit log or a log line.
+
+**It goes with the job and its writer.** Deleting the job deletes its state. A re-save of the job by
+someone other than its writer — or any re-save under a sub-less API key, whose every holder is the
+same subject — clears it, so what one person's runs stored never carries into another's. A firing
+still running when either happens writes nothing more (`job_changed`). A person reads and clears it
+over [`/jobs/{name}/state`](/guide/management-api/#a-jobs-own-state).
+
+Every refusal is a result the model reads, `{"error": <code>, "detail": …}`:
+
+| Code | When |
+|---|---|
+| `not_a_job` | The run is not a firing of a job naming this manifest (above). |
+| `invalid_key` | The key is outside the grammar. |
+| `invalid_value` | `state_set` with an empty `value`; `state_delete` removes a key. |
+| `too_large` | The value is over `max_value_bytes`. |
+| `too_many_keys` | A new key while the job holds `max_keys`. |
+| `conflict` | `expected` does not match what the key holds; the detail says whether it holds any value. Read it again with `state_get`. |
+| `job_changed` | The job was deleted, or re-saved by another writer, while this firing ran. |
+| `unavailable` | The store failed; nothing was changed. Logged by the error's class, job and key only. |
+
+The tools bind before the governance stack, so policies, limits and screening apply to them.
+`state_get` and `state_list` are read-only; `state_set` and `state_delete` are not. A manifest that
+already has a tool of one of the four names does not compile.
+
 ### `spec.workflow_authoring`
 
 Lets the agent build [workflows](/guide/management-api/#workflows) for the person it is talking to,
@@ -2540,6 +2625,10 @@ Temporal backend was removed, and `FELIX_DURABILITY=temporal` now fails startup.
 allowed tenants, and the Worker POSTs the finished run to it. See
 [Completion webhooks](/guide/rest-api/#completion-webhooks) for the payload and signature, and
 [Deploy](/guide/deploy/#completion-webhooks) for registering endpoints.
+
+`mode: durable` beside [`spec.state`](#specstate) does not validate ("spec.state cannot be combined
+with execution.mode: durable"): a fiber resumes outside the job's firing, where its state cannot be
+reached.
 
 ## Governance
 
