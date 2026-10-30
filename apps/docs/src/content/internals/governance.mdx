@@ -169,6 +169,19 @@ rule is left out only when a manifest rule names `schedule_task` literally with 
 beside a glob such as `*` it is still added, and as the literal it is the rule selected. `schedule_task`'s preview runs the tool's own checks, so a call it would
 refuse is denied before any row is written.
 
+A task's cron is read in a zone recorded on the job. `schedule_task` takes a `timezone`; with none,
+`_AgentTasks.check_when` writes a cron or macro task in `FELIX_TIMEZONE` — the zone the model was
+told the time in — and stores that name, so changing the setting later does not move tasks already
+written. An interval or `at:` task records no zone, and one given beside either is refused
+(`invalid_schedule`). The task floor (`min_interval_minutes`, `schedule.py:shortest_gap_ms`) also
+walks every firing around each offset change in the next 400 days, where a zoned cron's gaps can be
+shorter than on any other day (`30 2,3 * * *` in New York is 30 minutes apart on the spring one).
+That floor, and `spec.heartbeat`'s, is checked when the schedule is written, against the tzdata rules
+current then; a later rule change is not re-checked, whereas a heartbeat's `max_firings_per_day` is
+enforced at each firing. A zone must be a canonical IANA name (`schedule.py:known_zone`: in
+`available_timezones()`, never `Factory`, `posixrules` or `localtime`), so a name a case-insensitive
+filesystem would load (`america/new_york`) is not stored to fail on a Linux Worker.
+
 `notify.notify` (`one_shot`, `bind_principal`) is added only with `approval: true`: a notice goes
 only to the person the run acts for, and the runs that send one have nobody watching. Once asked
 for, it is never waived. Its preview runs the tool's checks and its cleaning, so the approver reads
@@ -249,7 +262,7 @@ writes. The split of who decides what is the control:
 
 | Who | Decides |
 |---|---|
-| The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`, `max_firings_per_day`. The manifest must bind `notify` or it does not validate. |
+| The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` and the `timezone` a cron one is read in (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`, `max_firings_per_day`. The manifest must bind `notify` or it does not validate. |
 | The person (`heartbeats:write`) | Only on or off, for themselves: `PUT /heartbeats/{manifest}` with `{enabled}`, `DELETE`, and run now. `GET /heartbeats` (`heartbeats:read`) lists their own and no one else's. |
 
 **It runs as the person.** `enrol` (`jobs/heartbeat.py`) writes an ordinary job,
@@ -281,9 +294,9 @@ frame; the payload is never read for it. A holder of `jobs:write` re-saving the 
 a firing, and `PUT /jobs` strips a `scheduled_by` from anyone but the job's writer. A record counts
 only while it names the manifest the job runs (`jobs/store.py:scheduled_by`, the one reader), so a
 task or heartbeat its own writer moves to another `manifest_id` is an ordinary job: no prompt
-override, no notice link. `keep_schedule_current` moves a stored schedule that differs from the
+override, no notice link. `keep_schedule_current` moves a stored schedule or zone that differs from the
 manifest's to the manifest's next slot through `jobs_store.set_schedule` — one conditional
-`UPDATE … WHERE schedule = <what the firing read>`, never an upsert, touching neither `enabled` nor
+`UPDATE … WHERE schedule = <what the firing read> AND timezone IS NOT DISTINCT FROM <the zone it read>`, never an upsert, touching neither `enabled` nor
 the writer — so it never re-creates a heartbeat deleted meanwhile, re-enables one turned off, or
 overwrites a concurrent re-save. A manifest that no longer resolves (`manifest_missing`) or no
 longer defines a heartbeat (`begin_firing`) disables the job, before the run is recorded so an
@@ -302,14 +315,15 @@ caps it beyond what the schedule fires and `over_daily_cap` returns at once. Aft
 firing's refusal is `{"status": "skipped", "reason": "daily_cap", "max_firings_per_day": N}`:
 nothing is invoked (no inbound check, no compile, no model call, no notice), `fire_job` records the
 run and the job's `last_status` as `skipped`, and the job stays enabled. The day is UTC whatever
-`FELIX_TIMEZONE` says, so it is the same on every install. Skipped runs do not count, so raising the
+`FELIX_TIMEZONE` or `spec.heartbeat.timezone` says, so it is the same on every install. Skipped runs do not count, so raising the
 cap mid-day gives that day the difference. A cancelled firing counts too: `fire_job` records a
 run that ends abnormally through `_end_abnormally` — an `error` run, `cancelled` or `execution
 failed` — *before* clearing the `running` mark, so a manual run cannot claim the job in between and
 find one run fewer than happened. A schedule that could fire more often than the cap is allowed
 and the cap binds; `cap_warnings` (via `manifests/governance.py:manifest_warnings`, with
 `schedule.py:most_firings_per_utc_day` — `ceil(day / interval)`, or a cron's busiest of the next
-seven UTC days) returns it as a warning from `PUT /manifests` (`warnings`) and `felix
+seven UTC days and, for a zoned cron, of the UTC days around each offset change in the next 400,
+where a daily local time can land twice in one UTC day) returns it as a warning from `PUT /manifests` (`warnings`) and `felix
 validate-manifest`.
 
 **It is unattended**, like every job firing: a tool behind an approval rule without
