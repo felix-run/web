@@ -362,6 +362,8 @@ def verify(secret: str, headers: dict[str, str], body: bytes) -> bool:
   same secret, when `FELIX_SKILL_UPDATE_WEBHOOKS` binds it to a tenant — see
   [Skill import → Update notifications](/guide/skill-import/#update-notifications). Those carry a
   `webhook-id` of `skill_update_<hex>` and no `run`.
+  A [`webhook` destination](/guide/deploy/#what-a-webhook-receiver-gets) sends `post.created`, with
+  a `webhook-id` of `post_<hex>` that is stable per edition, and no `run`.
 
 ## `POST /chat/stream`
 

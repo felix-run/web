@@ -414,6 +414,113 @@ alone. A receiver shared by both dispatches on the body's `type`. See
 [Skill import → Update notifications](/guide/skill-import/#update-notifications).
 
 
+## Shared destinations
+
+An agent with [`spec.destinations`](/guide/manifest-reference/#specdestinations) may publish to a
+shared place — a team channel, a status feed — with its `post` tool, from a job's firing, a heartbeat
+or a trigger's run. The manifest names ids only; the operator registers what each id is and which
+tenants may name it. The registration is the advance approval, which is why a post needs no approval
+by default.
+
+```bash
+FELIX_WEBHOOK_ENDPOINTS='{
+  "ops": {"url": "https://hooks.example.com/felix", "secret": "secret:OPS_WEBHOOK", "tenants": ["acme"]}
+}'
+FELIX_DESTINATIONS='{
+  "team-brief": {"kind": "webhook", "endpoint": "ops", "tenants": ["acme"], "link_hosts": ["status.acme.com"]}
+}'
+```
+
+| Key | Required | Notes |
+|---|---|---|
+| id | — | Lowercase: `^[a-z0-9][a-z0-9_-]{0,63}$`. What `spec.destinations.ids` names. |
+| `kind` | yes | The adapter that delivers a post. Core ships `webhook`; a plugin may [register more](/internals/plugins/#destination-kinds). |
+| `tenants` | yes | Tenant ids that may name the destination, or `"*"` for all, written out. |
+| `links` | no | `strip` (default) removes every link from a post, as `notify` does; `keep` leaves them all. |
+| `link_hosts` | no | With `links: strip` only: a non-empty list of hosts whose links are kept — a host, or `*.` and a host (`allow_hosts` patterns). With `keep` it fails the boot. |
+| anything else | per kind | The kind's own fields. `webhook` takes `endpoint`. A key spelled like one of the four above (`Links`, `link-hosts`) fails the boot rather than reaching the kind unread. |
+
+**`kind: webhook`** sends a post as a signed `POST` to a
+[`FELIX_WEBHOOK_ENDPOINTS`](#completion-webhooks) endpoint, which must be open to the tenant as well:
+the destination says the tenant may post there, the endpoint that its secret may sign for it. The
+endpoint's `url`, `secret` and `private` flag apply as for a completion webhook, egress guard and
+refused redirects included.
+
+The boot checks the registry's shape — ids, `kind`, `tenants`, the link policy — and a malformed one
+fails it (`FELIX_DESTINATIONS: …`). The kind and its own fields are checked when a manifest naming
+the id compiles, since a plugin's kind may register after the settings are read: an unregistered id,
+one not open to the tenant, an uninstalled kind or fields the kind refuses (a `webhook` with no
+`endpoint`, or one not open to the tenant) all fail the compile, `422` on `/chat`, with the same
+`unknown destination: <id>` for an unregistered id and another tenant's.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_DESTINATIONS` | empty | The registry above, as JSON. Set it on the API and the Worker alike: a job's firing compiles and posts in the Worker. |
+
+<Aside type="caution">
+  **Choose `links: keep` knowingly.** A chat service that unfurls links fetches each one
+  server-side the moment it is posted. A link a model wrote — under a prompt injection, with data
+  in its path or query — then carries that data to any host, even if no person ever clicks it.
+  `link_hosts` bounds that to hosts you trust; `strip` closes it.
+</Aside>
+
+### What a webhook receiver gets
+
+A `webhook` destination's post is sent by the `post` call itself, once, bounded by
+`FELIX_WEBHOOK_TIMEOUT_SECONDS` — not queued to the Worker's `webhook_delivery` cron, and never
+retried:
+
+```http
+POST /felix HTTP/1.1
+content-type: application/json
+user-agent: Felix-Webhooks/1
+webhook-id: post_3f0c…
+webhook-timestamp: 1790000000
+webhook-signature: v1,…
+
+{"destination":"team-brief","edition":"brief:2026-10-29","manifest_id":"briefer","tenant_id":"acme",
+"text":"…","title":"Morning brief","type":"post.created","unattended":true}
+```
+
+The signature is Standard Webhooks, verified exactly as a
+[completion webhook](/guide/rest-api/#completion-webhooks) is. The body is compact, key-sorted JSON:
+`type` is `post.created`; `text` and `title` are the post as it left (secrets redacted, links as
+the registration says, screened); `unattended` says whether anyone was watching the run that posted
+— never who.
+
+- **Dedupe on `webhook-id`.** It is `post_` and 40 hex characters of a hash of the tenant,
+  destination, manifest and edition, so it is the same on every attempt at one edition: after a
+  `not_posted`, or after an operator clears a stuck edition. `webhook-timestamp` and the signature
+  change per attempt.
+- **Answer 2xx for an id you already took**, too. Any 2xx records the edition `posted`, with the
+  `webhook-id` as its `ref`. A `409` or a `408`, like a `5xx`, a `3xx` or no answer in time, is
+  recorded `maybe_posted`, and the edition is not posted again until an operator clears it.
+- **Any other `4xx`** says the post did not land: the edition is released, and the agent may try it
+  again.
+- **Check `tenant_id`** on an endpoint registered for `"*"`, and **dispatch on `type`** on an
+  endpoint that also receives run or skill-update events.
+
+### A stuck edition
+
+Felix posts each manifest's edition to a destination at most once, and a delivery whose outcome it
+does not know is recorded `maybe_posted` and never retried — see
+[`destination_posts`](/internals/persistence/#relational-highlights). A `posting` row older than two
+minutes, left by a process that stopped mid-delivery, reads the same way. Until a route for it
+lands, an operator who has checked the destination clears the row by hand, as the table's owner and
+through the RLS bypass the policy honours; the next call naming the edition then posts it:
+
+```sql
+BEGIN;
+SET LOCAL app.rls_bypass = 'on';
+DELETE FROM destination_posts
+ WHERE tenant_id = 'acme' AND destination = 'team-brief'
+   AND manifest_id = 'briefer' AND edition = 'brief:2026-10-29'
+   AND status IN ('posting', 'maybe_posted');
+COMMIT;
+```
+
+If the post did land, leave the row — or set `status = 'posted'` — so it is not posted twice.
+
 ## Inbound triggers
 
 An event from elsewhere (a pushed commit, a failed payment, an alert) can start a durable run.

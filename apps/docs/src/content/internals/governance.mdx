@@ -160,8 +160,10 @@ A permission mode may waive an approval (`waives_approval`), except a rule in
 `scheduling.schedule_task` and `notify.notify`, the rules
 [`spec.scheduling`](/guide/manifest-reference/#specscheduling) and
 [`spec.notify`](/guide/manifest-reference/#specnotify) add — or any approval on a tool in
-`permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`, `notify`), whichever rule selected it, a
-manifest's own rule or glob included. A scheduled task's prompt runs later on its writer's authority
+`permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`, `notify`, `save_workflow`), whichever rule selected it, a
+manifest's own rule or glob included. `post` is unwaivable the same way, but only in a manifest
+whose `spec.destinations` bound it (`bound_unwaivable_tools`; see
+[Shared destinations](#shared-destinations)). A scheduled task's prompt runs later on its writer's authority
 with no one watching, which a thread in `bypass` does not answer for. The built-in
 rule is left out only when a manifest rule names `schedule_task` literally with no `when_args`;
 beside a glob such as `*` it is still added, and as the literal it is the rule selected. `schedule_task`'s preview runs the tool's own checks, so a call it would
@@ -342,6 +344,67 @@ run_id)`, at most 1,000 rows a call, oldest first — except runs at or after th
 start that are not `skipped`. Those are what the cap counts, so trimming them would let a heartbeat
 fire again; a small `FELIX_JOB_RUNS_KEEP` cannot do that. A failed trim is logged and the run stays
 recorded.
+
+## Shared destinations
+
+`post` ([`spec.destinations`](/guide/manifest-reference/#specdestinations),
+`destinations/tool.py`) carries text a model wrote, often unattended, to a shared place under the
+deployment's name. `notify` reaches one person; a post reaches everyone reading a channel. So the
+places are the operator's and the manifest only picks among them.
+
+**Ids, never URLs.** `FELIX_DESTINATIONS` (`destinations/__init__.py:parse_destinations`) maps an id
+to `{kind, tenants, links?, link_hosts?, …}`, with `tenants` required (`"*"` written out). A manifest
+names ids in `spec.destinations.ids`; `resolve_destinations` refuses at compile an id that is
+unregistered or another tenant's with the one message `unknown destination: <id>`, so the compile is
+not a registry oracle, and asks the kind's adapter to `validate` the registration. A `webhook`
+destination's endpoint must open to the tenant too, and its error does not repeat the endpoint id.
+
+**Who may post** (`_Posts.admit`): a run whose `RequestContext.unattended` holds — a job's firing,
+a heartbeat, a trigger's run, and what they start, since both marks ride the recorded caller into
+every run the work starts. A call from a conversation is refused (`attended`) unless
+`attended: approval`, whose rule (`attended_approval_rule`) is conditional on the call
+(`Tool.approval_condition` → `_attended`), so it gates only attended calls; a manifest rule matching
+`post` beside it fails the compile, because a rule is selected per tool and one would replace the
+other. A call with no request context is refused (`no_context`), closed rather than open. A manifest
+that admits an anonymous caller (`inbound_auth.admits_anonymous`, the check a request makes) does not
+compile (`builder._bind_destinations`): anyone could make the deployment speak in a shared place as
+no one.
+
+**Unwaivable, scoped to the block.** `POST_APPROVAL` is a `BuiltinApproval` row whose rule
+`destinations.post` (`approval: true`) and extra rule `destinations.post.attended` are both in
+`UNWAIVABLE_RULE_IDS`. Unlike `schedule_task` and `notify`, `post` is a name a third-party tool may
+carry, so the row sets `unwaivable_tool=False` and `post` is not in `UNWAIVABLE_TOOLS`; instead
+`bound_unwaivable_tools(spec)` makes every approval on `post` unwaivable in a manifest whose
+`spec.destinations` bound it — the manifest's own rules included — since a clash with another tool of
+that name fails the compile. `apply_approvals` and `waives_approval` take that set as a required
+argument, never defaulted. A tool named `post` in a manifest without the block keeps its manifest's
+ordinary rules.
+
+**What leaves** (`governance/outbound_text.py:prepare_outbound`, the step `notify` takes too), in
+order: `collected_secret_values` are redacted from the title and text (the masking wrapper covers a
+tool's output; a post is its arguments); links are handled by the destination's policy
+(`Destination.apply_links`): `strip`, the default, is `strip_links` as `notify` uses it, `link_hosts`
+keeps the link runs whose host (`link_host`) an `allow_hosts`-style `HostAllowlist` accepts — an
+obfuscated run such as `evil[.]com` has no host and is removed — and `keep` leaves them all; then the result is screened (`screen_outbound`) — the marker scan always, the
+manifest's `content_screening` model and decider when enabled and covering `post`. A flag, or a
+screener that cannot run, refuses the call as `screened`; the refusal does not echo the text. A
+manifest cannot loosen the link policy. `keep` is a decision about the destination's previews as much
+as its readers: a channel that unfurls links fetches each one server-side the moment it is posted, so
+a model-written link carrying data in its path or query reaches its host even if no person clicks.
+
+**At most once per edition.** The ledger is read before cleaning (so an edition already posted costs
+no screening, and its approval preview opens no row), then claimed with an insert-if-absent before
+anything is sent; only the claim decides. An outcome Felix cannot know — a timeout, a `5xx`, a `408`
+or `409`, a lost connection, an adapter that raised or ran past `DELIVERY_BUDGET_S` — is recorded
+`maybe_posted` and refused on every later call: a person checks the destination. See
+[persistence](/internals/persistence/#relational-highlights) for the ledger.
+
+**Bounds and record.** `max_per_run` counts on `RequestContext.extras`
+(`POSTED_THIS_RUN_EXTRA`), reserved before anything awaits; it is given back only for an
+`already_posted`. Every refusal is a result the model reads, written by the tool and never an
+exception's text; a kind's `Delivery.detail` is cut to `MAX_DETAIL_CHARS` (300). Each delivery and
+each edition found already there is audited as `post.sent` with the destination, edition, status and
+ref — never the text, since `audit:read` holders read the log.
 
 ## Skills
 

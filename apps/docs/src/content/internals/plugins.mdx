@@ -55,6 +55,7 @@ Core reads these members off your plugin object with `getattr`, so implement onl
 | Audit / usage sinks | `registry.register_audit_sink(f)` / `register_usage_sink(f)` |
 | Startup hooks | `registry.register_startup_hook(hook)` |
 | Run finished | `registry.register_run_finished(hook, origin="<plugin>")`: `hook(settings, RunFinished)` in the Worker when a durable run that plugin started ends (completed, failed, expired or dead), after its status is saved. Only runs whose `start_durable_chat(origin=...)` named `{"plugin": "<plugin>"}` reach it, so no hook sees another plugin's runs. At most once today, so make it idempotent on `run_id`; bounded to 10 s. `RunFinished` is keyword-only: tenant, thread, run id, status, answer, error, origin. The `felix-channels` plugin posts Slack replies this way. |
+| Destination kinds | `registry.register_destination_kind(kind, adapter)`: a `kind` for `FELIX_DESTINATIONS`, forwarded to `felix.destinations.register_destination_kind` (see [below](#destination-kinds)). |
 | Agent-loop hooks | `register_before_turn`, `register_filter_history`, `register_before_compact`, `register_before_model`, `register_after_model`, `register_before_tool`, `register_after_tool`, `register_compact_failed` (see [below](#agent-loop-hooks)) |
 
 ### Agent-loop hooks
@@ -190,6 +191,7 @@ ordinary configuration, so a registered backend needs no further wiring.
 | `felix.search.register_search_backend` | `FELIX_SEARCH_BACKEND` |
 | `felix.session.strategies.register_session_strategy` | `spec.session.strategy` |
 | `felix.session.store.register_checkpointer` | `spec.memory.checkpointer` |
+| `felix.destinations.register_destination_kind` | `kind` in a `FELIX_DESTINATIONS` entry ([below](#destination-kinds)) |
 
 ```python
 from felix.storage import register_object_store
@@ -200,6 +202,62 @@ def register(registry) -> None:
 
 Then `FELIX_OBJECT_STORE=azure-blob`. An unknown backend fails at startup with the list of
 registered names, so a typo is caught immediately rather than at first write.
+
+### Destination kinds
+
+A destination kind delivers [`post`](/guide/manifest-reference/#specdestinations) to something
+other than a signed webhook — a chat service's API, a feed. The operator selects it with `kind` in
+[`FELIX_DESTINATIONS`](/guide/deploy/#shared-destinations); unlike the backends above, an
+unregistered kind fails the compile of a manifest naming it, not the boot, since a plugin's kind may
+register after the settings are read. A later registration of the same kind replaces the earlier.
+
+```python
+from felix.destinations import (
+    Delivery, Destination, DestinationError, Post, delivery_for_send_error, delivery_for_status,
+)
+
+class ChatChannel:
+    def validate(self, settings, tenant_id: str, dest: Destination) -> None:
+        if not isinstance(dest.fields.get("channel"), str):
+            raise DestinationError(f"destination {dest.name} (chat) needs a `channel`")
+
+    async def deliver(self, settings, tenant_id: str, dest: Destination, post: Post) -> Delivery:
+        try:  # `client`: your httpx.AsyncClient, bounded well inside 90 s
+            resp = await client.post(..., headers={"Idempotency-Key": post.key}, timeout=20)
+        except Exception as exc:
+            return delivery_for_send_error(exc)
+        return delivery_for_status(resp.status_code, ref=resp.headers.get("x-message-id"))
+
+def register(registry) -> None:
+    registry.register_destination_kind("chat", ChatChannel())
+```
+
+- **`Destination`** is the registration typed: `name`, `kind`, `tenants`, `links`, `link_hosts`, and
+  `fields` — everything else in the entry, which is the kind's own. The harness's keys are
+  `HARNESS_FIELDS`; a key spelled like one of them (`Links`, `link-hosts`) fails the boot instead of
+  reaching `fields`.
+- **`validate`** runs when a manifest naming the destination compiles, so a bad registration fails
+  the compile, not the first post. Raise `DestinationError`.
+- **`Post`** arrives already redacted, link-handled and screened: `edition`, `text`, `title`,
+  `manifest_id`, `unattended` (whether anyone was watching — never who), and `key`, stable for one
+  tenant, destination, manifest and edition. Send `key` wherever the provider dedupes on a
+  caller-chosen id.
+- **`deliver` answers honestly.** `Delivery(status, ref, detail)`: `posted` only on the provider's own
+  confirmation (`ref` its id for the post), `not_posted` only when nothing was delivered, `unknown` for
+  everything between. The ledger releases a `not_posted` edition for another try and records an
+  `unknown` as `maybe_posted`, never retried, so a kind that guesses `not_posted` can post twice.
+  An HTTP kind should not derive this itself: `delivery_for_status` maps any `2xx` to `posted`, a
+  `4xx` other than `408` and `409` to `not_posted`, and everything else — a `3xx`, `408`, `409`,
+  `5xx` — to `unknown`; `delivery_for_send_error` maps the egress guard's refusal, a connect error and
+  a connect timeout to `not_posted` and any other exception to `unknown`. Core's `webhook` kind uses
+  both. Do not raise for a failed delivery: an exception, or a result with no valid `status`, is
+  taken for `unknown`.
+- **90 seconds in all.** `deliver` runs under `DELIVERY_BUDGET_S` (90 s) and is cancelled past it,
+  and the post is recorded `maybe_posted`. Bound your own calls well inside that.
+- **`detail` and `DestinationError` messages reach callers as written** — the model reads `detail`
+  (cut to `MAX_DETAIL_CHARS`, 300) in the tool result, and the manifest's author reads a
+  `DestinationError` from the compile (`422` on `/chat`). Write them for those readers: never an
+  exception's text, a URL, a token, or anything of the operator's.
 
 ## Configuring your plugin from a manifest
 
