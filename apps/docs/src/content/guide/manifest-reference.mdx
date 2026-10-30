@@ -583,7 +583,7 @@ spec:
 | `args` | string[] | `[]` | |
 | `cwd` | string | `""` | |
 | `env` | map[string,string] | `{}` | |
-| `auth` | string | `""` | Literal token or `secret:NAME`. |
+| `auth` | string | `""` | Literal token, `secret:NAME`, or `person:<provider>` to send the token of the person the agent runs for ([MCP servers as the person](/guide/mcp/#mcp-servers-as-the-person)). |
 | `transport` | `http` \| `sse` \| `stdio` | `sse` | `http` and `sse` are both Streamable HTTP. |
 | `timeout_ms` | int | 30 000 | Per request, at most the integration ceiling. A whole session (handshake, listing, call) is bounded at three times this. |
 | `use_instructions` | bool | `false` | Use the server's `instructions` as one line of tool guidance in the system prompt: collapsed, capped at 1000 characters, dropped if the injection markers flag it. |
@@ -2920,6 +2920,10 @@ write a literal, `secret:NAME`, or `{"secret": "NAME"}`. Names resolve at compil
 `FELIX_SECRETS_BACKEND` (`env` | `file` | `aws` | `gcp`) and are masked out of tool output. An
 unresolvable name fails the request with **`503`**. With `forbid_plaintext_secrets` on, a literal is
 a compile error.
+
+`mcp_servers[].auth` also takes `person:<provider>`, which is not a secret reference: it sends the
+token of the person the agent runs for, to a server the operator allows. See
+[MCP servers as the person](/guide/mcp/#mcp-servers-as-the-person).
 
 ## Examples
 

@@ -147,7 +147,7 @@ Each discovery and each tool call is a short session of the SDK's client. The SD
 `server/discover` and falls back to the `initialize` handshake for a server on an earlier revision.
 Discovery remembers which era a server speaks, so a legacy server's calls go straight to
 `initialize`. A server's tool list (with its `instructions`) is cached for 60 seconds, per server
-and credential. A failed discovery binds nothing and is not cached.
+and credential (per person, for a [server called as the person](#mcp-servers-as-the-person)). A failed discovery binds nothing and is not cached.
 
 **A server that cannot be reached is named, not dropped.** When discovery fails (a server that is
 down, refused, or a stdio command that cannot start), the run's system prompt says which servers
@@ -239,6 +239,59 @@ this is the server writing to your agent's system prompt.
 Remote MCP tools are untrusted. Content screening covers their output, approval and policy rules
 gate them by `{server}__{tool}` name or glob, and `tools:` on the server entry decides which of its
 tools exist for the agent at all.
+
+### MCP servers as the person
+
+`auth: person:<provider>` calls a remote server with the token of the person the agent runs for,
+never an operator's credential and never another person's:
+
+```yaml
+spec:
+  mcp_servers:
+    - name: github
+      transport: http
+      url: https://api.githubcopilot.com/mcp/
+      auth: person:github
+```
+
+- **`person:github`** uses the GitHub connection of a person who signed in to Felix with GitHub.
+  Someone who signed in another way, or with an API key, has none.
+- **`person:google`**, or any other provider the [connection vault](/internals/auth/#stored-connections) registers,
+  uses the person's own connection there. A Google token carries every scope the person granted
+  when they connected, not only what this server needs.
+- **stdio servers are refused**: the token would sit in a child process's environment.
+
+**The operator decides where tokens go.** A manifest is written by whoever holds `manifests:write`,
+not by the people whose tokens it sends, and the token leaves at discovery, before the model runs or
+any approval is asked. So `FELIX_MCP_PERSON_AUTH` lists, per provider, the servers that may receive
+its tokens and the tenants whose manifests may name each:
+
+```bash
+FELIX_MCP_PERSON_AUTH={"github": [{"url": "https://api.githubcopilot.com/mcp/", "tenants": ["acme"]}]}
+```
+
+- A server matches when its scheme, host and port are the entry's exactly and its path lies under
+  the entry's path. A URL with credentials, a query or fragment, or a dot segment or escaped dot or
+  slash in its path never matches.
+- Only `https`, except under `FELIX_ENVIRONMENT=development` with `FELIX_ALLOW_INSECURE`.
+- Empty, the default, allows none. `PUT /manifests` answers `422` for any other server, as does a
+  canary or rollback to a stored version naming one. A compile leaves out a server that is no
+  longer allowed, for a manifest stored before its entry was removed.
+
+**At compile:**
+
+- A run for no one person (anonymous, a shared key, a trigger), or for a person without the
+  connection, or with several accounts of the provider, binds none of that server's tools and sends
+  it nothing. The rest of the agent still serves them.
+- The model is told which such servers are missing and why: no person, not connected (they can
+  connect it in Felix), or not allowed on this deployment. It says so rather than answering as if
+  there were nothing there.
+- The tools are discovered with the person's own token, and cached per tenant and person, so each
+  person sees what the server shows them.
+- The token is masked out of every tool output in that run. `manifests:read` shows
+  `person:<provider>` as written.
+- A token is opened once per compile. A run that outlives it (an hour for Google, eight for GitHub)
+  finds the server refusing it.
 
 ## Skills over MCP
 
