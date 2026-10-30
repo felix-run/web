@@ -1305,6 +1305,11 @@ With the secret unset the route is available **only** when `FELIX_AUTH_MODE=none
 otherwise it returns `503 consumer_shared_secret_required`. Content is screened, so a hostile payload
 gets `422 content_screening_denied`.
 
+A tool result written here is stored under `queue:<name>`, whatever `name` it carries: the harness
+reads a result back by its name as what it ran (a skill's activation, the thread's `todo_write`
+checklist), so one from outside never passes for a harness tool's. The model still sees it as the
+answer to its `tool_call_id`; the OpenAI wire leaves out a message `name` the API would refuse.
+
 `session_id` is the **full, tenant-prefixed** thread id as it appears in the queue envelope
 (`{tenant}:{suffix}`, or `{tenant}:fiber:{id}` for a durable run) — not a bare suffix. It must belong
 to the tenant the consumer's own credential names, or the write is refused with
