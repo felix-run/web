@@ -365,6 +365,9 @@ spec:
 | Tool | Args | Notes |
 |---|---|---|
 | `calculator` | `{expression}` | Safe expression evaluator. |
+| `time_now` | `{zones}` | The current time in up to 10 IANA zones, each with its UTC offset and abbreviation; `FELIX_TIMEZONE` when `zones` is empty. |
+| `time_convert` | `{time, from_zone, to_zones}` | An ISO 8601 date-time shown in other zones. Without an offset it is a wall time in `from_zone` (default `FELIX_TIMEZONE`). A wall time a clock change skips is read as the moment after the gap, one it repeats as the first reading, and the answer says which. |
+| `date_math` | `{start, op, add, end, zone}` | `op: add` moves a date or date-time by `{years, months, weeks, days, hours, minutes}`: months clamp to the month's end, calendar units keep the wall clock across a DST change, hours are elapsed time. `op: between` gives the days, the calendar difference counted from `start` (the inverse of `add`) and the Monday-to-Friday count, or the elapsed time between two date-times. A date-time without an offset is read in `zone` (default `FELIX_TIMEZONE`). |
 | `list_dir` | `{path}` | Max 500 entries. |
 | `read_file` | `{path, offset, limit}` | Max 512 KB; flags binary files. |
 | `write_file` | `{path, content, append}` | Max 512 KB. Like `edit_file` and `multi_edit`, refuses any path inside `.git` and any `.gitattributes`: they decide what git runs. |
