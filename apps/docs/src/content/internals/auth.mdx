@@ -426,6 +426,9 @@ and keeps its own table ([Revoking](#revoking)).
 - **Two kinds.** `oauth` keeps a refresh token and mints access tokens from it through the
   provider registered for it (`register_connection_provider`); `secret` keeps something the person
   handed over, such as an app password.
+- **Read by MCP too.** A manifest's `mcp_servers[].auth: person:<provider>` sends the person's
+  access token to a remote MCP server the operator lists in `FELIX_MCP_PERSON_AUTH`
+  ([MCP servers as the person](/guide/mcp/#mcp-servers-as-the-person)).
 - **One writer at a time.** A refresh, a re-consent and a removal take the row's lock (a Postgres
   advisory lock), so a rotating refresh token is spent once and a removal never orphans a grant. A
   refresh the provider refuses marks the row `revoked`; an outage revokes nothing, and its error is
