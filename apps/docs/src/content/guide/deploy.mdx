@@ -39,6 +39,7 @@ the Makefile passes `--project-directory .`.
 | `make up-pooled` | PgBouncer in transaction mode |
 | `make up-replicas` | Two API replicas behind one nginx origin |
 | `make up-observability` | OTel Collector, Prometheus, Grafana, Jaeger, Loki, Postgres/Valkey exporters |
+| `make up-gcp-otel` | On a GCE host: the gcp + lite stack plus one OTel Collector exporting to Google Cloud (see below) |
 | `make up-self` | The self-build stack: a `shell` runner container that holds no secrets and runs every shell tool, and no host ports for DB, cache or object store. Writes `FELIX_SHELL_RUNNER_TOKEN` into `.env` first |
 
 ### Observability stack
@@ -54,9 +55,9 @@ working.
 
 `/metrics` is authenticated (its labels carry tenant-supplied manifest ids and remote MCP tool
 names), and Prometheus has no env expansion in scrape configs — so `scripts/metrics-token.sh`, which
-`make up-observability` runs for you, mints a **second** API key with an empty `scopes` array beside
-your operator key and writes the bare token to a gitignored file. `/metrics` has no scope gate, so
-that key reads metrics and is refused everywhere else.
+`make up-observability` runs for you, mints a **second** API key holding only `metrics:read` (the
+scope `/metrics` requires), in a `metrics` tenant of its own, beside your operator key, and writes the
+bare token to a gitignored file. That key reads metrics and is refused everywhere else.
 
 See [observability](/internals/observability/) for the metric catalog and span schema.
 
@@ -97,6 +98,38 @@ observability overlay too, leave `FELIX_OTEL_ENDPOINT` pointing at the collector
 `otlphttp` exporter there — fanning out is the collector's job. The second backend's credential goes
 in the collector's config, not in `.env`: the overlay blanks `FELIX_OTEL_HEADERS` so a header meant
 for a hosted ingest is not sent to a local collector that never asked for one.
+
+### Telemetry to Google Cloud (GCE + Compose)
+
+The observability stack above is for a workstation: its traces live in memory, its Grafana is an
+anonymous admin, and it would share a small VM's memory with the API it watches. On a GCE host, run
+one collector instead and keep storage and dashboards in Google Cloud, where they survive the VM
+having a bad day.
+
+`deploy/docker/compose.otel-gcp.yml` adds an OpenTelemetry Collector (192 MiB) to the gcp + lite
+stack. Felix sends it traces and trace-correlated logs over OTLP; it scrapes the API's `/metrics`
+and the worker's metrics port once a minute; and it exports traces to Cloud Trace, logs to Cloud
+Logging and metrics to Managed Service for Prometheus, authenticated by the VM's service account. It
+publishes no port, and the API and worker report as separate services (`felix-api`, `felix-worker`).
+The `-gcp` image carries the `otel` extra from 0.19.0, inert until the overlay
+sets `FELIX_OTEL_ENABLED`.
+
+1. Enable the Cloud Trace, Logging and Monitoring APIs (Cloud Trace is off in a new project), and
+   grant the VM's service account `roles/cloudtrace.agent`, `roles/logging.logWriter` and
+   `roles/monitoring.metricWriter`, with access scopes that allow them.
+2. Write `deploy/docker/.metrics-token`, a credential holding only `metrics:read`: under
+   `FELIX_AUTH_MODE=api_key`, `scripts/metrics-token.sh`; under `jwt`, which accepts no API key, a
+   JWT minted with `felix mint-jwt --scopes metrics:read --allow-long-ttl`, renewed before it
+   expires. The collector runs as uid 10001, so the file must be readable by it. A missing file fails
+   the `up` rather than leaving the scrape quietly broken; alert on `up{job="felix-api"} == 0` to see
+   an expired token.
+3. Start the stack with the overlay once: `make up-gcp-otel`. `deploy/gcp/roll.sh` reuses the
+   compose files the running stack was started with, so later upgrades keep it. Rolling back past the
+   release that added the overlay means starting the stack without it first.
+
+The overlay pins the OTLP transport, so a vendor's settings left in `.env` do not reach the
+collector, and prompts stay off spans unless `FELIX_OTEL_CAPTURE_CONTENT=true`. The full runbook,
+with the exact `mint-jwt` line, is `deploy/gcp/README.md` in the harness repo.
 
 ## Sizing
 
