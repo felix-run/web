@@ -1593,7 +1593,9 @@ run; poll `GET /workflows/{id}/runs/{run_id}` for each step's `status`, `inputs`
 `Last-Event-ID` resumes past it), then `[DONE]` once the run is over.
 `GET /workflows/{id}/runs/{run_id}/steps/{step_id}/thread` reads that step's transcript (the
 snapshot `GET /chat/sessions/{id}` would answer), or `404` for a step with no thread yet. No chat route
-can address a step's thread, so nothing outside the run can write into a step's history. A run keeps
+can address a step's thread, so nothing outside the run can write into a step's history, and none
+lists, searches or polls one: `/chat/sessions` and `/chat/sessions/search` leave step threads out, and
+`GET /chat/runs/{resume_token}` answers `404` for a step's child run. A run keeps
 the definition it started on. It runs as the person who started it, with their scopes, each manifest
 a step names checked and pinned at the start (`403 not_permitted` otherwise). Refusals: `422
 not_runnable` (with `problems`), `422 bad_inputs` (`missing`, `unknown`), `412 workflow_changed`,
@@ -1609,6 +1611,13 @@ value they are given inside a fence. On any run, however it started, a value an 
 from another step's output is fenced the same way: a step's output is only as trustworthy as what
 that step read, such as a page it fetched. Only the inputs a person started the run with reach an
 agent's prompt as written.
+
+A run an agent started for a person (`trigger: agent:<manifest>`, see [workflow
+authoring](/guide/manifest-reference/#specworkflow_authoring)) is that person's: its agent steps ran as them, with their
+memory. Its record, stream, step transcripts and cancel answer only that person or an operator
+(`admin` / `*`), `404` to anyone else holding `workflows:*`, and `GET /workflows/{id}/runs` leaves it
+out for others. Every other run is visible to `workflows:read`. An approval step's row still carries
+the payload wired into it, so an approver reads it under `approvals:read`.
 
 ## Manifests
 

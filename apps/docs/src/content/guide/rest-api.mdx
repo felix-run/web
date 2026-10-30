@@ -314,7 +314,8 @@ curl -s "$BASE_URL/chat/runs/$RESUME_TOKEN" -H "authorization: Bearer $FELIX_KEY
 
 `GET /chat/runs/{resume_token}` returns `{status, fiber_id, resume_token, expires_at, final, error,
 manifest_id}`, plus `webhooks: {<id>: "pending" | "delivered" | "dead"}` when the run named any, or
-`404 run_not_found`. Fibers checkpoint in Postgres and are resumed by the Worker's `fiber_scheduler`
+`404 run_not_found` — also for a workflow step's child run, whose outcome is read under its workflow
+run instead. Fibers checkpoint in Postgres and are resumed by the Worker's `fiber_scheduler`
 cron — so **`felix-scheduler` must be running**.
 
 #### Completion webhooks
@@ -919,7 +920,7 @@ Thinking levels map to token budgets: `off` (none), `minimal` 128, `low` 512, `m
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/chat/sessions?limit=&cursor=` | List sessions, newest first, one page at a time — `{sessions:[…], items:[…], next_cursor}`. `limit` is 1–500 (default 100); pass `next_cursor` back as `cursor` for the next page, and it is `null` on the last. Each row has `id`, `createdAt`, `updatedAt`, `parentSessionId`, `sessionName`, `preview` (first user message, masked, ≤120 chars) and `manifest` (the newest turn's), the last two `null` when unknown (`felix sessions backfill-previews` fills `preview` for threads created before v0.11.2) |
-| `GET` | `/chat/sessions/search?q=&limit=` | Postgres full-text search — `{query, hits}` |
+| `GET` | `/chat/sessions/search?q=&limit=` | Postgres full-text search — `{query, hits}`. Workflow step threads are left out, as they are from the listing |
 | `GET` | `/chat/sessions/{thread_id}` | **Authoritative snapshot** |
 | `GET` | `/chat/sessions/{thread_id}/export` | Active branch as JSONL (`application/x-ndjson`, attachment) |
 | `POST` | `/chat/sessions/name` | `{thread_id, name}` — also appends a `session_info` event |
