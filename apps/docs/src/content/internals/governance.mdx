@@ -425,7 +425,9 @@ same tool round as the model's, so every wrapper applies. What such a call may d
 may not — reach a `disable-model-invocation` skill the manifest declares, pass `arguments` — is
 granted by a call id the harness mints, good once and only while that round runs. Only a turn a chat
 route marks as the person's is read for `/name`, so a model cannot write one into a `task` prompt
-or plan step to run a skill hidden from it.
+or plan step to run a skill hidden from it. `/v1` is such a route whose caller may be an agent, so there a
+`disable-model-invocation` skill also needs the caller to hold `skills:invoke` (implied by nothing
+but `admin` / `*`); a skill the model may use runs for anyone, as the model could reach it.
 
 Composites carry that turn, not the model's. `plan_execute`, `parallel` and `groupchat` pass the
 person's `/name` turn beside each step's own messages (`InvokeInput.person_command`), and the step's
