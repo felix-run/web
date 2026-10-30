@@ -66,8 +66,9 @@ The request-path resolver walks four layers and returns the first hit:
 4. **Bundled** — the YAML shipped in the image (`source: bundled`)
 
 So a tenant manifest named `quick` shadows the bundled `quick` for that tenant alone. Active pointers
-are cached for 30 seconds. Eleven manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
-`oss-only`, `hybrid-router`, `support`, `decider-support`, `cowork`, `governed` and `kids`. `assistant` is
+are cached for 30 seconds. Fourteen manifests ship in the box: `quick`, `assistant`, `deep`, `router`,
+`oss-only`, `hybrid-router`, `support`, `decider-support`, `cowork`, `governed`, `kids`,
+`researcher`, `automator` and `summarizer`. `assistant` is
 `quick` with long-term memory — see [Memory](#memory).
 
 `contributor` and `triage`, the agents that build Felix itself, are in the image but not bundled.
@@ -76,6 +77,22 @@ only a deployment that sets `FELIX_MANIFESTS_DIR` to that directory serves them;
 `deploy/docker/compose.self.yml` does. Any directory of manifest YAML works the same way, searched
 after the bundled set. A directory that is missing, or that holds a name the bundled set also has,
 is refused at boot rather than letting one shadow the other.
+
+A plugin can ship agents built on its own tools (`register_manifest_dir`), served after both and
+only where it is installed, so an install without it never lists an agent it cannot compile. Each
+example shows one primitive:
+
+| Agent | Where | Shows |
+|---|---|---|
+| `researcher` | bundled | The `reflect` pattern, `network.allow_hosts` confining a fetch tool, and delegation to `summarizer` (a tool-less child) |
+| `automator` | bundled | An agent that builds and runs workflows for the person (`spec.workflow_authoring`) |
+| `concierge` | connectors plugin | Tools acting *as the person* (Google, iCloud) with memory, a briefing it schedules, and `notify` |
+| `travel` | connectors plugin | The `plan_execute` pattern: maps, weather and exchange rates, planned then executed |
+| `markets` | connectors plugin | A reply judge holding every answer to "no personalised investment advice"; needs `FELIX_MARKET_API_KEY` |
+| `inbox` | connectors plugin | A person in the loop: `ask_user`, and drafts that wait for approval |
+
+Each requires a signed-in person, caps its spend, screens what others wrote, and holds every tool
+that acts as the person for a one-use approval that a run nobody watches cannot get.
 
 `FELIX_MANIFEST_SOURCE=bundled` collapses that to one layer: only the manifests baked into the
 image are served, no manifest store is constructed, and the write routes are not registered — so
