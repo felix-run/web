@@ -323,7 +323,7 @@ untouched for `FELIX_MEMORY_TASK_RETENTION_DAYS` (30, `0` keeps them); see
 
 :::note
 The Worker's `run_scheduled_jobs` cron sweeps due rows every minute, but the sweep is *enqueued* by
-`felix-scheduler`. Run all three containers — API, Worker **and** scheduler — or no job, retention
+`felix-scheduler`. [`GET /health/scheduler`](#the-scheduler-heartbeat) answers `503` once it stops. Run all three containers — API, Worker **and** scheduler — or no job, retention
 sweep, memory consolidation, skill evaluation or skill improvement ever fires. Durable runs are the exception: each Worker polls for them
 itself (below), and the scheduler's once-a-minute `fiber_scheduler` sweep is only the backstop.
 :::
@@ -434,11 +434,12 @@ FELIX_DESTINATIONS='{
 | Key | Required | Notes |
 |---|---|---|
 | id | — | Lowercase: `^[a-z0-9][a-z0-9_-]{0,63}$`. What `spec.destinations.ids` names. |
-| `kind` | yes | The adapter that delivers a post. Core ships `webhook`; a plugin may [register more](/internals/plugins/#destination-kinds). |
-| `tenants` | yes | Tenant ids that may name the destination, or `"*"` for all, written out. |
+| `kind` | yes | The adapter that delivers a post. Core ships `webhook`; the `felix-channels` plugin adds `slack` (below); a plugin may [register more](/internals/plugins/#destination-kinds). |
+| `tenants` | yes, unless `operator` | Tenant ids that may name the destination, or the string `"*"` for all, written out. A list holding `"*"` (`["*"]`) fails the boot, in this and every other operator registry: it named a tenant called `*`. |
+| `operator` | no | `true` makes it the harness's own channel, for [job health alerts](#job-health-watch): no manifest may name it and `tenants` is not read. Default `false`. |
 | `links` | no | `strip` (default) removes every link from a post, as `notify` does; `keep` leaves them all. |
 | `link_hosts` | no | With `links: strip` only: a non-empty list of hosts whose links are kept — a host, or `*.` and a host (`allow_hosts` patterns). With `keep` it fails the boot. |
-| anything else | per kind | The kind's own fields. `webhook` takes `endpoint`. A key spelled like one of the four above (`Links`, `link-hosts`) fails the boot rather than reaching the kind unread. |
+| anything else | per kind | The kind's own fields. `webhook` takes `endpoint`; `slack` takes `channel` and `conversation`. A key spelled like one of the five above (`Links`, `link-hosts`) fails the boot rather than reaching the kind unread. |
 
 **`kind: webhook`** sends a post as a signed `POST` to a
 [`FELIX_WEBHOOK_ENDPOINTS`](#completion-webhooks) endpoint, which must be open to the tenant as well:
@@ -446,12 +447,44 @@ the destination says the tenant may post there, the endpoint that its secret may
 endpoint's `url`, `secret` and `private` flag apply as for a completion webhook, egress guard and
 refused redirects included.
 
+**`kind: slack`**, with the [`felix-channels`](#slack) plugin installed in the API and the Worker,
+posts into a Slack conversation through a `FELIX_CHANNELS` app, with that app's bot token:
+
+```bash
+FELIX_DESTINATIONS='{
+  "team-brief": {"kind": "slack", "channel": "acme-slack", "conversation": "C0123ABCD", "tenants": ["acme"]}
+}'
+```
+
+`channel` is a [`FELIX_CHANNELS`](#slack) id; `conversation` is the Slack id of where the post
+goes — a channel `C…`, a private channel `G…` or a DM `D…`. The destination holds no secret of its
+own: the token is the channel's, resolved and registered for masking before the post's text is
+cleaned, so a model that writes the token into a post has it redacted even in a Worker that ran no
+plugin startup hook. A Slack app belongs to one tenant, so the destination posts through it only
+for that tenant; any other tenant's compile is refused with the words an unregistered channel gets.
+The app needs `chat:write` and must be a member of a channel or private channel it posts to.
+
+What reaches Slack is the post as the harness cleaned it, escaped (`&`, `<`, `>`) and sent with
+`parse: none`, `link_names: false` and unfurling off: `<!channel>`, `<!here>`, `<@U…>` and `@here`
+arrive as text and ping nobody, and Slack fetches no link the registration keeps. A `title` leads
+the message, in bold. Slack's `ok: true` is `posted`, with `ref` `<conversation>:<ts>`. An
+`ok: false` whose code is a definite refusal — `channel_not_found`, `not_in_channel`,
+`is_archived`, a revoked or wrong token, a missing scope or permission, `msg_too_long`,
+`ratelimited` and the rest of `DEFINITE_REFUSALS` — is `not_posted`, with a fixed detail for each
+family and never Slack's own text (the code is logged as `slack_post_refused`); any other `ok: false`
+is `unknown`, recorded `maybe_posted`, as is an answer that is not JSON. A status other than `200`
+and a send error follow the shared rules a `webhook` does: a `4xx` other than `408` and `409`, a
+connect error or a connect timeout is `not_posted`; a `5xx`, or a timeout once the request went, is
+`unknown`.
+
 The boot checks the registry's shape — ids, `kind`, `tenants`, the link policy — and a malformed one
 fails it (`FELIX_DESTINATIONS: …`). The kind and its own fields are checked when a manifest naming
 the id compiles, since a plugin's kind may register after the settings are read: an unregistered id,
 one not open to the tenant, an uninstalled kind or fields the kind refuses (a `webhook` with no
-`endpoint`, or one not open to the tenant) all fail the compile, `422` on `/chat`, with the same
-`unknown destination: <id>` for an unregistered id and another tenant's.
+`endpoint`, or one not open to the tenant; a `slack` with no `channel`, a `conversation` that is
+not a `C…`, `G…` or `D…` id, or a channel not registered for the tenant) all fail the compile, `422`
+on `/chat`, with the same `unknown destination: <id>` for an unregistered id, another tenant's and
+an operator destination.
 
 | Setting | Default | |
 |---|---|---|
@@ -520,6 +553,105 @@ COMMIT;
 ```
 
 If the post did land, leave the row — or set `status = 'posted'` — so it is not posted twice.
+
+## Job health watch
+
+A job that stopped firing, or fires and fails every time, is recorded on its run history and tells
+nobody; a stopped `felix-scheduler` stops every periodic task, including any that would notice.
+Felix watches both, from two places.
+
+### The scheduler heartbeat
+
+Each completed `run_scheduled_jobs` sweep (every minute) stamps its time in Redis, and
+`GET /health/scheduler` answers from the stamp:
+
+```bash
+curl -s "$BASE_URL/health/scheduler"
+# {"status":"ok","last_tick_age_s":42,"stale_after_s":300}
+```
+
+| `status` | HTTP | When |
+|---|---|---|
+| `ok` | `200` | The last completed sweep is no older than `FELIX_SCHEDULER_STALE_SECONDS`. |
+| `stale` | `503` | It is older: the scheduler, the Worker or the database the sweep reads has stopped. |
+| `never` | `503` | No sweep was ever recorded; `last_tick_age_s` is `null`. |
+| `unknown` | `503` | The API could not read Redis and holds no stamp of its own. |
+
+A sweep stamps only once it got through its tenants: one that cannot list them, or that failed for
+every tenant (an image deployed ahead of `felix migrate head`, say), stamps nothing and fails its
+task, so the route goes stale on a dead database too. The stamp crosses from the Worker to the API
+through Redis, so set `FELIX_REDIS_URL` on both; an API without one sees only its own process, which
+runs no sweep, and answers `never`. The route is public and rate-limit exempt like `/ready`, and
+carries one age and one threshold — no tenant, job or host.
+
+**Point an uptime monitor at it, from outside the deployment — not a probe.** A stopped scheduler
+is not the API pod's fault: restarting it or taking it out of rotation fixes nothing, so the Helm
+chart deliberately does not wire it to a probe. `felix doctor` reads the same heartbeat and prints
+a note, not a failure, when it is not `ok`, since it is often run before the scheduler starts.
+
+### Overdue and failing jobs
+
+The Worker's `job_health_watch` cron (every 5 minutes, every tenant, the tenant bound for RLS) opens
+an *incident* on a job that is:
+
+- **`overdue`** — enabled, scheduled (not manual-only), due more than
+  `FELIX_JOB_OVERDUE_GRACE_SECONDS` ago, and still due after a scheduler sweep completed two
+  minutes past when the watch first saw it so. That second condition keeps a re-enabled job, a
+  first schedule and a scheduler outage's backlog from alerting before the scheduler had its chance.
+  A `running` mark does not exempt a job: a run killed with its Worker holds that mark for six hours.
+  A schedule that no longer parses counts, since the scheduler refuses it and it never fires.
+- **`failing`** — its last `FELIX_JOB_FAILURE_THRESHOLD` runs that ran were all errors, `skipped`
+  runs ignored.
+
+Each incident is recorded on the job, as `health` on
+[`GET /jobs` and `GET /jobs/{name}`](/guide/management-api/#job-health), counted
+(`felix_job_health_incident{kind}`), audited (`job.health`, `open` and `cleared`), and — when
+`FELIX_JOB_ALERT_DESTINATION` names a destination — posted there **once**. An overdue incident
+clears when the job fires; a failing one when a run since it began succeeds; disabling a job clears
+both. A job that fails again after it cleared opens a new incident, which alerts again.
+
+The alert goes through the same edition ledger as `post`, under the reserved manifest id
+`felix:job-health` and the edition `job-health:<job>:<kind>:<since-ms>`, so a sweep that dies
+mid-delivery does not alert twice and an `unknown` outcome is not retried. Its text is fixed: the job
+and tenant (characters outside a plain set shown as `?`), the kind, since when, and the last error's
+*class* — `run_error`, `internal_error`, `cancelled`, `execution_failed`, `credential_expired`,
+`invalid_schedule`, `disabled_while_running` — never the run's error text, which can carry a
+refusal's own words. A `not_posted` delivery is tried again each sweep, twelve times in all. With no
+alert destination, or one not open to the job's tenant, nothing is sent and the incident is still
+recorded, counted and audited; it is tried again each sweep, so it alerts once routing exists.
+
+**Make the alert destination an operator destination.** `"operator": true` makes a destination the
+harness's own: no manifest may name it (`spec.destinations` answers it as an unknown id), its
+`tenants` is not read, and the watch posts there about every tenant.
+
+```bash
+FELIX_DESTINATIONS='{
+  "ops-alerts": {"kind": "slack", "channel": "ops-slack", "conversation": "C0OPSALRT", "operator": true}
+}'
+FELIX_JOB_ALERT_DESTINATION=ops-alerts
+```
+
+`ops-slack` is a [`FELIX_CHANNELS`](#slack) entry for the operator's own app, with every key that
+registry requires.
+
+The tenant checks a kind makes for a tenant's own post are skipped for an operator destination:
+for `webhook`, the endpoint's `tenants` is not consulted, so list there only the tenants whose
+manifests may announce runs to it; for `slack`, the app's tenant is not consulted, so the one app
+posts about every tenant. **Make that the operator's own Slack app and workspace, never a
+tenant's**, or that tenant's workspace reads every tenant's job names. A non-operator alert
+destination reaches only the tenants in its `tenants`, and that list is also a `post` grant: every
+manifest in those tenants may post to the ops channel.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SCHEDULER_STALE_SECONDS` | `300` | At least `120`. Past this, `GET /health/scheduler` answers `stale`. |
+| `FELIX_JOB_OVERDUE_GRACE_SECONDS` | `900` | At least `60`. How long past its due time a job may sit before it can be overdue. |
+| `FELIX_JOB_FAILURE_THRESHOLD` | `3` | `1`–`100`. Consecutive errored runs that make a job failing. One above a non-zero `FELIX_JOB_RUNS_KEEP` fails the boot: the streak would be trimmed before it could be read. |
+| `FELIX_JOB_ALERT_DESTINATION` | empty | A `FELIX_DESTINATIONS` id each new incident is posted to; empty posts nowhere. An id that is not in `FELIX_DESTINATIONS` fails the boot. The watch runs in the Worker, so set both there. |
+
+Prometheus users can page on the same signal instead: the bundled rules carry
+`FelixJobHealthIncident`, firing on `increase(felix_job_health_incident_total[15m]) > 0` by `kind`
+(see [Observability](/internals/observability/#alert-rules)).
 
 ## Inbound triggers
 
@@ -596,6 +728,8 @@ With the optional `felix-channels` plugin installed, people can talk to an agent
 mention in a channel, or a DM to the app. Each message starts a [durable run](#durable-runs) as
 its sender, a Slack thread is one Felix conversation, and the Worker posts the answer back in the
 thread when the run ends.
+The same app can also deliver an agent's [`post`](#shared-destinations) to a channel, as a
+`kind: slack` destination.
 
 **Install the plugin** in both the API and the Worker image: `FELIX_EXTRAS=channels` when building
 (`docker build --build-arg FELIX_EXTRAS="channels" .`), or `uv sync --extra channels` from a

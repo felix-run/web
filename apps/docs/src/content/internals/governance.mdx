@@ -358,6 +358,21 @@ names ids in `spec.destinations.ids`; `resolve_destinations` refuses at compile 
 unregistered or another tenant's with the one message `unknown destination: <id>`, so the compile is
 not a registry oracle, and asks the kind's adapter to `validate` the registration. A `webhook`
 destination's endpoint must open to the tenant too, and its error does not repeat the endpoint id.
+A `slack` destination (`felix_channels/destination.py`) must name a `FELIX_CHANNELS` app bound to
+the tenant — an app belongs to one tenant — and its error does not repeat the channel id either.
+`tenants` must be the string `"*"` or a list of ids; a list holding `"*"`
+(`settings_registry.parse_tenant_list`) fails the boot in every operator registry, since it named a
+tenant called `*`.
+
+**Operator destinations.** `"operator": true` (`Destination.operator`) makes a destination the
+harness's own: `Destination.allows` is false for every tenant, so `resolve_destinations` answers it
+as `unknown destination` and no manifest binds it, and its `tenants` is not parsed. Only
+`resolve_harness_destination` reaches it, for `FELIX_JOB_ALERT_DESTINATION`, about any tenant. The
+kinds skip their own tenant check for it — a `webhook` endpoint's `tenants`, a Slack app's tenant —
+because the harness posting about a tenant is not the tenant posting. An operator Slack destination
+therefore carries every tenant's job names into one workspace, which must be the operator's. A
+non-operator alert destination is reached only for the tenants it is open to, and is a `post` grant
+to their manifests as well.
 
 **Who may post** (`_Posts.admit`): a run whose `RequestContext.unattended` holds — a job's firing,
 a heartbeat, a trigger's run, and what they start, since both marks ride the recorded caller into
@@ -398,6 +413,15 @@ anything is sent; only the claim decides. An outcome Felix cannot know — a tim
 or `409`, a lost connection, an adapter that raised or ran past `DELIVERY_BUDGET_S` — is recorded
 `maybe_posted` and refused on every later call: a person checks the destination. See
 [persistence](/internals/persistence/#relational-highlights) for the ledger.
+
+**What a Slack post can do.** `felix_channels.slack.post_classified` escapes the cleaned text
+(`&`, `<`, `>`) and sends it with `parse: none`, `link_names: false`, `unfurl_links` and
+`unfurl_media` off, so a mention the model wrote pings nobody and a link the policy keeps is not
+fetched by Slack's previews. The bot token is resolved through the kind's `secrets` before the
+text is cleaned (`DestinationSecrets`), so it is redacted from a post even in a Worker that ran no
+plugin startup hook, and redacted again once in hand. `classify` maps only the codes in
+`DEFINITE_REFUSALS` to `not_posted`, each to a fixed detail, and every other `ok: false` to
+`unknown`; Slack's own text never reaches the model.
 
 **Bounds and record.** `max_per_run` counts on `RequestContext.extras`
 (`POSTED_THIS_RUN_EXTRA`), reserved before anything awaits; it is given back only for an

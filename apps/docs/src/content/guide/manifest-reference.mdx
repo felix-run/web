@@ -2226,8 +2226,9 @@ Lets a scheduled job, a heartbeat or a trigger's run publish to a shared place �
 status feed — rather than to one person, as [`notify`](#specnotify) does. The places are the
 operator's: each id is an entry of [`FELIX_DESTINATIONS`](/guide/deploy/#shared-destinations), and a
 manifest never carries a URL, a channel or a token. The registration is the advance approval, so
-the manifest only picks among the destinations open to its tenant. Binds one tool; unset binds
-nothing.
+the manifest only picks among the destinations open to its tenant. An `"operator": true`
+destination, the harness's own channel for [job health alerts](/guide/deploy/#job-health-watch), is
+open to none: naming it fails the compile as an unknown id. Binds one tool; unset binds nothing.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -2271,7 +2272,7 @@ before anything is sent, so of two calls racing for one edition exactly one deli
 
 **The result.** A delivery the destination confirmed answers
 `{"status": "posted", "destination", "edition", "ref"}`, `ref` being the destination's id for the
-post (for a `webhook` destination, its `webhook-id`). An edition already posted answers
+post (for a `webhook` destination, its `webhook-id`; for a `slack` one, `<conversation>:<ts>`). An edition already posted answers
 `{"status": "already_posted", …, "ref"}` with the first post's ref. Both are successes. Everything else is a refusal the model reads,
 `{"error": <code>, "detail": …}`:
 
@@ -2284,9 +2285,9 @@ post (for a `webhook` destination, its `webhook-id`). An edition already posted 
 | `rate_limited` | The run has made `max_per_run` posts. | — |
 | `screened` | Screening flagged the cleaned text, or a screener could not run. | — |
 | `unavailable` | The ledger could not be read or claimed, so whether the edition was posted is unknown. | Yes; nothing was sent. |
-| `not_posted` | The destination certainly did not take it (refused before sending, a `4xx` other than `408` and `409`). The ledger row is released. | Yes. |
+| `not_posted` | The destination certainly did not take it (refused before sending, a `4xx` other than `408` and `409`, or — for `slack` — one of Slack's definite refusals, such as `not_in_channel`). The ledger row is released. | Yes. |
 | `in_flight` | Another call claimed this edition under two minutes ago and is delivering it now. | No — under no edition. |
-| `maybe_posted` | A delivery of this edition did not finish with an answer — a timeout, a `5xx`, a `408` or `409`, a connection lost after the request went, a delivery past its 90-second budget, or a claim over two minutes old whose process stopped. | No. Never retried by Felix; a person checks the destination and an operator [clears the edition](/guide/deploy/#a-stuck-edition). |
+| `maybe_posted` | A delivery of this edition did not finish with an answer — a timeout, a `5xx`, a `408` or `409`, a Slack error that is not a definite refusal, a connection lost after the request went, a delivery past its 90-second budget, or a claim over two minutes old whose process stopped. | No. Never retried by Felix; a person checks the destination and an operator [clears the edition](/guide/deploy/#a-stuck-edition). |
 
 A `detail` written by the destination's kind is cut to 300 characters. The model is told, in the
 tool's description and in each refusal, not to repost a `maybe_posted` or `in_flight` edition under

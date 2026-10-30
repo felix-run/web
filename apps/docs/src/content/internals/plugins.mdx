@@ -233,10 +233,15 @@ def register(registry) -> None:
     registry.register_destination_kind("chat", ChatChannel())
 ```
 
-- **`Destination`** is the registration typed: `name`, `kind`, `tenants`, `links`, `link_hosts`, and
-  `fields` — everything else in the entry, which is the kind's own. The harness's keys are
-  `HARNESS_FIELDS`; a key spelled like one of them (`Links`, `link-hosts`) fails the boot instead of
-  reaching `fields`.
+- **`Destination`** is the registration typed: `name`, `kind`, `tenants`, `links`, `link_hosts`,
+  `operator`, and `fields` — everything else in the entry, which is the kind's own. The harness's
+  keys are `HARNESS_FIELDS`; a key spelled like one of them (`Links`, `link-hosts`) fails the boot
+  instead of reaching `fields`.
+- **`operator`** is `true` for the harness's own channel (`FELIX_JOB_ALERT_DESTINATION`): no manifest
+  binds it, and the harness calls `validate` and `deliver` with whichever tenant a job health alert
+  is about. A kind that checks a tenant-bound resource of its own — core's `webhook` checks its
+  endpoint's `tenants`, `felix-channels`' `slack` its app's tenant — skips that check when
+  `dest.operator` is set, or the alert is refused for every tenant but one.
 - **`validate`** runs when a manifest naming the destination compiles, so a bad registration fails
   the compile, not the first post. Raise `DestinationError`.
 - **`Post`** arrives already redacted, link-handled and screened: `edition`, `text`, `title`,
@@ -253,6 +258,13 @@ def register(registry) -> None:
   a connect timeout to `not_posted` and any other exception to `unknown`. Core's `webhook` kind uses
   both. Do not raise for a failed delivery: an exception, or a result with no valid `status`, is
   taken for `unknown`.
+- **A kind that sends with a credential** should also implement `secrets(settings, tenant_id, dest)
+  -> list[str]` (`DestinationSecrets`): the resolved values it will send with. `post` registers them
+  for masking *before* it cleans the post's text, so a model that writes the token into a post has it
+  redacted on the first call in a process. A Worker runs no plugin startup hook, and a value first
+  resolved inside `deliver` would be registered only after the text was cleaned. Optional; a raise
+  refuses the post before anything is claimed. `felix_channels/destination.py` is the worked
+  example: it resolves the Slack bot token here.
 - **90 seconds in all.** `deliver` runs under `DELIVERY_BUDGET_S` (90 s) and is cancelled past it,
   and the post is recorded `maybe_posted`. Bound your own calls well inside that.
 - **`detail` and `DestinationError` messages reach callers as written** — the model reads `detail`
