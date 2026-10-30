@@ -485,7 +485,7 @@ CalDAV and CardDAV:
 
 | Tool | Args | Notes |
 |---|---|---|
-| `connectors__icloud_calendar_events` | `{start?, days?, limit?, account?}` | Upcoming events from every calendar the person sees, shared ones included, in time order. A repeating event shows on each day it falls; one that repeats too often to list (every second, say) is left out and the answer says so. |
+| `connectors__icloud_calendar_events` | `{start?, days?, limit?, account?}` | Upcoming events from every calendar the person sees, shared ones included, in time order, from now in `FELIX_TIMEZONE` when `start` is left out. A repeating event shows on each day it falls; one that repeats too often to list (every second, say), or past a calendar's budget, is left out and the answer says so. |
 | `connectors__icloud_calendar_create_event` | `{summary, start, end, description?, location?, calendar?, account?}` | Not read-only. Adds the event to one of the person's *own* writable calendars -- the first, or the one `calendar` names -- never a calendar shared with them, and never one picked between two of the same name. No guests, so nothing is mailed; a repeat of the same title and time finds the event already made. |
 | `connectors__icloud_contacts_search` | `{query, limit?, account?}` | Name, email or phone containing the words; name, emails, phones and organisation of each. |
 
@@ -494,6 +494,19 @@ and contacts are text anyone who can invite or email the person could have writt
 `content_screening`, and put `connectors__icloud_calendar_create_event` behind an approval. Under
 `spec.network` the tools need `*.icloud.com` -- iCloud answers from a numbered server of the
 person's (`p42-caldav.icloud.com`), so an exact host list refuses the compile.
+
+With the `ics` extra (`felix-connectors[ics]`), the calendars a person published as `.ics` links --
+Outlook's published calendar, Google Calendar's secret iCal address, an iCloud public calendar --
+and connected ([Connecting a calendar feed](/internals/auth/#connecting-a-calendar-feed)):
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__ics_events` | `{feed?, start?, days?, limit?}` | Upcoming events from every feed the person connected (up to five), or the one `feed` names, in time order and each named by its feed; from now in `FELIX_TIMEZONE` when `start` is left out. A feed that cannot be read is named in the answer, with what the person can do about it, and the rest are still read. The feed's link is never shown. |
+
+Each calendar is held to a budget -- 20,000 events, 500,000 rule steps, 2,000 occurrences in the
+window, 20,000 steps for one series -- and what is left out is counted in the answer: anyone can
+publish a calendar, so a feed's content is whatever the person pointed it at. Turn on
+`content_screening`. Under `spec.network` the tool needs the hosts `FELIX_ICS_HOSTS` lists.
 
 ### `spec.workspace`
 
