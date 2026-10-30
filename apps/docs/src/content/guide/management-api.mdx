@@ -1102,7 +1102,10 @@ means **`felix-scheduler` must be running alongside `felix-worker`**, or nothing
 | `GET` | `/jobs/{name}/runs` | `jobs:read` |
 | `PUT` | `/jobs/{name}` | `jobs:write` |
 | `DELETE` | `/jobs/{name}` | `jobs:write` |
-| `POST` | `/jobs/{name}/run` | `jobs:write` |
+| `POST` | `/jobs/{name}/run` | `jobs:write`, and the job's writer or an operator |
+| `GET` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
+| `PUT` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
+| `DELETE` | `/jobs/{name}/preferences` | the job's writer or an operator — no jobs scope |
 
 ```bash
 curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
@@ -1119,6 +1122,7 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 | `workflow_revision` | string — the revision you reviewed (`412` if it moved) | current |
 | `payload` | object | `{}` |
 | `enabled` | bool | `true` |
+| `preferences_required` | bool — skip a firing that has no [reader's preferences](#a-jobs-readers-preferences); refused (`422 preferences_need_a_manifest`) beside a `workflow_id` | `false` |
 
 `schedule` is five-field cron (`minute hour day month weekday`), a macro (`@hourly`,
 `@daily`, `@weekly`, `@monthly`, `@yearly`), an interval (`every:30s`, `every:5m`, `@every 2h`),
@@ -1211,8 +1215,12 @@ now, and a writer who signed in through Felix — GitHub, Google or GitHub Actio
 account entry or org grant holds now; a writer neither admits any more has the run refused) — not as the caller — on the job's own thread, with its prompt screened like any user turn. Only the run record
 differs: `trigger` is `manual` (a scheduled run says `schedule`) and `requested_by` is the caller's
 subject. The schedule is not moved, and a **disabled job runs** when asked, since the call is
-explicit. It needs `jobs:write`, because whoever may rewrite a job's prompt may already make it
-run. An unknown job is `404`. The call is synchronous and lasts as long as the job's turn does.
+explicit. It needs `jobs:write` **and** to be the job's writer or an operator (`admin` / `*`),
+else `403 {"detail": "not_job_writer"}`: the run carries the writer's authority, so anyone else
+asking would choose when the writer's run happens; re-saving the job instead makes it theirs, with
+their scopes. A job written before writers were recorded only an operator may run. An unknown job is
+`404`, and a firing already in flight `409 {"detail": {"error": "job_running"}}`. The call is
+synchronous and lasts as long as the job's turn does.
 
 ### Run history
 
@@ -1224,7 +1232,7 @@ result}`. `status` is one of:
 |---|---|
 | `ok` | The firing ran and finished. |
 | `error` | The firing failed or was refused; `error` says why. A cancelled firing — a Worker shutting down, a caller leaving a manual run — is an `error` run with `error` `cancelled`, and one that fails inside the scheduler is `execution failed`; both are recorded before the job's running mark clears, and both count toward a heartbeat's `max_firings_per_day`. |
-| `skipped` | A limit held the firing and nothing ran: no model call, no tool. Today only a [heartbeat](#heartbeats) over its `max_firings_per_day` (`result.reason: "daily_cap"`). `error` is empty. |
+| `skipped` | A limit held the firing and nothing ran: no model call, no tool. A [heartbeat](#heartbeats) over its `max_firings_per_day` (`result.reason: "daily_cap"`, `error` empty), or a job with `preferences_required` and no [preferences](#a-jobs-readers-preferences) (`result.reason: "preferences_missing"`, `error` and the job's `last_error` "waiting for its reader's preferences"). |
 
 The job's `last_status` carries the same value after each run.
 
@@ -1271,6 +1279,62 @@ workflow (`422 unknown_workflow`) and inputs it takes (`422 bad_inputs`). The jo
 workflow's revision — `workflow_revision` if you send the one you reviewed, else the current one —
 and **runs only that revision**: once anyone saves the workflow again, each firing is refused
 until the job is re-saved, so a later edit never runs on its writer's scopes unseen.
+
+### A job's reader's preferences
+
+A job's output has a reader, and its preferences — what the output covers and skips, its tone, its
+length — are free text on the job that **the reader writes and the agent cannot**: no tool, manifest
+field or `schedule_task` argument sets them, and `PUT /jobs/{name}` does not take them.
+
+```bash
+curl -s -X PUT "$BASE_URL/jobs/nightly-digest/preferences" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"preferences":"Skip dependency bumps. Lead with anything that changed an API. Under 200 words."}'
+```
+
+```json
+{ "name": "nightly-digest", "preferences": "Skip dependency bumps. …", "updated_at": 1790000000000,
+  "updated_by": "user-7", "required": false }
+```
+
+`GET`, `PUT` and `DELETE` all answer that shape: `preferences` is `null` when there are none,
+`updated_at` (epoch ms) and `updated_by` say who last wrote or cleared them (`null` before either),
+and `required` is the job's `preferences_required`. The `PUT` body is `{preferences}` and nothing
+else, a non-empty string of at most 8 KiB in UTF-8 bytes. `DELETE` clears them.
+
+- **Who.** Only the job's current writer (`created_by`, as a named person — the person a
+  `schedule_task` or a heartbeat acts for) or an operator (`admin` / `*`; everyone under
+  `FELIX_AUTH_MODE=none`). The writer needs no jobs scope, so a person steers the task an agent
+  scheduled for them, or their heartbeat. A `jobs:write` or `jobs:read` holder may not: the text runs
+  on the writer's scopes and memory. A sub-less API key, whose every holder shares the subject
+  `api_key`, is never the writer. Anyone else gets `403 {"detail": "missing scopes: admin"}` whether
+  or not the job exists; an operator gets `404` for a job that does not.
+- **What every firing does with them.** They are appended whole to the firing's user turn — a
+  heartbeat's checklist included — fenced as the reader's, with a fixed line saying they cannot grant
+  tools, change who the output goes to, or change the agent's instructions. The turn is screened like
+  the job's own prompt. They steer the output; tool access, destinations and approvals stay the
+  manifest's.
+- **Re-saving the job.** A `PUT /jobs/{name}` (or a heartbeat re-enrolment) by the job's writer keeps
+  them. A re-save by anyone else — which makes the job theirs — or under a sub-less API key clears
+  them, so text one person wrote never runs on another's scopes. A preferences write that loses a
+  race with such a re-save answers `409 {"detail": {"error": "job_changed_hands"}}`.
+- **Required.** With `preferences_required: true`, a firing — scheduled or Run now — of a job with
+  none runs nothing and makes no model call: its run is `skipped`, `result.reason`
+  `preferences_missing`, and `last_error` reads "waiting for its reader's preferences". The job stays
+  enabled and on schedule, and the [health watch](#job-health) counts neither failing nor overdue,
+  so a job that waits forever shows here and in its runs, not as an alert.
+- **Visibility.** `GET /jobs` and `GET /jobs/{name}` never show the text: `preferences_set` says
+  whether there is any, beside `preferences_required`, `preferences_updated_at` and
+  `preferences_updated_by`. Each write is audited as `job.preferences` with its size, never its text
+  ([Observability](/internals/observability/#job-preferences)).
+
+| Status | `detail` | When |
+|---|---|---|
+| `403` | `missing scopes: admin` | The caller is neither the job's writer nor an operator. |
+| `404` | `not_found` | An operator asked for a job that does not exist, or it was deleted mid-write. |
+| `409` | `{"error": "job_changed_hands"}` | Someone else re-saved the job between the check and the write. |
+| `422` | `{"error": "preferences_too_long", "max_bytes": 8192}` | The text is over 8 KiB in UTF-8 bytes. |
+| `422` | `{"error": "preferences_need_a_manifest"}` | The job names a workflow, whose firings have no prompt to carry them. |
 
 ### Tasks an agent scheduled
 

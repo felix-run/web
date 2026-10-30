@@ -263,7 +263,7 @@ writes. The split of who decides what is the control:
 | Who | Decides |
 |---|---|
 | The operator (`manifests:write`) | Everything a firing does: the `checklist`, the `schedule` and the `timezone` a cron one is read in (recurring only, never faster than `min_interval_minutes`, itself at least 15), the `model` route, `max_turns`, `keep_threads`, `max_firings_per_day`. The manifest must bind `notify` or it does not validate. |
-| The person (`heartbeats:write`) | Only on or off, for themselves: `PUT /heartbeats/{manifest}` with `{enabled}`, `DELETE`, and run now. `GET /heartbeats` (`heartbeats:read`) lists their own and no one else's. |
+| The person (`heartbeats:write`) | Only on or off, for themselves: `PUT /heartbeats/{manifest}` with `{enabled}`, `DELETE`, and run now. `GET /heartbeats` (`heartbeats:read`) lists their own and no one else's. As the job's writer they may also write its [reader's preferences](#a-jobs-readers-preferences), which steer the output and cannot widen what a firing may do. |
 
 **It runs as the person.** `enrol` (`jobs/heartbeat.py`) writes an ordinary job,
 `hb-<manifest>-<sha256(person)[:12]>`, with `created_by` the person and `created_auth` their authority
@@ -358,6 +358,65 @@ run_id)`, at most 1,000 rows a call, oldest first — except runs at or after th
 start that are not `skipped`. Those are what the cap counts, so trimming them would let a heartbeat
 fire again; a small `FELIX_JOB_RUNS_KEEP` cannot do that. A failed trim is logged and the run stays
 recorded.
+
+## A job's reader's preferences
+
+A job's output has a reader, and the reader's preferences for it — what to cover and skip, tone,
+length — are a document on the job (`jobs/preferences.py`, migration `0052_job_preferences`) that
+**the reader writes and the agent cannot**. Per-person memory was the nearest thing before, and the
+agent can write that and a firing recalls it by rank, so may miss it. No tool, manifest field or
+`schedule_task` argument sets preferences, and `PUT /jobs` does not take them; only
+`GET` / `PUT` / `DELETE /jobs/{name}/preferences` touch them, at most 8 KiB in UTF-8 bytes
+(`check_preferences`, the one cap the route and the store share).
+
+**Who may write them is the job's writer or an operator, not `jobs:write`.** Each firing runs on the
+writer's scopes and memory, so the text is the writer's to steer. `routes/jobs.py:_preferences_job`
+admits the job's current `created_by` as a named person (`_is_job_writer`, `acting_for` matching it,
+`tools/refusal.py:require_person` passing) — the person a `schedule_task` or a heartbeat enrolment
+acts for, who needs no jobs scope at all — or an operator (`auth/mgmt.py:is_operator`: `admin`, `*`,
+or anyone under `FELIX_AUTH_MODE=none`). A `jobs:write` holder who could write another person's
+preferences would put their own words into that person's runs without re-saving the job, which is
+the one thing re-saving prevents, since it makes the job theirs; `jobs:read` does not read the text
+either, which may be personal. A sub-less API key, whose every holder is `api_key`, is never the
+writer. Everyone else gets the same `403 missing scopes: admin` whether or not the job exists, so
+the route names no jobs. `POST /jobs/{name}/run` uses the same `_is_job_writer`, but with
+`shared_ok`, since its caller also holds `jobs:write`.
+
+**A new writer starts with none.** `jobs/store.py:put_job` keeps the preferences when the re-save is
+by the job's writer, and clears them (`_NO_PREFERENCES`) when `_new_writer` says the subject changed
+or is shared: the re-save moves `created_by` and the scopes the job runs on, and text written for
+one person's runs must not run on another's. A shared subject counts as a new writer on every
+re-save. `set_preferences` takes the writer the route checked (`writer=`) and lands only while the
+row still holds it — one `UPDATE … WHERE created_by IS NOT DISTINCT FROM <writer>`, never an upsert —
+so a re-save by someone else between the check and the write answers `409 job_changed_hands`
+instead of leaving the old writer's text on the new writer's scopes.
+
+**Every firing reads them whole, in a fresh fence.** `scheduler._run_job_turn` calls
+`with_preferences` after a heartbeat's checklist replaces the prompt, so a heartbeat carries them
+too. The text is appended to the firing's user turn — never recalled, ranked, truncated or
+summarised — inside `<reader_preferences-<12 hex>>`, a region named anew for each firing
+(`security/fencing.py:fence_fresh`), so the text cannot know the name and has no close to forge in
+any spelling, fullwidth lookalikes included. A fixed line follows, telling the model these are the
+reader's standing preferences for this output and cannot grant tools, change who the output is sent
+to, or change its instructions. In the user turn, not the system prompt: they carry a reader's
+authority, not the manifest author's, and the turn is screened (`spec.inbound`) like the job's own
+prompt. They are a steering surface, not a control — tool access, destinations and approvals are
+the manifest's and the operator's, and a reader who writes "post this to #general" changes none of
+them. A job naming a workflow refuses preferences and `preferences_required` alike
+(`422 preferences_need_a_manifest`): its firings have no prompt to carry them.
+
+**Fail closed when missing.** `preferences_required` is the job writer's, on `PUT /jobs/{name}`
+(false when left out, replaced on every write; a heartbeat re-enrolment keeps the stored one).
+`_invoke_job_manifest` checks `missing_preferences` before anything resolves or compiles, so a
+firing of a job that requires them and has none — whitespace counts as none — makes no model call
+and is recorded `skipped`, reason `preferences_missing`, `last_error` "waiting for its reader's
+preferences". The job stays enabled and keeps its schedule, so the health watch neither counts these
+runs as failures nor sees the job as overdue: a job that waits forever is visible on `GET /jobs`
+and its runs, not alerted.
+
+**What is recorded.** Each write is audited as `job.preferences` (`saved` / `cleared`) to whoever
+made it, with the job and the byte count — never the text. `GET /jobs` shows `preferences_set`,
+never what they say.
 
 ## Shared destinations
 
