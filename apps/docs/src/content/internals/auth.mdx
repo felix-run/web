@@ -468,6 +468,31 @@ Google account a person connects. The worker refreshes grants for durable runs a
 needs `FELIX_CONNECTION_TOKEN_KEY` and Google's client id and secret too. Disconnecting revokes the
 grant at Google, which ends it for that Google account everywhere this client holds it.
 
+### Connecting iCloud
+
+Apple offers no OAuth for iCloud data, so a person connects with their Apple ID and an
+**app-specific password** they make at appleid.apple.com (Sign-In and Security). The route comes
+with the `felix-connectors` plugin and its `icloud` extra:
+
+`POST /connections/icloud` `{apple_id, app_password}`, as the person. Only the app-specific format
+(`xxxx-xxxx-xxxx-xxxx`) is taken -- an Apple ID's own password is refused before anything is sent.
+Felix asks Apple with it first (the CalDAV principal lookup the tools start from) and keeps it only
+if Apple accepts, as a `secret` connection (provider `icloud`, account the Apple ID, lowercased),
+answering with the stored connection.
+
+| Answer | When |
+|---|---|
+| 400 `invalid_body`, `apple_id_invalid`, `app_password_format` | Not `{apple_id, app_password}`, not an email, not an app-specific password. The body is never echoed. |
+| 400 `app_password_refused` | Apple did not accept the pair. |
+| 403 `not_a_person` | The caller names no person. |
+| 404 | No vault key (`FELIX_CONNECTION_TOKEN_KEY`), or the `icloud` extra is not installed. |
+| 429 `rate_limited` | Past five tries by one person in an hour. |
+| 502 `icloud_unavailable`, 503 `connect_failed` | Apple could not be reached, or the vault could not keep it. |
+
+An app-specific password has no scopes: it opens the person's whole calendar and contacts until
+they revoke it at Apple. `DELETE /connections/icloud/{apple_id}` forgets it here; Felix cannot
+revoke it at Apple, so the person does that themselves.
+
 ## Manifest gates
 
 Routes call `enforce_inbound_auth` (via `prepare_tenant_invoke`):
