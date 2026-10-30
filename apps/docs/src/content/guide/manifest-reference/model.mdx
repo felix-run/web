@@ -106,7 +106,7 @@ spec:
 | `system_md` | string \| null | `null` | Key loaded as a **full replacement** (`SYSTEM.md` semantics). |
 | `append_system_md` | string \| null | `null` | Key appended after the composed prompt. |
 | `include_tool_guidance` | bool | `true` | Append the [tool guidance](/guide/manifest-reference/tools/#spectool_guidance) section. `false` for a prompt that must be exactly what was written. |
-| `include_datetime` | bool | `true` | Tell the model today's date and the current time, in [`FELIX_TIMEZONE`](/guide/deploy/#date-time-and-timezone). The date ends the system prompt; the time is a note on a react run's first model call, never stored. `false` for a run that must be reproducible, such as an eval replay. |
+| `include_datetime` | bool | `true` | Tell the model today's date and the current time, in [`FELIX_TIMEZONE`](/guide/deploy/scheduling/#date-time-and-timezone). The date ends the system prompt; the time is a note on a react run's first model call, never stored. `false` for a run that must be reproducible, such as an eval replay. |
 
 <Aside type="caution">
   All three resolve **only** under `workspace/{tenant}/` — in the object store and,

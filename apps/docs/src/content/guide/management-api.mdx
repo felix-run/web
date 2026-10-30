@@ -1075,7 +1075,7 @@ Every refusal is `{error, message}`, with `issues` on `invalid_bundle` and `reas
 | `eval_in_progress` | `409` | The version already has an evaluation queued or running |
 | `pending_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided drafts, or a promoter holds 20 undecided promotions |
 | `feedback_cap_reached` | `429` | An agent's manifest holds `max_pending` undecided feedback |
-| `skill_jobs_cap_reached` | `429` | The tenant's skill-job caps; see [Deploy](/guide/deploy/#skill-jobs) |
+| `skill_jobs_cap_reached` | `429` | The tenant's skill-job caps; see [Deploy](/guide/deploy/workspaces/#skill-jobs) |
 | `version_corrupt` | `500` | The object store no longer holds the bytes the row recorded |
 
 Browse and import add their own codes — `invalid_source`, `ambiguous_ref`, `commit_not_in_repo`,
@@ -1163,7 +1163,7 @@ conversation's history reaches its runs. The dialog says so before anything is s
 too, and leaves the schedule alone. The web UI's Jobs page has it as **Run now** on each row, which
 opens the job's run history with that run on top.
 
-Schedules use standard five-field cron, evaluated in UTC or the job's `timezone` — see [Deploy](/guide/deploy/#cron-schedules).
+Schedules use standard five-field cron, evaluated in UTC or the job's `timezone` — see [Deploy](/guide/deploy/scheduling/#cron-schedules).
 `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too, as do plain intervals (`300` seconds,
 `every:5m`) and one-shot `at:` timestamps. Anything else is refused with `422` and nothing is stored. A job stored before that check
 existed, with a schedule it cannot read, does not fire: its `last_status` reads `error` and
@@ -1249,7 +1249,7 @@ is cut down over a few runs; a failed trim is logged and leaves the run recorded
 ### Job health
 
 `GET /jobs` and `GET /jobs/{name}` carry each job's open health incidents as `health`, written by the
-Worker's [job health watch](/guide/deploy/#job-health-watch) every 5 minutes — `{}` for a healthy
+Worker's [job health watch](/guide/deploy/scheduling/#job-health-watch) every 5 minutes — `{}` for a healthy
 job:
 
 ```json
@@ -1605,7 +1605,7 @@ step hands on at most 128 KiB and a run's record holds at most 4 MiB. Finished r
 
 A run starts three ways: by hand (`trigger: manual`), from a job naming the workflow (`job:<name>`,
 above), or from a signed trigger (`trigger:<id>`, see [Inbound
-triggers](/guide/deploy/#inbound-triggers)) whose payload fields are mapped to typed inputs; a run a
+triggers](/guide/deploy/integrations/#inbound-triggers)) whose payload fields are mapped to typed inputs; a run a
 trigger started lists the sender's values as `untrusted_inputs`, and its agent steps read every
 value they are given inside a fence. On any run, however it started, a value an agent step is given
 from another step's output is fenced the same way: a step's output is only as trustworthy as what

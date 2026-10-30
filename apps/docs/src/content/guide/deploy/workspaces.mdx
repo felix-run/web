@@ -1,0 +1,139 @@
+---
+title: "Workspaces and skills"
+description: "Hosted workspaces and the skill library — scripts, imports and background jobs — on a self-hosted Felix."
+---
+
+Where an agent's files live on the harness, and what a deployment needs for the skill library: scripts, imports from GitHub and background jobs. [Skills](/guide/skills/) has the model.
+
+## Hosted workspaces
+
+By default a [workspace scope](/guide/manifest-reference/tools/#specworkspace) is a directory under
+`FELIX_WORKSPACE_ROOT` on the host. With **`FELIX_WORKSPACE_BACKEND=hosted`** each scope instead
+lives in its own sandbox: a Cloudflare Container (a Firecracker microVM) started with the internet
+off and an empty environment, reached through a Cloudflare Worker that ships with the harness
+(`deploy/cloudflare/workspace-gateway`). Nothing a model writes or runs touches the host.
+
+- **The tools answer as they do locally.** The file operations run in the sandbox with the local
+  backend's own code (no symlink followed, ranged reads, edit by rename); a conformance test holds
+  the two backends to identical answers.
+- **`shell_tools` run in the sandbox,** after the same allowlist and command screening as on the
+  host, and never fall back to the host. The image is slim Debian with Python: a command that is not
+  installed there fails as a missing binary.
+- **Files persist in R2.** A sandbox stops after 10 idle minutes and its disk goes with it, so
+  `/workspace` is backed up to an R2 bucket when a run that wrote files ends (and before the idle
+  stop), and restored when the sandbox next starts. A restore that fails refuses the call rather than
+  serving the scope empty.
+- **A thread's repository is cloned into its sandbox.** The person's token goes to the gateway for
+  the one clone and is added to the sandbox's requests to github.com outside the container, which
+  may fetch only that repository and only while the clone runs: the sandbox never holds the token
+  and cannot push. The file listing and `publish_commits` read the repository there; publishing
+  still goes through GitHub's API. A repository opens only into an empty thread workspace, and
+  removing it destroys the sandbox.
+- **Not served under `hosted`,** and refused rather than run on the host: an image tool's `path`,
+  and `publish_commits` in a thread with no repository of its own, for any scope but `deployment`,
+  which stays on the host.
+- **A scope starts empty on `hosted`.** To carry what local scopes already hold, run
+  `felix workspace upload` once after turning it on (`--dry-run` first); the local files stay where
+  they are, and symlinks and files over the write cap are skipped and reported.
+
+To turn it on, deploy the gateway, then point the harness at it:
+
+```bash
+cd deploy/cloudflare/workspace-gateway          # in the felix-run/felix checkout
+cp wrangler.example.jsonc wrangler.jsonc && npm ci
+npx wrangler r2 bucket create felix-workspaces
+openssl rand -hex 32 > gateway-token            # keep it; it goes to both sides
+npx wrangler secret put WORKSPACE_GATEWAY_TOKEN < gateway-token
+npx wrangler deploy                             # builds the image: needs Docker
+```
+
+| Setting (API and Worker) | Value |
+|---|---|
+| `FELIX_WORKSPACE_BACKEND` | `hosted` |
+| `FELIX_WORKSPACE_GATEWAY_URL` | the Cloudflare Worker's https URL |
+| `FELIX_WORKSPACE_GATEWAY_TOKEN` | the same token, 32+ characters |
+
+Boot refuses `hosted` without an https URL (plain http only for localhost) and a long enough token.
+Measured on the reference deployment: a sandbox's cold start took 2.6–11s, a warm operation about
+0.5s, and a backup about 2s.
+
+## Skill library
+
+Agent Skills come from the image's bundled `skills/`, from `FELIX_SKILLS_DIR`, from `SKILL.md` keys
+an operator uploads to the object store, and from each tenant's skill library, which agents with
+`spec.skill_authoring` and operators with `skills:write` write through review. See
+[Skills](/guide/skills/).
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILLS_DIR` | empty | An extra directory of skill packages, each a `<FELIX_SKILLS_DIR>/<name>/SKILL.md` (a loose `*.md` at its root is not a skill), searched after the bundled `skills/`. The library refuses to save a name either one holds. Check a package with `felix skills validate <dir>`. |
+| `FELIX_SKILL_PUBLISH_MIN_QUALITY` | `0` | 0–100. Refuse a publish whose quality review scores below this; `0` turns the bar off. |
+| `FELIX_SKILL_PUBLISH_BLOCK_ON_ADVISORY` | `false` | Also refuse a version whose security scan is `advisory` (medium findings), not only `fail`. |
+| `FELIX_SKILL_PUBLISH_REQUIRE_EVAL` | `false` | Refuse a publish unless the version has a succeeded evaluation that counts. |
+| `FELIX_SKILL_PUBLISH_MIN_EVAL_UPLIFT` | unset | −100–100. Refuse a publish unless the version's latest counting evaluation has at least this uplift; unset is no floor. |
+
+A version whose security scan fails never publishes, whatever these say. They are the deployment's
+floor: a tenant's own policy (`PATCH /skill-library/-/policy`) can tighten every one and loosen none.
+A rollback is judged without the two evaluation settings.
+
+### Skill scripts
+
+A skill's `scripts/` run only through [`spec.skill_scripts`](/guide/manifest-reference/memory/#specskill_scripts),
+and only under interpreters the operator lists.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_SCRIPT_INTERPRETERS` | empty | Comma-separated interpreters (`python3,bash`), each one word: a bare name or an absolute path. Empty disables skill scripts. Needs the isolation a shell tool needs (`FELIX_SHELL_RUNNER_URL` off a development box), or boot fails, and must be set on the shell runner too: it admits a script only under an interpreter of its own list. |
+| `FELIX_SKILL_SCRIPT_SOURCES` | `host` | Whose skills may run scripts: `host` (bundled and `FELIX_SKILLS_DIR`), `library`, `personal`. Adding `library` lets whoever holds `skills:write`, or adopts an import, run code on the runner; `personal` does the same for every caller with `skills:personal`. |
+
+`felix doctor` prints the interpreter list. List only interpreters that stop reading options at the
+script; `node` is not a default because it loads `node_modules` from the workspace root the model
+writes. See [Governance → Skill scripts](/internals/governance/#skill-scripts).
+
+### Skill imports
+
+Browsing and importing skills from GitHub (`GET /skill-library/-/browse`,
+`POST /skill-library/-/import`) runs on the API; every call goes to `api.github.com` through the
+egress guard. The settings are read at boot. See [Skill import](/guide/skill-import/).
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_IMPORT_GITHUB_TOKEN` | empty | Reaches private repositories and lifts GitHub's limit from 60 calls an hour to 5,000. Read-only Contents access is enough. Hydrated from the secrets backend and masked like any credential; sent only as a header to `api.github.com`. |
+| `FELIX_SKILL_IMPORT_SOURCES` | empty | Comma-separated `[<tenant>=]github:<owner>[/<repo>[/<path>]]` globs a browse or import may name; an entry with a tenant serves that tenant only, and one without a glob covers everything under it. Empty allows any GitHub source. |
+| `FELIX_SKILL_IMPORT_MIN_AGE_DAYS` | `0` | 0–365. Refuse (`403 too_recent`) files this tenant first saw fewer than this many days ago, by Felix's own clock. Tenants can raise it, never lower it. |
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR` | `500` | 1–100000. GitHub calls one tenant's browses and imports may make per hour (`429 rate_limited`). |
+| `FELIX_SKILL_IMPORT_CALLS_PER_HOUR_TOTAL` | `4000` | 1–1000000. The same for the whole deployment, protecting the token's own limit. |
+| `FELIX_SKILL_IMPORT_CHECK_HOURS` | `0` | 0–168; `0` is off. Check every imported skill against its origin this often, from the Worker's `skill_upstream_checks` task, spending at most half of each budget above. Needs `felix-scheduler`, and the Worker needs the same `FELIX_SKILL_IMPORT_SOURCES` and `FELIX_SKILL_IMPORT_GITHUB_TOKEN` as the API; `felix doctor` notes this when it is set. |
+| `FELIX_SKILL_UPDATE_WEBHOOKS` | empty | Comma-separated `tenant=endpoint_id` (`acme=ops,acme=ci,beta=beta-hook`): where each tenant's `skill.update_available` events go. Each id must be a `FELIX_WEBHOOK_ENDPOINTS` endpoint open to that tenant, or boot fails; no wildcard, and a tenant not listed gets none. Set it on the API and the Worker alike. See [Update notifications](/guide/skill-import/#update-notifications). |
+
+A malformed `FELIX_SKILL_IMPORT_SOURCES` entry stops the API at boot. With the token set, boot also
+refuses an empty list, an entry naming no tenant, and an entry whose owner is a glob — each would
+let one tenant read whatever the token reads — unless `FELIX_ENVIRONMENT=development` and
+`FELIX_AUTH_MODE=none` together. The call budgets are shared across replicas through
+`FELIX_REDIS_URL`; without Redis each replica keeps its own.
+
+### Skill jobs
+
+Evaluations and AI improvements from accepted feedback run in the Worker's `skill_jobs` task,
+enqueued every minute by **`felix-scheduler`** — run it alongside `felix-worker`, or a queued
+evaluation stays `queued` and accepted feedback is never rewritten. The API never enqueues to the
+Worker directly. Each sweep runs at most five jobs of each kind, and one sweep runs at a time across
+every Worker, held by a lease row that works through a transaction pooler, so the PgBouncer overlay
+needs nothing special. A Worker that dies mid-sweep frees it within the job deadline plus five
+minutes.
+
+| Setting | Default | |
+|---|---|---|
+| `FELIX_SKILL_IMPROVE_MODEL` | empty | The `FELIX_MODEL_ROUTES` id that rewrites a skill from accepted feedback; empty is `FELIX_DEFAULT_MODEL_ID`. The rewrite is saved as a draft, never published. |
+| `FELIX_SKILL_EVAL_MODEL` | empty | The route that answers each evaluation scenario, with and without the skill; empty is the default route. |
+| `FELIX_SKILL_EVAL_JUDGE_MODEL` | empty | The route that scores the answers; empty is the default route. |
+| `FELIX_SKILL_EVAL_MAX_SCENARIOS` | `10` | 1–10. Scenarios one evaluation runs; each is four model calls. |
+| `FELIX_SKILL_EVAL_MAX_TOKENS` | `2048` | 64–32000. Output-token cap on each evaluation call (answers, generated scenarios, judge scores). |
+| `FELIX_SKILL_IMPROVE_MAX_TOKENS` | `8192` | 256–64000. Output-token cap on the rewritten SKILL.md. |
+| `FELIX_SKILL_JOB_DEADLINE_SECONDS` | `1200` | 1–86400. Wall clock for one job; past it the job ends `failed`. |
+| `FELIX_SKILL_JOBS_MAX_QUEUED` | `20` | 1–10000. Per tenant: evaluations and accepted improvements queued or running at once. |
+| `FELIX_SKILL_JOBS_DAILY_LIMIT` | `200` | 1–100000. Per tenant: skill jobs created per UTC day. |
+
+Past either per-tenant cap, queueing another job is refused `429 skill_jobs_cap_reached`, which
+waiting fixes. Every job's model calls are metered to the skill's tenant like a turn. A job is
+claimed at most three times before it fails `attempts_exhausted`.

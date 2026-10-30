@@ -208,7 +208,7 @@ registered names, so a typo is caught immediately rather than at first write.
 
 A destination kind delivers [`post`](/guide/manifest-reference/running/#specdestinations) to something
 other than a signed webhook — a chat service's API, a feed. The operator selects it with `kind` in
-[`FELIX_DESTINATIONS`](/guide/deploy/#shared-destinations); unlike the backends above, an
+[`FELIX_DESTINATIONS`](/guide/deploy/notifications/#shared-destinations); unlike the backends above, an
 unregistered kind fails the compile of a manifest naming it, not the boot, since a plugin's kind may
 register after the settings are read. A later registration of the same kind replaces the earlier.
 
