@@ -944,7 +944,9 @@ spec:
 An entry must set **either** `path_prefix` or `allow_any_host: true`; a manifest that sets
 neither fails validation. Every other outbound ref names a destination you chose, so leaving
 this one open by default would make unrestricted egress the path of least resistance.
-`allow_any_host` is logged when the agent compiles.
+`allow_any_host` is logged when the agent compiles: as a warning when nothing bounds it, or when
+the `network.allow_hosts` that does holds a wildcard (named in the line, since `*.github.io` covers
+hosts anyone can register), and at info when that list is exact hosts only.
 
 The request is a `GET`. Redirects are followed up to five hops, and each hop is re-checked
 against both the egress guard and `path_prefix` — a redirect cannot leave the prefix.
