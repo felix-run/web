@@ -8,9 +8,6 @@ add() { out="${out}$1
 
 [ -d "$root/node_modules" ] || add "- Dependencies not installed. Run: pnpm install"
 
-[ -f "$root/apps/chat-ui/wrangler.jsonc" ] || \
-  add "- apps/chat-ui/wrangler.jsonc missing (gitignored). Only needed to deploy: cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc"
-
 
 # Is the Python harness up? Everything under /api/* fails in dev without it.
 if ! (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null; then

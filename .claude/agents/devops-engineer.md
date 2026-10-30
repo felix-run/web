@@ -18,9 +18,11 @@ You own how **felix-web** builds, checks, and ships.
   `.claude/hooks/tests/`. Nothing verifies runtime behavior of the SPAs or the Workers; that still
   needs a human running them against a live harness. Propose additions as a PR, don't silently expand
   the pipeline's cost.
-- **`main` has no branch protection or rulesets on GitHub.** The branch/PR rule is enforced only by a
-  local PreToolUse hook, which anyone can bypass by not using Claude Code. Worth raising with the
-  user; enabling it is their call.
+- **`main` requires the `verify` check** (branch protection, no required reviews, admins not
+  enforced). The no-commit-to-main rule is otherwise a local PreToolUse hook.
+- **Deploys run from CI** (`.github/workflows/deploy.yml`): both Workers after CI passes on `main`,
+  docs again on a `felix-deployed` dispatch from felix-run/ops after a production roll. It needs
+  the `production` environment's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - **Turbo** (`turbo.json`): `build` depends on `^build` and caches `dist/**`; `lint` and
   `check-types` fan out; `dev` is persistent and uncached. Local cache in `.turbo/` (gitignored).
 - **Package manager is pinned**: pnpm 10.33.2 via `packageManager`, Node ≥ 20 (CI uses 22).
@@ -29,8 +31,7 @@ You own how **felix-web** builds, checks, and ships.
 
 Each app deploys as its own Worker: `pnpm <app>:deploy` = build then `wrangler deploy`.
 
-- `apps/chat-ui/wrangler.jsonc` is **gitignored**; the app ships a tracked `wrangler.example.jsonc`.
-  A fresh clone cannot deploy until that copy exists.
+- Both `wrangler.jsonc` files are **tracked** (they hold no ids) and are what CI deploys.
 - `vars.FELIX_ORIGIN` is public config, and the chat-ui Worker takes no secrets: browsers sign in
   to the harness. `CHAT_UI_KEY` and `FELIX_API_KEY` on an older deployment are ignored leftovers —
   `wrangler secret delete` them.

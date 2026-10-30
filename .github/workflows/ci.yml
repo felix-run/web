@@ -5,25 +5,33 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege, stated here rather than inherited from a repository setting.
+permissions:
+  contents: read
+
+# A newer push supersedes a PR's run. On main every merge keeps its run: deploy.yml starts from
+# a successful CI run on main, so a cancelled one would leave that merge undeployed.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
           cache: pnpm
       # The terminal client renders through a native core reached over FFI,
       # which Node has only behind an experimental flag. Its rendering tests run
       # under Bun; everything else in the repo stays on Node.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.4
 
@@ -71,7 +79,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm check-payload-shapes
 
-      # turbo builds every package with a build script: chat-ui and docs.
+      # turbo builds every package with a build script: chat-ui, docs and the tui.
       # The docs build normally downloads the spec of the release api.felix.run
       # runs; a PR build uses the committed snapshot so it does not hang on the
       # network. The real download is what reference-freshness.yml checks.

@@ -1,4 +1,5 @@
-// Copy to wrangler.jsonc (gitignored) and adjust for your deployment.
+// The make.felix.run deployment, tracked so CI can deploy it (.github/workflows/deploy.yml). It
+// holds no account or resource ids. For your own deployment, change `routes` and FELIX_ORIGIN.
 //
 // `vars` is PUBLIC — it ships in the Worker config and is readable by anyone
 // with access to the account. Only FELIX_ORIGIN belongs here. The Worker takes

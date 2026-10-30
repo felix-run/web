@@ -54,9 +54,8 @@ Reference for `threat-review`.
 
 - [ ] `wrangler.jsonc` `vars` contains only `FELIX_ORIGIN`
 - [ ] `.dev.vars` gitignored; only `.dev.vars.example` tracked, with empty values
-- [ ] `apps/chat-ui/wrangler.jsonc` still gitignored (by `apps/chat-ui/.gitignore`); only
-      `wrangler.example.jsonc` tracked. `apps/docs/wrangler.jsonc` is tracked on purpose — it must
-      stay free of account and resource ids
+- [ ] Both tracked `wrangler.jsonc` files (`apps/chat-ui`, `apps/docs`) stay free of account and
+      resource ids; CI deploys them as they are
 - [ ] No secret in `index.html`, in a `VITE_`-prefixed env var, or in `dist/`
 - [ ] No source maps published that expose more than intended
 - [ ] Nothing sensitive written to `localStorage` beyond the gate key and UI state

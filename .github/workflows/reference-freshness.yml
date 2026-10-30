@@ -1,10 +1,10 @@
 name: API reference freshness
 
 # docs.felix.run/reference/ renders the spec of the felix release api.felix.run
-# ran when the docs were last deployed. The deploy is manual (`pnpm docs:deploy`),
-# so a production upgrade leaves the reference one version behind until someone
-# redeploys — and nothing else would say so. This compares the two and fails
-# with the fix. It also downloads the release's spec, so a release published
+# ran when the docs were last deployed. deploy.yml redeploys them when felix-run/ops
+# reports a production roll; if that dispatch never arrives (or the deploy fails),
+# the reference stays a version behind and nothing else would say so. This compares
+# the two and fails with the fix. It also downloads the release's spec, so a release published
 # without openapi.json fails here before the next deploy trips on it.
 
 on:
@@ -29,7 +29,7 @@ jobs:
           status=$(curl -sS --max-time 20 -o version.txt -w '%{http_code}' https://docs.felix.run/api-version.txt)
           case "$status" in
             200) docs=$(tr -d '[:space:]' < version.txt) ;;
-            404) echo "::error::docs.felix.run has no API reference deployed (api-version.txt is 404), production is v$live — run \`pnpm docs:deploy\`"; exit 1 ;;
+            404) echo "::error::docs.felix.run has no API reference deployed (api-version.txt is 404), production is v$live — run the Deploy workflow for docs (\`gh workflow run deploy.yml -f app=docs\`)"; exit 1 ;;
             *) echo "::error::docs.felix.run/api-version.txt answered $status"; exit 1 ;;
           esac
           echo "api.felix.run runs v$live; docs.felix.run/reference/ shows v$docs"
@@ -37,4 +37,4 @@ jobs:
             "https://github.com/felix-run/felix/releases/download/v${live}/openapi.json" || {
             echo "::error::the felix v$live release has no openapi.json, so the docs build cannot render it"; exit 1; }
           test "$live" = "$docs" || {
-            echo "::error::docs.felix.run/reference/ is v$docs, production is v$live — run \`pnpm docs:deploy\`"; exit 1; }
+            echo "::error::docs.felix.run/reference/ is v$docs, production is v$live — run the Deploy workflow for docs (\`gh workflow run deploy.yml -f app=docs\`)"; exit 1; }

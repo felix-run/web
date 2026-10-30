@@ -80,12 +80,14 @@ If `shadcn` pulls in a new dependency that another package already uses, add it 
 
 ## Deploy
 
-Each app's real `wrangler.jsonc` is **gitignored** — copy the example and set
-`vars.FELIX_ORIGIN` to your public harness API (production: `https://api.felix.run`).
+Both apps deploy from CI: `.github/workflows/deploy.yml` deploys each Worker after CI passes on
+`main`, and redeploys the docs when felix-run/ops reports a production roll (`felix-deployed`).
+Dispatch it from the Actions tab to deploy by hand. Each app's `wrangler.jsonc` is tracked and holds
+no ids; for your own deployment change its `routes` and chat-ui's `vars.FELIX_ORIGIN`.
+
+From a machine with `wrangler login`:
 
 ```bash
-cp apps/chat-ui/wrangler.example.jsonc apps/chat-ui/wrangler.jsonc
-
 pnpm chat:deploy
 pnpm docs:deploy
 ```
