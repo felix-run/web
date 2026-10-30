@@ -1205,6 +1205,32 @@ a small `FELIX_JOB_RUNS_KEEP` never hands a heartbeat its firings back. Skipped 
 like any other. One trim deletes at most 1,000 rows, oldest first, so a history from before trimming
 is cut down over a few runs; a failed trim is logged and leaves the run recorded.
 
+### Job health
+
+`GET /jobs` and `GET /jobs/{name}` carry each job's open health incidents as `health`, written by the
+Worker's [job health watch](/guide/deploy/#job-health-watch) every 5 minutes — `{}` for a healthy
+job:
+
+```json
+"health": {
+  "failing": {"since": 1790000000000, "opened_at": 1790000300000, "error_class": "run_error",
+              "alert": "posted", "attempts": 0}
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `overdue` | Enabled, scheduled, due longer than `FELIX_JOB_OVERDUE_GRACE_SECONDS` (900) ago, and not fired by a scheduler sweep since. Clears when the job fires. |
+| `failing` | Its last `FELIX_JOB_FAILURE_THRESHOLD` (3) runs that ran were all `error`, `skipped` ignored. Clears when a run since `since` is `ok`. |
+| `overdue_seen_at` | When the watch first saw the job past its grace; not an incident until a scheduler sweep has had two minutes since. |
+
+In each incident, `since` is when it began (the due time, or the streak's first run) and `opened_at`
+when the watch opened it, in epoch ms; `error_class` is the last error's class, never its text.
+`alert` says what became of its post to `FELIX_JOB_ALERT_DESTINATION`: `pending` (tried again next
+sweep; `attempts` counts the tries, twelve at most), `unrouted` (no destination open to this tenant
+yet; tried again), `posted`, `maybe_posted` (never retried) or `not_posted` (out of tries). Disabling
+a job clears both kinds. `PUT` cannot write `health`: a re-save leaves an open incident open.
+
 ### A job that runs a workflow
 
 A job may name a `workflow_id` instead of a `manifest_id` (never both: `422
