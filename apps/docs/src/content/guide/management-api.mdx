@@ -1113,17 +1113,19 @@ curl -s -X PUT "$BASE_URL/jobs/nightly-digest" \
 | Field | Type | Default |
 |---|---|---|
 | `schedule` | string — see below | `""` (manual only) |
+| `timezone` | string — an IANA zone a cron `schedule` is read in, 1–64 characters | `null` (UTC) |
 | `manifest_id` | string | `""` |
 | `workflow_id` | string — a workflow to run instead of a manifest | `""` |
 | `workflow_revision` | string — the revision you reviewed (`412` if it moved) | current |
 | `payload` | object | `{}` |
 | `enabled` | bool | `true` |
 
-`schedule` is five-field cron in **UTC** (`minute hour day month weekday`), a macro (`@hourly`,
+`schedule` is five-field cron (`minute hour day month weekday`), a macro (`@hourly`,
 `@daily`, `@weekly`, `@monthly`, `@yearly`), an interval (`every:30s`, `every:5m`, `@every 2h`),
 integer seconds, or a one-shot `at:` with an ISO-8601 timestamp and its offset
 (`at:2026-10-21T09:00:00Z`, `at:2026-10-21T11:00:00+02:00`). A timestamp with no offset is refused
-rather than read as UTC or the server's zone. **An empty schedule is manual only**: the job never fires on its own and runs
+rather than read as UTC or the server's zone. Cron and macros are read in **UTC** unless the job
+names a `timezone`; see [Timezones](#timezones). **An empty schedule is manual only**: the job never fires on its own and runs
 only through Run now. (Through Felix 0.13.1 it meant "every 60 seconds", so a job created to be tried
 by hand fired every minute on one thread; a row stored with an empty schedule simply stops firing.)
 To pause a scheduled job, set `enabled: false` — Run now still works on a disabled job. A schedule
@@ -1154,11 +1156,39 @@ conversation's history reaches its runs. The dialog says so before anything is s
 too, and leaves the schedule alone. The web UI's Jobs page has it as **Run now** on each row, which
 opens the job's run history with that run on top.
 
-Schedules use standard five-field cron, evaluated in UTC — see [Deploy](/guide/deploy/#cron-schedules).
+Schedules use standard five-field cron, evaluated in UTC or the job's `timezone` — see [Deploy](/guide/deploy/#cron-schedules).
 `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too, as do plain intervals (`300` seconds,
 `every:5m`) and one-shot `at:` timestamps. Anything else is refused with `422` and nothing is stored. A job stored before that check
 existed, with a schedule it cannot read, does not fire: its `last_status` reads `error` and
 `last_error` says why.
+
+### Timezones
+
+`timezone` puts a cron expression or macro on that zone's wall clock:
+
+```bash
+curl -s -X PUT "$BASE_URL/jobs/standup-prep" \
+  -H "authorization: Bearer $FELIX_KEY" -H 'content-type: application/json' \
+  -d '{"schedule":"0 8 * * 1-5","timezone":"America/New_York","manifest_id":"quick","payload":{"prompt":"Summarize yesterday."}}'
+```
+
+is 08:00 New York time on weekdays, before and after each daylight-saving change. `GET /jobs` and
+`GET /jobs/{name}` return the zone as `timezone` (`null` for UTC); `next_run_at` stays epoch
+milliseconds.
+
+- **Only cron and macros move.** An interval (`every:5m`, seconds) counts from the last firing and
+  an `at:` carries its own offset, so a `timezone` beside either, or beside an empty schedule, is
+  refused with `422` and nothing is stored.
+- **Names are canonical IANA keys.** `America/New_York`, not `america/new_york`; `Factory`,
+  `posixrules` and `localtime` are refused. An unknown name is `422`, and its text is not echoed.
+- **Daylight saving.** A local time the change skips fires at the first instant after the gap; one it
+  repeats fires once, at its first occurrence. A daily job fires once every local day; `@hourly`
+  fires 23 times on the spring day and 24 on the autumn one.
+- **A `PUT` replaces it like every other field.** Leaving `timezone` out puts the job back on UTC.
+  A changed zone is a changed schedule: the job is due at whichever comes first, the due time it
+  held or the new zone's next slot.
+- **No zone is UTC.** Every job written before the field existed (migration `0051_job_timezone`)
+  fires exactly when it did.
 
 ### Run a job now
 
@@ -1293,7 +1323,7 @@ curl -s -X PUT "$BASE_URL/heartbeats/assistant" \
 
 ```json
 { "manifest": "assistant", "name": "hb-assistant-3f9a1c0b7e21", "enabled": true,
-  "schedule": "every:60m", "thread_id": "acme:hb-5c1e…", "next_run_at": 1790003600000,
+  "schedule": "every:60m", "timezone": null, "thread_id": "acme:hb-5c1e…", "next_run_at": 1790003600000,
   "last_run_at": null, "last_status": null, "expires_at": null }
 ```
 
@@ -1331,9 +1361,10 @@ The `error` codes arrive as `{"detail": {"error": <code>, "detail": <message>}}`
 refusal's `detail` is the written message as a string.
 
 **`GET /heartbeats`** answers `{items: [...]}`, the caller's heartbeats on every manifest, each
-`{manifest, name, enabled, schedule, thread_id, next_run_at, last_run_at, last_status,
-expires_at}`, where `thread_id` is the heartbeat conversation and `expires_at` is when it stops for
-good (above), or `null`. Nobody else's are listed, an operator's included; an
+`{manifest, name, enabled, schedule, timezone, thread_id, next_run_at, last_run_at, last_status,
+expires_at}`, where `timezone` is the zone a cron `schedule` is read in
+([`spec.heartbeat.timezone`](/guide/manifest-reference/#specheartbeat); `null` is UTC), `thread_id`
+is the heartbeat conversation and `expires_at` is when it stops for good (above), or `null`. Nobody else's are listed, an operator's included; an
 operator sees every heartbeat's job through `GET /jobs`.
 
 **`DELETE /heartbeats/{manifest}`** removes the job, its run history and its firing threads, and
