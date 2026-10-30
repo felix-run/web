@@ -141,7 +141,7 @@ curl -s https://felix.example.com/mcp/support \
 ## Felix as an MCP client
 
 `spec.mcp_servers` binds each remote server's tools as `{name}__{tool}`. The fields are in the
-[manifest reference](/guide/manifest-reference/#specmcp_servers).
+[manifest reference](/guide/manifest-reference/tools/#specmcp_servers).
 
 Each discovery and each tool call is a short session of the SDK's client. The SDK probes
 `server/discover` and falls back to the `initialize` handshake for a server on an earlier revision.

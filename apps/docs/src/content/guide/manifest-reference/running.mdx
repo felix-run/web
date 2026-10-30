@@ -1,0 +1,743 @@
+---
+title: "Running and reaching people"
+description: "The felix/v1 manifest fields for scheduling, notifications, heartbeats, destinations, inbound auth and execution mode."
+---
+
+How a run executes, when it runs without being asked, how it tells someone, and who may call it.
+
+## `spec.scheduling`
+
+```yaml
+spec:
+  pattern: react
+  scheduling:
+    max_tasks: 10              # tasks one caller may hold on this manifest; 1–100
+    min_interval_minutes: 60   # the shortest gap a recurring task may fire at
+    approval: true             # hold each schedule_task call for a person
+    report_back: true          # add each answer to the conversation that scheduled it
+```
+
+Lets the agent schedule its own follow-up work — a reminder, a check to repeat, work due at a set
+time. Binds three tools; unset binds nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `schedule_task` | `when`, `prompt` (1–8,000 characters), `timezone` (optional IANA zone, ≤ 64), `title` (optional, ≤ 200), `fresh_thread` (default `false`) | `{status: "scheduled", name, schedule, timezone, next_run_at, title}` |
+| `list_scheduled` | none | `{tasks: [{name, title, schedule, timezone, next_run_at, last_run_at, last_status, enabled, expires_at}]}` |
+| `cancel_scheduled` | `name` | `{status: "cancelled", name}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_tasks` | int 1–100 | `10` | Tasks one caller may hold here at once. A one-shot that has fired, and a disabled task, no longer count; a recurring task counts until it is cancelled or disabled. |
+| `min_interval_minutes` | int ≥ 1 | `60` | The shortest gap a recurring task may fire at. For cron, the next 200 firings are walked and the smallest gap taken (`0 9,10 * * *` is 60 minutes); a zoned cron's firings around each daylight-saving change in the next 400 days are walked too, where gaps can be shorter (`30 2,3 * * *` in New York is 30 minutes apart on the spring day). Checked when the task is written. A one-shot is exempt. |
+| `approval` | bool | `true` | Add the built-in approval over `schedule_task` (below). `false` adds none. |
+| `report_back` | bool | `true` | Add each firing's answer to the conversation the task was scheduled from (below). `false` leaves it in the job's run history only. |
+
+**A task is a scheduled job.** `schedule_task` writes an ordinary [job](/guide/management-api/#jobs)
+named `task-<hex>` on this manifest, as the caller: `created_by` is who the conversation acts for and
+the job records their scopes, so each firing runs as `cron` on their behalf and reaches nothing they
+could not reach by asking. `prompt` is the job's `payload.prompt`, run as a new user message with no
+conversation around it, so it must be self-contained; every firing shares one thread unless
+`fresh_thread` is set. `when` takes the [job schedule grammar](/guide/management-api/#jobs) — most
+usefully `at:<ISO-8601 timestamp with offset>` for once, `every:90m`, a macro, or five-field cron.
+A cron or macro is read in `timezone`, by default [`FELIX_TIMEZONE`](/guide/deploy/#date-time-and-timezone)
+— the zone the agent is told the time in — so `0 8 * * *` is 08:00 as the person sees it. The zone
+is recorded on the job, so changing `FELIX_TIMEZONE` later does not move a task already written; an
+interval or `at:` task records none, and a `timezone` given beside one is refused. `list_scheduled`
+and the approval preview show each task's zone; `next_run_at` and `last_run_at` stay UTC. A recurring task first runs at its schedule's next slot, not on the next sweep as a job written
+over HTTP does. `list_scheduled` and `cancel_scheduled` see only the tasks the caller scheduled from
+this manifest — never an operator's job or another person's task — and a name that is not the
+caller's gets the same `no_such_task` as one that does not exist. The jobs stay visible to an
+operator through `GET /jobs`. No argument sets the task's
+[reader's preferences](/guide/management-api/#a-jobs-readers-preferences): the person it was
+scheduled for writes those over `/jobs/{name}/preferences`, with no jobs scope, and every firing
+carries them whole.
+
+**Reporting back.** When a firing answers, the answer is added to the conversation the task was
+scheduled from, headed `[Scheduled task: <title>]` (the task's name when it has no title), so the
+person sees what it found and the next turn there can talk about it. It is an assistant entry
+(`custom`, `metadata.type: task_report`, `in_context: true`), never a user one: the text is the
+model's, possibly over pages it read, and must not reach the next turn as the person's words. It
+gets the marker scan a `notify` gets, and an answer that reads as a prompt injection is not added.
+It is added only to a chat conversation of the person who scheduled the task, one that still exists,
+and never while a run is going on in it: the answer then waits and is added when that run ends (the
+newest 20 wait at most, for at most a day). The job's run records what happened as `report` — `appended`, `queued`
+(waiting for a run to end), `missing`, `screened`, `not_eligible` (nowhere it may go) or `failed`; an
+empty answer records none. An answer over 16,000 characters is cut, and the run history keeps it
+whole. A firing that errors reports that it did not finish, with the run's recorded error. Every
+firing of a recurring task adds its answer to the conversation, but only the task's newest report
+reaches the model (`metadata.context_key: task_report:<name>`), so a short interval does not grow
+each turn's context.
+
+**Refusals.** Every refusal is a tool result the model reads, `{"error": <code>, "detail": …}`, and
+nothing is written:
+
+| Code | When |
+|---|---|
+| `no_caller` | The conversation has no signed-in caller — every conversation under `FELIX_AUTH_MODE=none`. |
+| `shared_subject` | The caller's subject names no person: an API key with no `sub` (subject `api_key`), an inbound trigger's run (`trigger:<id>`, shared by every sender), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`, `skill-improver`, `skill-eval`) acting for no one. A task belongs to its writer's subject, so a shared one would make each holder's tasks everyone's. A plugin authenticator that gives many people one subject cannot be detected here; avoiding that is the operator's responsibility. |
+| `scheduled_run` | `schedule_task` only: the caller is scheduled work. A job's firing is marked scheduled, and the mark is carried into everything it starts — a workflow run and its agent steps, a durable child — so scheduled work never schedules more, however many hops down. |
+| `missing_scope` | `schedule_task` and `cancel_scheduled` need `jobs:write`; `list_scheduled` needs `jobs:read` (`jobs:write` implies it). |
+| `invalid_prompt`, `invalid_title` | Empty or over-long text. |
+| `invalid_schedule`, `never_fires` | `when` is outside the grammar, `timezone` is not a canonical IANA name or is given beside an interval or `at:`, or `when` names no time (an empty, manual-only schedule). |
+| `in_the_past`, `too_far_ahead` | An `at:` that has passed, or more than 366 days out. |
+| `too_frequent` | A recurring schedule whose shortest gap is under `min_interval_minutes`. |
+| `outlives_credential` | An `at:` after the caller's token expires (its `exp`). An API key has no expiry and is never refused this way. |
+| `too_many_tasks` | The caller already holds `max_tasks` here. |
+
+A task records its writer's token expiry. A firing after it — on schedule or through
+`POST /jobs/{name}/run` — is refused and the job disabled, with `last_error` "the credential that scheduled this
+task has expired; schedule it again": a task lives no longer than the credential that wrote it. A
+task that will not run again — a one-shot that has fired, or a task that is disabled, such as one
+disabled when its credential expired — is deleted, with its run history, once its last run is older
+than `FELIX_SCHEDULED_TASK_RETENTION_DAYS` (30; `0` keeps them). An enabled recurring task, a task
+that has never run, and every job an operator wrote are never swept.
+
+**The approval.** With `approval: true` each `schedule_task` call waits for a person, through the
+same flow as any [approval](/guide/manifest-reference/governance/#specapprovals): rule `scheduling.schedule_task`, `one_shot` and
+`bind_principal`, so a grant is never a standing licence to schedule. The approver reads a preview —
+the schedule, the title, and the prompt that will run later as the person who asked. If one of
+your own [`approvals`](/guide/manifest-reference/governance/#specapprovals) rules names `schedule_task` literally and has no `when_args`,
+that rule applies as written instead. A glob such as `*` does not displace the built-in rule: as a
+literal, the built-in one is the rule selected, so a looser catch-all never stands in for it. **No
+[permission mode](/guide/manifest-reference/governance/#specpermissions) waives any approval on `schedule_task`, `bypass` included,
+whichever rule asked for it**: the prompt runs later with no one watching, which a person present
+in the conversation now does not answer for. The
+preview runs every check above first, so a call the tool would refuse is denied
+(`[approval preview failed] …`) with no approval row and no wait.
+
+The three tools are bound before the governance stack, so policies, limits and screening apply to them
+like any tool. `list_scheduled` is read-only and runs in plan mode; the other two do not. A manifest
+that already has a tool of one of these names fails the compile.
+
+A task's firing has nobody reading its thread. To have it tell its writer what it found, give the
+manifest [`spec.notify`](#specnotify) as well: a notice sent from a firing reaches the person who
+scheduled the task, opens the conversation it was scheduled from, and is left in that conversation
+for them to read. For a recurring check-in whose instructions the operator writes and each person
+only turns on or off, use [`spec.heartbeat`](#specheartbeat) instead.
+
+## `spec.notify`
+
+```yaml
+spec:
+  pattern: react
+  notify:
+    max_per_run: 3       # notices one run may send; 1–20
+    max_per_hour: 10     # notices one person may receive from this agent in an hour; 1–100
+    approval: false      # hold each notify call for a person
+```
+
+Lets the agent tell the person it acts for something — a task it was scheduled to watch has
+finished, something they asked about needs them — as a Web Push to their own devices. Binds one tool;
+unset binds nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `notify` | `title` (1–80 characters), `message` (1–500) | `{delivered, channels, thread, note?}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_per_run` | int 1–20 | `3` | Notices one request context may send. Agents a run delegates to inline share its count; a durable run's resume, a background delegation child and each workflow step start their own. `max_per_hour` is the bound across them. |
+| `max_per_hour` | int 1–100 | `10` | Notices one person may receive from this manifest in any hour — per person, per manifest, per tenant — across every replica, in the shared rate-limit store (Redis when configured). The real bound on a looping or prompted agent. |
+| `approval` | bool | `false` | Hold each `notify` call for a person (below). |
+
+**The recipient is not an argument.** A notice goes to the person the run acts for (`acting_for`) and
+only to the browsers that person subscribed themselves through
+[`POST /push/subscriptions`](/guide/management-api/#push) — never another subscriber in the tenant.
+A model cannot be talked into telling someone else, because there is no one else to name. From a
+[scheduled task](#specscheduling)'s firing, which runs as `cron` on its writer's behalf, that person is
+the task's writer.
+
+**What is sent.** A notice is text a model wrote, possibly under a prompt injection, so before
+anything leaves, in order:
+
+1. **Secrets are redacted.** The governance stack masks a tool's *output*, and a notice's text is its
+   *arguments*, so known secret values are replaced with `[REDACTED]` in both fields here.
+   Personal data is not redacted.
+2. **Links are removed.** The text is NFKC-normalized and stripped of invisible format characters
+   and soft hyphens, then each link-shaped run becomes `[link removed]`: anything with a scheme
+   (`hxxp` included) or a `javascript:`, `data:`, `mailto:`, `tel:`, `sms:` or `intent:` prefix,
+   `www.` hosts, bare `host.tld/path` in any script (lookalike and IDN hosts), a host split across
+   lines, a single-label host with a port, `localhost`, and IPv4 (dotted decimal or hex), hex and
+   IPv6 addresses — with dots written as `[.]`, `(dot)`, ` dot `, `%2E` or full-width. It errs
+   toward removing: a filename such as `notes.md`, a phrase with "dot" between two words, and
+   `word:port` may go too. A phone number, and an IPv4 address written as one decimal number with
+   no scheme, are left.
+3. **The cleaned text is screened.** The marker scan always runs; when the manifest's
+   [`content_screening`](/guide/manifest-reference/governance/#speccontent_screening) is enabled (and its `model_tools`, if set, match
+   `notify`), its screening model and decider run as well. A flag refuses the call with `screened`,
+   and so does a screener that cannot run. The refusal does not echo the text.
+
+The push payload is `{kind: "notice", title, body, thread_id}`, encrypted end to end to the browser
+(RFC 8291), so the push service relays ciphertext. It may still show on the person's lock screen.
+`thread_id` is the run's own thread. For a scheduled task's firing it is the chat thread the task
+was scheduled from (`payload.scheduled_by.thread_id`) — for a [heartbeat](#specheartbeat)'s firing,
+the person's heartbeat conversation — but only when the task's writer is the person
+being notified and the id is a chat thread of the tenant's own: a suffix of plain id characters with
+no `:`. A chat client cannot create a thread with a `:` in it, and every thread the harness makes for
+itself has one (`job:`, `channel:`, `a2a:`, `workflow:`, `fiber:`), so a recorded origin naming one
+of those is neither linked nor written to. Only `schedule_task` and heartbeat enrolment
+(`PUT /heartbeats/{manifest}`) write `scheduled_by`:
+[`PUT /jobs`](/guide/management-api/#jobs) ignores one in the body, so a job written there cannot
+name somebody else's conversation. A task re-saved there by its own writer keeps its stored record;
+re-saved by anyone else, or by its writer onto another `manifest_id`, it becomes an ordinary job: a
+record counts only while it names the manifest the job runs. Anything else falls back to the run's thread. The push service
+holds an undelivered notice for 12 hours.
+
+**In the conversation.** When the notice links to a thread other than the run's own — a scheduled
+task's firing, pointing at the conversation it was scheduled from, or a heartbeat's, pointing at the
+person's heartbeat conversation — the same cleaned text is also
+left in that thread, before the push goes, so it is there when the person opens it, even when no
+browser took the push. It is an entry for the person, never for the model: a `custom` entry, role
+`assistant`, content `"{title}\n\n{message}"` as plain text, metadata
+`{type: "notice", title, in_context: false}`. No prompt is built from it, so text a model wrote in
+one run never becomes context for a later run in a conversation it was not part of. It joins the
+thread's active branch, so the next turn continues after it. A client draws it from the session
+snapshot, and one watching the thread's stream (`GET /chat/stream/{thread_id}`) gets it live as a
+`session_event`, which carries `type` and `in_context` but not `title` — the title is the content's
+first line. Nothing is written:
+
+- into a thread that does not exist — a notice creates no conversation (`missing`);
+- while a run is going on in it, since an entry landing inside a run would sit between a message and
+  its reply (`run_live`): a turn marks itself from before its first append to after its last, and a
+  durable run counts until it finishes. Without Redis the mark is per process, so a firing on the
+  Worker cannot see a turn running in the API. A client holding the thread's
+  [exclusive lease](/guide/rest-api/#leases) is not a run — that is the person, watching;
+- into the run's own thread, which already shows the call and the answer, or when there is no other
+  chat thread to leave it in (`not_eligible`).
+
+In each of these cases the push still goes.
+
+**The result.** `delivered` is how many of the person's browsers' push services accepted the notice.
+`channels` lists the channels that delivered it: `["push", "thread"]`, `["push"]` when only a
+browser took it, `["thread"]` when only the conversation did, `[]` when neither did. `thread` is what
+became of it in the conversation it links to: `appended`, `run_live`, `missing`, `failed` (the write
+raised), or `not_eligible` (above). A `note` says why anything did not arrive: push is not
+configured on this deployment (`FELIX_PUSH_VAPID_PRIVATE_KEY` unset), the person has no subscribed
+device or none accepted it, the push failed, or the entry was not added — and, when the entry landed
+but no push did, that it is in their conversation for when they next open it. None of these is an
+error.
+
+**Counting.** A call takes its `max_per_run` slot in the same step that checks it, before anything
+awaits, so a turn's parallel `notify` calls cannot all pass the cap. It gives the slot back only if
+the hourly limit then refuses it; once the hourly limit admits it, the call counts against both,
+before cleaning. An undelivered notice and a `screened` refusal still count, so a run that keeps
+provoking a refusal still runs out.
+
+**Refusals.** Every refusal is a tool result the model reads, `{"error": <code>, "detail": …}`, and
+nothing is sent:
+
+| Code | When |
+|---|---|
+| `no_caller` | The run acts for no signed-in person — every run under `FELIX_AUTH_MODE=none`. |
+| `shared_subject` | The subject names no person: an API key with no `sub` (`api_key`), an inbound trigger's run (`trigger:<id>`), or a machine actor (`cron`, `fiber`, `a2a`, `eval`, `consolidation`, `skill-improver`, `skill-eval`) acting for no one. A notice to it would reach every holder of the credential. A plugin authenticator that gives many people one subject cannot be detected here. |
+| `invalid_title`, `invalid_message` | Empty (or whitespace only) or over 80 / 500 characters. |
+| `rate_limited` | The run has sent `max_per_run`, or the person has received `max_per_hour` from this manifest in the last hour. |
+| `screened` | Screening flagged the cleaned text, or a screener could not run. |
+
+**The approval.** Off by default: the runs a notice is for — a scheduled task's firing — have nobody
+watching the conversation to approve anything. With `approval: true` each call waits for a person,
+through the same flow as any [approval](/guide/manifest-reference/governance/#specapprovals): rule `notify.notify`, `one_shot` and
+`bind_principal`. The approver reads a preview naming the recipient and showing the title and
+message as they would be sent — redacted, links removed. The preview runs the caller, length and
+per-run checks and the screening first, so a call they would refuse is denied with no approval row
+and no wait. It does not check `max_per_hour`: an over-limit call can open an approval request and is
+refused as `rate_limited` when it runs. A
+manifest rule naming `notify` literally with no `when_args` applies instead. **No
+[permission mode](/guide/manifest-reference/governance/#specpermissions) waives any approval on `notify`, `bypass` included, whichever
+rule asked for it** — as for `schedule_task`.
+
+`notify` is bound before the governance stack, so policies, limits and screening apply to it. It is
+not read-only, so plan mode refuses it. Each sent call is audited as
+[`notify.sent`](/internals/observability/#notices) — never with its text. A manifest that already
+has a tool named `notify` fails the compile.
+
+## `spec.heartbeat`
+
+```yaml
+spec:
+  pattern: react
+  notify: {}                   # required beside a heartbeat
+  heartbeat:
+    checklist: |               # what to check; required, 1–4,000 characters
+      Look at my open pull requests and the nightly build.
+    schedule: every:60m        # recurring only, in the job schedule grammar
+    # timezone: America/New_York  # optional: the IANA zone a cron schedule is read in; unset is UTC
+    min_interval_minutes: 30   # the shortest gap `schedule` may fire at; ≥ 15
+    model: claude-haiku        # a model route for firings only; unset runs on spec.model.id
+    max_turns: 6               # steps one firing may take; 1–20
+    keep_threads: 20           # firing threads kept per person; 1–200
+    # max_firings_per_day: 12  # optional: firings per person per UTC day; 1–1440
+```
+
+A periodic check-in each person may turn on for themselves. The operator writes all of it — what to
+check, how often, on which model, how far a firing may go; a person holding `heartbeats:write` only
+turns theirs on or off, through [`/heartbeats`](/guide/management-api/#heartbeats). Unset, nobody can
+enrol. Binds no tool of its own: a firing speaks through [`notify`](#specnotify), so a manifest with
+a heartbeat and no `spec.notify` is refused at validation ("heartbeat needs spec.notify").
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `checklist` | string 1–4,000 | required | The operator's instructions for each firing. Whitespace only is refused. |
+| `schedule` | string ≤ 200 | `every:60m` | The [job schedule grammar](/guide/management-api/#jobs), recurring only: an `at:` one-shot and an empty (manual-only) schedule are refused. |
+| `timezone` | string 1–64 | unset | The IANA zone a cron `schedule` or `@daily`-style macro is read in, as for a [job](/guide/management-api/#timezones): canonical names only, and refused beside an interval, which no zone moves. Unset is UTC. |
+| `min_interval_minutes` | int ≥ 15 | `30` | The shortest gap `schedule` may fire at. As for [`spec.scheduling`](#specscheduling), a cron's next 200 firings are walked and the smallest gap taken, plus, for a zoned cron, the firings around each daylight-saving change in the next 400 days. Checked when the manifest is written. |
+| `model` | string ≤ 200 | unset | A model route (`FELIX_MODEL_ROUTES`) used for firings only. Unset, firings run on `spec.model.id`. |
+| `max_turns` | int 1–20 | `6` | Steps one firing may take. It only narrows: a firing runs at the lower of this and the manifest's own `recursion_limit` (a react loop; 10 when unset) and `max_turns` (a multi-agent pattern). |
+| `keep_threads` | int 1–200 | `20` | Firing threads kept per person; older ones are deleted after each firing. |
+| `max_firings_per_day` | int 1–1440 | unset | Firings per person per UTC day, scheduled and `POST /heartbeats/{manifest}/run` alike. Unset caps nothing beyond what `schedule` fires. One due past it calls no model and is recorded `skipped` (step 3); the heartbeat stays on. A value below what `schedule` fires in a UTC day is allowed and binds, and is returned as a warning by `PUT /manifests` (`warnings`) and `felix validate-manifest`. A zoned schedule can land twice in one UTC day around a daylight-saving change (a daily `0 19 * * *` in `America/New_York` does on the spring one); the warning counts those days. |
+
+**Cost.** Every firing calls the model at least once and up to `max_turns` times, and every
+enrolled person's heartbeat fires on its own. `schedule` sets how many firings a day that is: the
+default `every:60m` is 24 a day per person, so 100 people enrolled is at least 2,400 model calls a
+day. Point `model` at a cheaper route for firings and keep `max_turns` low; `max_firings_per_day` is
+an optional ceiling on top of the schedule, which also bounds firings asked for by hand.
+
+**A firing.** Enrolling writes an ordinary [job](/guide/management-api/#jobs) as the person, so each
+firing runs as `cron` on their behalf, with their scopes, through this manifest's inbound auth —
+exactly as a [scheduled task](#specscheduling) does. In order:
+
+1. A heartbeat whose enrolling credential carried an expiry (below) and has passed it is refused:
+   an `error` run ("the credential that turned this heartbeat on has expired; turn it on again"),
+   the job disabled, no model called.
+2. The heartbeat is read from the manifest as stored *now*. A manifest that no longer exists, or
+   no longer defines a heartbeat, turns it off: the run is recorded as an `error` ("this
+   heartbeat's manifest no longer exists; it has been turned off" / "this manifest no longer
+   defines a heartbeat; it has been turned off"), the job is disabled, and no model is called. When
+   the job's stored schedule or zone differs from `schedule` and `timezone`, it is moved to them, due
+   at its next slot, so an edit applies from the next firing. The update is conditional on the
+   schedule and zone the firing read and touches nothing else, so it never re-creates a heartbeat deleted meanwhile nor
+   re-enables one turned off.
+3. A heartbeat with `max_firings_per_day` set that has already run that many times in the current UTC day — midnight
+   UTC whatever `FELIX_TIMEZONE` or `timezone` says — runs nothing: no model call, no tool, no notice. The run is
+   recorded with status `skipped` and `result` `{"reason": "daily_cap", "max_firings_per_day": N}`,
+   the job's `last_status` reads `skipped`, and the heartbeat stays on and fires again after UTC
+   midnight. Every run that ran counts, scheduled or asked for with
+   [`POST /heartbeats/{manifest}/run`](/guide/management-api/#heartbeats), so a person cannot fire
+   past it by hand; skipped runs do not count, so an operator raising the cap mid-day gives that day
+   the difference. A cancelled firing (a Worker shutting down, a caller leaving a manual run) is
+   recorded as an `error` run and counts. A `schedule` that could fire more often than the cap is
+   allowed: the cap binds, the rest of the day's slots are recorded `skipped`, and `PUT /manifests`
+   (`warnings`) and `felix validate-manifest` warn about it. With the field unset there is no cap
+   and this step does nothing.
+4. The prompt is `checklist` inside a fixed frame: use your tools to check this; if nothing needs the
+   person, reply with exactly `HEARTBEAT_OK` and do not call `notify`; if something does, call
+   `notify` once with a short title and message, then reply briefly. The job's payload is never read
+   for it, so re-saving the job over `PUT /jobs` puts no words in a firing. The person's own
+   [preferences for the output](/guide/management-api/#a-jobs-readers-preferences), when they wrote
+   any, follow the checklist whole, in a fence of their own; they steer what the notice says and
+   cannot widen what the firing may do.
+5. The inbound and compile-pin checks judge the manifest as stored; then the firing runs with
+   `model` and the narrowed `max_turns` applied.
+6. It runs in a fresh thread (`{tenant}:job:<job name>:<hex>`), unattended: a tool behind an
+   [approval](/guide/manifest-reference/governance/#specapprovals) without `allow_unattended` is refused at once and nothing waits. It
+   is scheduled work, so `schedule_task` refuses it (`scheduled_run`).
+7. A `notify` call goes to the person alone, with every `notify` control (redaction, link
+   stripping, screening, `max_per_run`, `max_per_hour`), and the notice is also left in the
+   person's heartbeat conversation — `{tenant}:hb-<hex>`, created when they first enrol and titled
+   `Heartbeat: <manifest>` in their session list — as an entry no prompt carries.
+8. The run record's `result` carries `quiet` (`true` when the firing let no `notify` call through),
+   the first 500 characters of the answer, and the firing's `thread_id`. Quiet is counted from
+   `notify` calls, not read from the answer text.
+9. All but the newest `keep_threads` firing threads of this person's heartbeat are deleted whole —
+   events and metadata, on every store. The heartbeat conversation is never one of them. A failed
+   prune is logged and does not fail the run.
+
+Run records are trimmed like every job's, not by `keep_threads`: after each run all but the newest
+`FELIX_JOB_RUNS_KEEP` (200) are deleted, except runs of the current UTC day that ran, which the
+daily cap counts and which stay until the day ends. See [Jobs](/guide/management-api/#run-history).
+
+**Firing transcripts are the tenant's to read.** Each firing thread is an ordinary thread of the
+tenant, like an agent task's or any job's, so whoever may read the tenant's sessions reads what a
+heartbeat checked on the person's behalf. Write the checklist with that in mind; the notice itself
+goes to the person alone.
+
+**How long it lasts depends on the credential that enrolled it.** An API key, and a Felix sign-in
+(Google, GitHub, GitHub Actions) whose grant for the tenant is configured on this deployment, are
+re-checked at every firing as every [job](/guide/management-api/#run-a-job-now) firing's are — the
+scopes cut to what the key or grant holds today, none left refuses the run — so the heartbeat
+records no expiry and runs until turned off. Any other credential — a token from another issuer, a
+sign-in to a personal tenant — leaves Felix nothing to re-check, so enrolment records the token's
+`exp` and the heartbeat stops there (step 1). The person turns it on again with a fresh
+credential. [`GET /heartbeats`](/guide/management-api/#heartbeats) shows that end as `expires_at`.
+
+## `spec.destinations`
+
+```yaml
+spec:
+  pattern: react
+  destinations:
+    ids: [team-brief]    # FELIX_DESTINATIONS ids open to this tenant; 1 or more, no repeats
+    max_per_run: 3       # posts one run may make, across every destination; 1–20
+    approval: false      # hold every post call for a person
+    attended: refuse     # a call from a conversation: refuse, or approval
+```
+
+Lets a scheduled job, a heartbeat or a trigger's run publish to a shared place — a team channel, a
+status feed — rather than to one person, as [`notify`](#specnotify) does. The places are the
+operator's: each id is an entry of [`FELIX_DESTINATIONS`](/guide/deploy/#shared-destinations), and a
+manifest never carries a URL, a channel or a token. The registration is the advance approval, so
+the manifest only picks among the destinations open to its tenant. An `"operator": true`
+destination, the harness's own channel for [job health alerts](/guide/deploy/#job-health-watch), is
+open to none: naming it fails the compile as an unknown id. Binds one tool; unset binds nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `post` | `destination` (one of `ids`), `edition`, `text` (1–8,000 characters), `title` (optional, ≤ 200) | `{status, destination, edition, ref}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ids` | string[], 1–64 | required | `FELIX_DESTINATIONS` ids (`^[a-z0-9][a-z0-9_-]{0,63}$`), no repeats. Advertised to the model as the `destination` enum. |
+| `max_per_run` | int 1–20 | `3` | Posts one run may make, across every destination. A durable run's resume, a background delegation child and each workflow step start their own count; the edition ledger is the bound across runs. |
+| `approval` | bool | `false` | Hold every `post` call for a person (below). |
+| `attended` | `refuse` \| `approval` | `refuse` | What a call from an attended run — a person's conversation — does. |
+
+**Who may post.** A run nobody is watching: a [scheduled job](#specscheduling)'s firing, a
+[heartbeat](#specheartbeat)'s, an [inbound trigger](/guide/deploy/#inbound-triggers)'s run, and
+anything those start (a workflow's agent step, a durable child). A call from a conversation is
+refused as `attended` — a post speaks for the deployment in a shared place, and a conversation can
+be steered by whatever it reads — unless `attended: approval`, which holds that call for the person's
+approval instead: rule `destinations.post.attended`, `one_shot` and `bind_principal`, gating only
+attended calls. `attended: approval` cannot be combined with a [`spec.approvals`](/guide/manifest-reference/governance/#specapprovals)
+rule matching `post` unless `approval` is on; the compile is refused. A call that is not part of a
+run is refused (`no_context`).
+
+**The edition.** Each post names an `edition`: one stable name per logical post, such as
+`brief:2026-10-29` or `release:1.4.0` — letters, digits and `:._-`, 1–128 characters, starting with
+a letter or digit. Felix posts one manifest's edition to one destination at most once, whoever asks:
+a retry, a resumed run, the job's next firing. Two manifests posting `brief:2026-10-29` to one
+destination are two posts. The ledger is read before anything is cleaned or screened, then claimed
+before anything is sent, so of two calls racing for one edition exactly one delivers.
+
+**What is sent.** Before anything leaves, in order:
+
+1. **Secrets are redacted** from `title` and `text`, as for `notify`: the governance stack masks a
+   tool's output, and a post's text is its arguments.
+2. **Links are handled as the destination's registration says**: removed by default, exactly as
+   `notify` removes them; kept only for the hosts the operator listed, or all kept. The manifest
+   cannot loosen it.
+3. **The cleaned text is screened**: the marker scan always, and the manifest's
+   [`content_screening`](/guide/manifest-reference/governance/#speccontent_screening) model and decider when enabled and its
+   `model_tools`, if set, match `post`. A flag, or a screener that cannot run, refuses the call with
+   `screened`.
+
+**The result.** A delivery the destination confirmed answers
+`{"status": "posted", "destination", "edition", "ref"}`, `ref` being the destination's id for the
+post (for a `webhook` destination, its `webhook-id`; for a `slack` one, `<conversation>:<ts>`). An edition already posted answers
+`{"status": "already_posted", …, "ref"}` with the first post's ref. Both are successes. Everything else is a refusal the model reads,
+`{"error": <code>, "detail": …}`:
+
+| Code | When | May the edition be tried again? |
+|---|---|---|
+| `attended` | A call from a conversation under `attended: refuse`. | — |
+| `no_context` | The call is not part of a run. | — |
+| `unknown_destination` | `destination` is not one of `ids`. | — |
+| `invalid_edition`, `invalid_text`, `invalid_title` | Outside the bounds above. | — |
+| `rate_limited` | The run has made `max_per_run` posts. | — |
+| `screened` | Screening flagged the cleaned text, or a screener could not run. | — |
+| `unavailable` | The ledger could not be read or claimed, so whether the edition was posted is unknown. | Yes; nothing was sent. |
+| `not_posted` | The destination certainly did not take it (refused before sending, a `4xx` other than `408` and `409`, or — for `slack` — one of Slack's definite refusals, such as `not_in_channel`). The ledger row is released. | Yes. |
+| `in_flight` | Another call claimed this edition under two minutes ago and is delivering it now. | No — under no edition. |
+| `maybe_posted` | A delivery of this edition did not finish with an answer — a timeout, a `5xx`, a `408` or `409`, a Slack error that is not a definite refusal, a connection lost after the request went, a delivery past its 90-second budget, or a claim over two minutes old whose process stopped. | No. Never retried by Felix; a person checks the destination and an operator [clears the edition](/guide/deploy/#a-stuck-edition). |
+
+A `detail` written by the destination's kind is cut to 300 characters. The model is told, in the
+tool's description and in each refusal, not to repost a `maybe_posted` or `in_flight` edition under
+any name.
+
+**Counting.** A call takes its `max_per_run` slot before anything awaits, so a turn's parallel `post`
+calls cannot all pass the cap. A `screened`, `not_posted` or `maybe_posted` call still counts; an
+`already_posted` one does not, since it posted nothing.
+
+**The approval.** Off by default: the runs a post is for have nobody watching, and registering the
+destination was the approval. With `approval: true` every call waits for a person — rule
+`destinations.post`, `one_shot` and `bind_principal` — and, like any approval without
+`allow_unattended`, a call from an unattended run is refused at once rather than parked. The
+approver reads a preview of the post as it would leave (redacted, links handled, screened); the
+preview runs the tool's checks and the ledger read first, so a call it would refuse, an edition
+already posted included, opens no approval row. A manifest rule naming `post` literally with no
+`when_args` applies instead of `destinations.post`. **No [permission mode](/guide/manifest-reference/governance/#specpermissions) waives
+any approval on `post` in a manifest with `spec.destinations`, `bypass` included, whichever rule asked
+for it.**
+
+**Refused at compile.** An id not registered for the manifest's tenant fails the compile as
+`unknown destination: <id>` — the same words for an id that is unregistered and one that is another
+tenant's — answered `422` on `/chat`. So does an id whose kind is not installed, or whose
+registration its kind refuses (a `webhook` endpoint not open to the tenant). A manifest whose [inbound auth](#specauth) admits an
+anonymous caller — judged by the same check a request makes — cannot bind `post`, since anyone
+could then make the deployment speak in a shared place as no one; nor can one that already has a
+tool named `post`.
+
+`post` is bound before the governance stack, so policies, limits and screening apply to it. It is
+not read-only, so plan mode refuses it. Each delivery, and each edition found already there, is
+audited as [`post.sent`](/internals/observability/#posts) — never with its text.
+
+## `spec.state`
+
+```yaml
+spec:
+  pattern: react
+  state:
+    max_keys: 50           # keys one job may hold; 1–200
+    max_value_bytes: 4096  # the most one value may hold, in UTF-8 bytes; 64–16384
+```
+
+Gives a scheduled job's runs a small store of their own: what one firing leaves the next, such as a
+bookmark per source ("read up to item 4182") or a ledger of what was already posted, read back by
+key and whole. Per-person memory is recalled by rank, so a bookmark kept there can be missed. Binds
+four tools; unset binds nothing.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `max_keys` | int 1–200 | `50` | Keys one job may hold. A new key past it is refused (`too_many_keys`); overwriting an existing key never is. |
+| `max_value_bytes` | int 64–16384 | `4096` | The most one value may hold, in UTF-8 bytes. |
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `state_get` | `key` | `{"key", "found": false}` when the key holds nothing; else the value, fenced as data (below), with when it was written |
+| `state_set` | `key`, `value` (non-empty text), `expected` (optional) | `{"status": "saved", "key", "bytes", "created"}` — `created` is `true` for a new key |
+| `state_list` | none | `{"keys": [{key, bytes, updated_at}], "max_keys", "max_value_bytes"}` — never the values |
+| `state_delete` | `key` | `{"status": "deleted" \| "missing", "key"}` |
+
+A key is 1–64 characters of lowercase letters, digits and `._:-`, starting with a letter or digit
+(`^[a-z0-9][a-z0-9._:-]{0,63}$`), one per thing to remember: `bookmark:releases`,
+`done:2026-10-29`. `updated_at` is epoch ms.
+
+**The state is the job's, not the manifest's.** It is keyed by the tenant and the job's name, so two
+[jobs](/guide/management-api/#jobs) running one manifest against different sources keep separate
+bookmarks. A task an agent scheduled through [`spec.scheduling`](#specscheduling) is a job, and so is
+each person's [heartbeat](#specheartbeat), so each keeps its own. A job with
+`payload.fresh_thread: true` keeps one state across its fresh threads: the state is the job's, not
+the thread's.
+
+**Only that manifest's job firings reach it.** A call learns its job from the firing itself — set by
+the scheduler alone, on a scheduled firing or a [Run now](/guide/management-api/#run-a-job-now) of a
+job naming this manifest, a heartbeat's included. Every other run is refused with `not_a_job` and
+nothing is read or written: a person's chat, an [inbound trigger](/guide/deploy/#inbound-triggers)'s
+run, a [workflow](/guide/management-api/#workflows) step (even one a job started), a durable or
+background child, and a [`task`](/guide/manifest-reference/agents/#specdelegation) child the firing runs, which shares the firing but
+answers for its own manifest. `spec.state` beside [`execution.mode: durable`](#specexecution) does
+not validate: a durable run resumes in a worker's context, outside the firing, where the job cannot
+be reached.
+
+**Compare-and-set.** `state_set` without `expected` overwrites. With `expected` it writes only when
+the key holds exactly that value now; `""` or `null` means the key must not exist yet. Otherwise it
+is refused `conflict` and nothing is written, so the second of two overlapping firings learns the
+first moved the bookmark instead of overwriting it. On Postgres every write to one job's state takes
+the job's row lock first, so `max_keys` and compare-and-set are exact.
+
+**Read back as data.** A value may hold text a run copied from a source. `state_get` returns it in a
+region named anew per call (`<job_state-<12 hex>>`, whose close the value cannot forge), followed by
+a line saying it is material to work from, never instructions, and marks the result untrusted. With
+[`content_screening`](/guide/manifest-reference/governance/#speccontent_screening) on, it is screened as an untrusted tool's result is:
+the marker scan always, then the scoring model and decider when set and `model_tools`, if set,
+matches `state_get`. Values never reach
+the audit log or a log line.
+
+**It goes with the job and its writer.** Deleting the job deletes its state. A re-save of the job by
+someone other than its writer — or any re-save under a sub-less API key, whose every holder is the
+same subject — clears it, so what one person's runs stored never carries into another's. A firing
+still running when either happens writes nothing more (`job_changed`). A person reads and clears it
+over [`/jobs/{name}/state`](/guide/management-api/#a-jobs-own-state).
+
+Every refusal is a result the model reads, `{"error": <code>, "detail": …}`:
+
+| Code | When |
+|---|---|
+| `not_a_job` | The run is not a firing of a job naming this manifest (above). |
+| `invalid_key` | The key is outside the grammar. |
+| `invalid_value` | `state_set` with an empty `value`; `state_delete` removes a key. |
+| `too_large` | The value is over `max_value_bytes`. |
+| `too_many_keys` | A new key while the job holds `max_keys`. |
+| `conflict` | `expected` does not match what the key holds; the detail says whether it holds any value. Read it again with `state_get`. |
+| `job_changed` | The job was deleted, or re-saved by another writer, while this firing ran. |
+| `unavailable` | The store failed; nothing was changed. Logged by the error's class, job and key only. |
+
+The tools bind before the governance stack, so policies, limits and screening apply to them.
+`state_get` and `state_list` are read-only; `state_set` and `state_delete` are not. A manifest that
+already has a tool of one of the four names does not compile.
+
+## `spec.workflow_authoring`
+
+Lets the agent build [workflows](/guide/management-api/#workflows) for the person it is talking to,
+and run them. It binds `workflow_catalog`, `check_workflow`, `save_workflow`, `list_my_workflows`
+and `run_workflow`. Unset binds nothing.
+
+```yaml
+spec:
+  workflow_authoring:
+    manifests: [quick, deep]   # steps may name these; empty means this manifest only
+    max_workflows: 10
+    max_active_runs: 3
+    run_approval: auto         # auto | always | never
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `max_workflows` | int 1–100 | `10` | Workflows one person may hold from this agent at once (`too_many_workflows`). Replacing one never counts. |
+| `max_steps` | int 1–200 | `30` | Steps one workflow saved here may have. |
+| `manifests` | list | `[]` | The manifests its `agent_turn` and `tool_call` steps may name. Empty: this manifest only. |
+| `kinds` | list | `[agent_turn, tool_call, approval, branch]` | The step kinds it may use. An allowlist: a kind a plugin registers later is closed to the agent until it is named here. |
+| `max_active_runs` | int 1–20 | `3` | Runs one person may have going at once from the workflows this agent holds for them (`too_many_runs`). |
+| `approval` | bool | `true` | Hold every `save_workflow` call for that person's approval. |
+| `run_approval` | `auto` \| `always` \| `never` | `auto` | When `run_workflow` waits for that person's approval: `auto` when the call's inputs can reach an agent step or a tool that changes things, `always` on every run, `never` not at all (below). |
+
+| Tool | Scope | Does |
+|---|---|---|
+| `workflow_catalog` | `workflows:read` | Lists the allowed step kinds with each config's JSON Schema, the manifests steps may name, and the definition's schema. Given `manifest`, it also lists the tools a `tool_call` step there can call, compiled as the person. |
+| `check_workflow` | `workflows:read` | Returns a definition's `problems` and each node's `ports`, without saving it. |
+| `save_workflow` | `workflows:write` | Creates a workflow (a new `wf-<hex>` id), or replaces one this agent still holds for the person. Refused while any problem remains. Returns the `workflow_id` and `revision`. |
+| `list_my_workflows` | `workflows:read` | The person's workflows from this agent: id, name, revision, inputs, whether it is still `editable`, and the last run's status. |
+| `run_workflow` | `workflows:write` | Starts a run as the person with a value for each input. Pass the `revision` `save_workflow` returned to run exactly what was approved. |
+
+**Whose workflows.** A workflow the agent saves belongs to the person. It is recorded as their
+issuer-qualified key (`created_by`), so the same subject signed in through another issuer is someone
+else, and marked `authored_via: agent:<manifest>`. The agent sees, changes and runs only those. It
+never touches an operator's workflow or another person's. All five tools need a signed-in person.
+They refuse an anonymous caller, a shared credential (an API key with no `sub` of its own) and a
+sign-in whose issuer is unknown.
+
+**A person's edit takes it over.** Once a workflow is saved through
+[`PUT /workflows/{id}`](/guide/management-api/#workflows), for example in the web UI, the agent can no
+longer change it:
+
+- **Saved by the person it was made for:** it becomes `owner:agent:<manifest>`. The agent may still
+  run it for them, because they wrote what it now holds. `save_workflow` answers `edited_by_person`.
+- **Saved by anyone else:** `authored_via` is cleared, and the agent may neither change nor run it.
+  Otherwise their edit would run as the owner, through the owner's agent, without the owner having
+  seen it.
+
+The store makes this call under the same row lock as the revision, so a save racing an edit cannot
+land on a workflow that was taken over in between.
+
+**Every save is approved.** By default `save_workflow` waits for the person's approval, under a
+one-shot rule bound to them (`workflow_authoring.save_workflow`). A rule in
+[`spec.approvals`](/guide/manifest-reference/governance/#specapprovals) that names `save_workflow` literally and has no `when_args`
+replaces it. A glob such as `*` does not. No [permission mode](/guide/manifest-reference/governance/#specpermissions) waives either one,
+`bypass` included: a saved workflow runs later as whoever starts it, a job or a trigger included.
+
+The approver reads the whole definition, every field, as escaped JSON. Text the model wrote stays
+inside quoted strings, so it cannot pass itself off as part of the preview's layout. An agent step's
+prompt is held to 4,000 characters, so nothing is cut short (`prompt_too_long`). The tool's own
+checks run before anyone is asked, so a save it would refuse never reaches an approver:
+
+- problems in the definition;
+- `max_steps`;
+- a step kind outside `kinds` (`kind_not_allowed`);
+- a manifest outside `manifests` (`manifest_not_allowed`);
+- a manifest whose inbound rules refuse the person (`not_permitted`);
+- `max_workflows`.
+
+**What runs, and when a run is approved.** A saved workflow's shape is approved, but the inputs of each
+run are chosen by the model. `run_approval` decides when the person is asked about a run:
+
+| `run_approval` | `run_workflow` waits for approval | Rule id |
+|---|---|---|
+| `auto` (default) | When an input the call supplies can reach, through any chain of edges, a step that can change something: a `tool_call` step whose tool can, any `agent_turn` step, or a step of any kind but `approval` and `branch` | `workflow_authoring.run_workflow.auto` |
+| `always` | On every call | `workflow_authoring.run_workflow` |
+| `never` | Never. This is the behaviour before Felix 0.17.0 | none |
+
+- **What counts as changing something.** For a `tool_call` step, any tool not marked `read_only` in
+  the manifest the step names, compiled as the person. A peer (`task`, an A2A agent) always counts,
+  since it acts on what it is told. So does a tool that manifest no longer binds, or a manifest that
+  does not compile. **Every `agent_turn` step counts**: the input becomes its prompt and its model
+  chooses the calls, through its sub-agents' tools as well as its own, and memory capture can keep
+  what it read. A step of a plugin's kind counts too; only `approval` and `branch` steps are passed
+  over. `read_only` does not mean nothing leaves: a `tool_call` step on `web_search` sends the input
+  to the search backend without asking, so use `always` where that matters.
+  A call the tool would refuse now still counts as needing approval under `auto`, but its preview
+  refuses it before anyone is asked.
+- **Who is asked.** The person the run is for. The rule is one-shot and bound to them, and the grant
+  is bound to the workflow's revision at the time, so an approval of one revision starts no other.
+  The approver reads the workflow's name, id and revision, the inputs as the agent chose them (escaped
+  JSON), and every step those inputs reach, with whether it changes things.
+- **Your own rule wins.** Under `auto`, any rule in [`spec.approvals`](/guide/manifest-reference/governance/#specapprovals) whose `tools`
+  match `run_workflow`, a glob or one with `when_args` included, keeps the call as it was and no rule
+  is added. Under `always`, a rule naming `run_workflow` literally with no `when_args` replaces it.
+- **A permission mode may waive it.** Unlike the save's approval, `bypass` (where the manifest allows
+  it and the caller holds `approvals:bypass`) waives a run's approval, because a run starts now, in front of the person, while a save outlives the turn.
+- **Upgrading.** A manifest that already sets `spec.workflow_authoring` now asks before a run whose
+  inputs reach a writing tool, because `auto` is the default, and since the release after 0.17.0
+  before one whose inputs reach an agent step. Set `run_approval: never` to keep the earlier
+  behaviour.
+
+Each run starts as the person, and every manifest a step names is checked
+against them again. Every input counts as untrusted, so each agent step reads the inputs fenced as
+data. A `tool_call` step receives its inputs as tool arguments, governed only by that manifest's own
+policies, screening and approvals.
+
+Saving and running are refused in a run no person is in, a scheduled job's or an inbound trigger's
+(`unattended`). They are also refused inside a workflow, so a workflow cannot write or start another
+(`in_workflow`). A job keeps the revision its writer saw. Every [workflow trigger](/guide/deploy/#a-trigger-that-runs-a-workflow)
+pins the revision it runs, so an agent's later save starts nothing from an outside sender until the
+operator reads it and pins it again: the person's approval of a save never decides what a trigger
+starts.
+
+## `spec.auth`
+
+```yaml
+spec:
+  auth:
+    inbound:
+      allow_anonymous: false
+      required_scopes: [chat:write]
+    outbound:
+      providers: []
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `inbound.schemes` | string[] | `[]` | Enforced. The scheme the caller authenticated with (`api_key`, or the JWT verifier scheme) must be listed; `jwt` is an umbrella for every configured JWT scheme. Mismatch → `403`. |
+| `inbound.required_scopes` | string[] | `[]` | Enforced. Missing scopes → `403`. |
+| `inbound.allow_anonymous` | bool | `false` | Enforced. Anonymous callers get `401` unless true. |
+| `outbound.providers` | string[] | `[]` | Enforced at **compile**. The resolved provider of every model route the manifest names must be listed, or the build fails — not the first model call. That is the primary model and its fallbacks, `vision_model` (or `FELIX_DEFAULT_VISION_MODEL_ID` when the primary is text-only and none is named), `confidence_escalation.escalate_to`, the plan/execute models, `heartbeat.model`, `reflect.verifier_model`, each judge's `model`, `http_tools[].extract_model`, and, when their feature is enabled, the content-screening and image-screening models and the memory capture and consolidation models. A request's `model` override is held to it too, and so are a side question, `/chat/compact` and a rewind's branch summary, which build `spec.model` without compiling: the first two answer `422` (or `409` when the thread is pinned to another manifest with `pin_compile`), and a rewind writes its summary without a model. `spec.decider` is not yet checked. |
+
+## `spec.a2a` and `spec.observability`
+
+```yaml
+spec:
+  observability:
+    trace: true   # default
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `a2a.publish` | bool | `true` | Opt-**out**. `false` withholds the agent from `/.well-known/agent-card.json`. The default is `true` because the field was never read before, so every agent was already advertised; a `false` default would have 404'd every existing manifest. |
+| `a2a.capabilities[]` | `{id, description, input_schema_ref}` | `[]` | Merged into the agent card, alongside `spec.skills`. |
+| `observability.trace` | bool | `true` | |
+| `observability.metrics[]` | string[] | `[]` | Empty = every counter. Non-empty is an **allowlist**: unlisted counter names are dropped before the series exists, which also bounds the Prometheus cardinality that tenant-supplied manifest ids and remote MCP tool names would otherwise create. |
+
+## `spec.execution`
+
+```yaml
+spec:
+  execution:
+    mode: durable        # default: transient
+    tools: sequential    # default
+    webhooks: [ops]      # durable only; ids from FELIX_WEBHOOK_ENDPOINTS
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `mode` | `transient` \| `durable` | `transient` | `durable` runs the invocation as a **fiber**. |
+| `resume_token_ttl_seconds` | int \| null | `null` → `FELIX_HIBERNATE_AFTER_SECONDS` (300) | |
+| `tools` | `parallel` \| `sequential` | `sequential` | Tool-call execution within a batch. |
+| `webhooks` | string[] (≤ 8) | `[]` | Endpoint **ids** announced to when the run ends. Needs `mode: durable`. Each must match `^[a-z0-9][a-z0-9_-]{0,63}$` and be registered in `FELIX_WEBHOOK_ENDPOINTS` for the caller's tenant, or the run is refused with `422 unknown webhook endpoint: <id>`. |
+
+A durable `POST /chat` returns **`202`** with `{status, resume_token, fiber_id, expires_at,
+thread_id}`; poll `GET /chat/runs/{resume_token}`. Fibers checkpoint in Postgres and are picked up
+by the Worker within about a second (`FELIX_FIBER_POLL_SECONDS`, see
+[Deploy → Durable runs](/guide/deploy/#durable-runs)). Fibers are the one durable backend; the
+Temporal backend was removed, and `FELIX_DURABILITY=temporal` now fails startup.
+
+`POST /chat/stream` on a durable manifest streams the run instead — `run_accepted`, `run_status`,
+`final` — and a client that disconnects reattaches with the resume token (see
+[REST API](/guide/rest-api/#post-chatstream)).
+
+`webhooks` names endpoints, never URLs: the operator registers each one's URL, signing secret and
+allowed tenants, and the Worker POSTs the finished run to it. See
+[Completion webhooks](/guide/rest-api/#completion-webhooks) for the payload and signature, and
+[Deploy](/guide/deploy/#completion-webhooks) for registering endpoints.
+
+`mode: durable` beside [`spec.state`](#specstate) does not validate ("spec.state cannot be combined
+with execution.mode: durable"): a fiber resumes outside the job's firing, where its state cannot be
+reached.

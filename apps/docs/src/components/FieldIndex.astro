@@ -1,77 +1,66 @@
 ---
 /*
- * The Manifest reference's own index: every `spec.*` section, grouped under the
- * band it sits in, with a filter. The page is ~2,500 lines and most visits are a
- * lookup of one field, so this is the tier between "the whole page" and "one
- * field" that a 64-entry table of contents was not.
+ * The Manifest reference's own index: every `spec.*` field, grouped under the
+ * page it is on, with a filter. The reference is seven pages of fields and most
+ * visits are a lookup of one, so this is the tier between "which page" and "one
+ * field" that a table of contents cannot be across pages.
  *
- * Built at build time from the page's source, the way RouteIndex reads the
- * guides, so a field added to the page is in the index without being listed
- * twice: an `##` heading after this component opens a band, each `###` under it
- * is a field, and the bands stop at the first `##` after the last one that has
- * fields. Anchors are the same GitHub-style slugs Starlight generates, so every
- * link here is a heading's own id and chat-ui's links into the page are
- * untouched.
+ * Built at build time from the pages' source, the way RouteIndex reads the
+ * guides, so a field added to a page is in the index without being listed
+ * twice: each page in `PAGES` is a band named by its title, and each `##`
+ * heading on it is a field. A page in the folder that is missing from `PAGES`
+ * fails the build rather than dropping out of the index. Anchors are the same
+ * GitHub-style slugs Starlight generates (`slug` in `./headings`).
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { HUB_DIR, readPage, slug } from './headings';
+
+/** The pages under `guide/manifest-reference/`, in sidebar order. */
+const PAGES = ['model', 'tools', 'tool-families', 'agents', 'memory', 'running', 'governance'];
 
 interface Field {
   /** The heading as written, code marks off: `spec.model`. */
   name: string;
   /** What the filter matches: the name plus the keys its tables list. */
   hay: string;
-  anchor: string;
+  href: string;
 }
 
-const source = readFileSync(
-  join(process.cwd(), 'src/content/guide/manifest-reference.mdx'),
-  'utf8',
-);
-
-/** GitHub-style heading slug — Starlight's, RouteIndex's and docs-links.test.ts's. */
-function slug(heading: string): string {
-  return heading
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-    .replace(/\s/g, '-');
+const dir = join(HUB_DIR, 'manifest-reference');
+const unlisted = readdirSync(dir)
+  .map((f) => f.replace(/\.mdx?$/, ''))
+  .filter((p) => !PAGES.includes(p));
+if (unlisted.length > 0) {
+  throw new Error(`FieldIndex: add ${unlisted.join(', ')} to PAGES, in sidebar order`);
 }
 
-const bands: { name: string; anchor: string; fields: Field[] }[] = [];
-let started = false;
-let inFence = false;
-let current: Field | null = null;
-for (const line of source.split('\n')) {
-  if (line.startsWith('```')) inFence = !inFence;
-  if (inFence) continue;
-  if (line.includes('<FieldIndex')) {
-    started = true;
-    continue;
+const bands: { name: string; href: string; fields: Field[] }[] = [];
+for (const page of PAGES) {
+  const { title, body } = readPage(join(dir, `${page}.mdx`));
+  const base = `/guide/manifest-reference/${page}/`;
+  const band = { name: title, href: base, fields: [] as Field[] };
+  bands.push(band);
+  let inFence = false;
+  let current: Field | null = null;
+  for (const line of body) {
+    if (line.startsWith('```')) inFence = !inFence;
+    if (inFence) continue;
+    const h2 = line.match(/^## (.*)$/);
+    if (h2) {
+      const name = h2[1].replace(/\x60/g, '');
+      current = { name, hay: name.toLowerCase(), href: `${base}#${slug(h2[1])}` };
+      band.fields.push(current);
+      continue;
+    }
+    // The keys a field's tables list join what the filter matches, so "schedule_task"
+    // finds `spec.scheduling` and "allow_hosts" finds `spec.network`: an operator often knows the
+    // key they set and not the section it lives in. (A backtick is spelled \x60 in
+    // these patterns: Astro's compiler reads a literal one inside a regex in the
+    // frontmatter as the start of a template string.)
+    const key = current && line.match(/^\|\s*\x60([^\x60]+)\x60\s*\|/);
+    if (current && key) current.hay += ` ${key[1].toLowerCase()}`;
   }
-  if (!started) continue;
-  const h2 = line.match(/^## (.*)$/);
-  if (h2) {
-    current = null;
-    // A band with no fields ends the run: everything after is closing matter.
-    if (bands.length > 0 && bands[bands.length - 1].fields.length === 0) bands.pop();
-    bands.push({ name: h2[1], anchor: slug(h2[1]), fields: [] });
-    continue;
-  }
-  const h3 = line.match(/^### (.*)$/);
-  if (h3 && bands.length > 0) {
-    current = { name: h3[1].replace(/\x60/g, ''), hay: '', anchor: slug(h3[1]) };
-    current.hay = current.name.toLowerCase();
-    bands[bands.length - 1].fields.push(current);
-    continue;
-  }
-  // The keys a field's tables list join what the filter matches, so "schedule_task"
-  // finds `spec.scheduling` and "allow_hosts" finds `spec.network`: an operator often knows the
-  // key they set and not the section it lives in. (A backtick is spelled \x60 in
-  // these patterns: Astro's compiler reads a literal one inside a regex in the
-  // frontmatter as the start of a template string.)
-  const key = current && line.match(/^\|\s*\x60([^\x60]+)\x60\s*\|/);
-  if (current && key) current.hay += ` ${key[1].toLowerCase()}`;
 }
 const groups = bands.filter((b) => b.fields.length > 0);
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
@@ -100,13 +89,13 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
   {
     groups.map((band) => (
       <div class="field-group" data-field-group>
-        <a class="field-band" href={`#${band.anchor}`}>
+        <a class="field-band" href={band.href}>
           {band.name}
         </a>
         <ul>
           {band.fields.map((field) => (
             <li data-field={field.hay}>
-              <a href={`#${field.anchor}`}>{short(field.name)}</a>
+              <a href={field.href}>{short(field.name)}</a>
             </li>
           ))}
         </ul>
@@ -166,8 +155,8 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
 
   /*
    * A band is a label and its fields on one wrapping line, like the Route
-   * index's jump list: six short rows rather than a 56-line column, so the index
-   * stays one screen on a phone. The band name is a link to the band's heading,
+   * index's jump list: seven short rows rather than a 55-line column, so the index
+   * stays one screen on a phone. The band name is a link to the band's page,
    * in the body face; the fields are in the code face because they are keys.
    */
   .field-group {
@@ -177,6 +166,10 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
     align-items: baseline;
     padding-block: 0.4rem;
     border-top: 1px solid var(--sl-color-hairline);
+  }
+  /* `display: grid` outranks the UA's `[hidden]`, so a filtered-out band stayed. */
+  .field-group[hidden] {
+    display: none;
   }
   .field-group:first-of-type {
     margin-top: 0.75rem;
@@ -258,7 +251,7 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
       const first = document.querySelector<HTMLAnchorElement>('[data-field]:not([hidden]) a');
       if (!first) return;
       event.preventDefault();
-      location.hash = first.hash;
+      location.href = first.href;
     });
   }
 </script>

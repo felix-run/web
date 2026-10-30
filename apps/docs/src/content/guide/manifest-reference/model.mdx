@@ -1,0 +1,230 @@
+---
+title: "Model and prompts"
+description: "The felix/v1 manifest fields for the model, the agent loop, its prompts and how replies are shaped."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+What the agent runs on and what it is told: the model, the loop, the prompts and how its replies are shaped.
+
+## `spec.pattern`
+
+```yaml
+spec:
+  pattern: react   # default
+```
+
+Built-ins: `react`, `deep`, `reflect`, `plan_execute` (single-agent) and `router`, `parallel`,
+`groupchat` (multi-agent). The registry is open — `register_pattern(name, builder)` adds more, and
+nothing in core enumerates the list. See [Patterns](/internals/patterns/).
+
+Multi-agent patterns require `sub_agents` and reject `peers`, `containers`, `queues`, `sandboxes`
+and `browser_tools`; a sub-agent's own leaf manifest declares those instead.
+
+## `spec.model`
+
+```yaml
+spec:
+  model:
+    id: claude-sonnet
+    temperature: 0
+    max_tokens: 4096
+    thinking_level: medium
+    fallbacks: [claude-haiku]
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `id` | string \| null | `null` | Logical route name. Null falls back to `FELIX_DEFAULT_MODEL_ID` (`claude-sonnet`). |
+| `temperature` | float | `0.0` | |
+| `max_tokens` | int \| null | `null` | Provider default when unset. |
+| `cache` | bool | `false` | Provider prompt caching. |
+| `thinking_budget` | int \| null, `128`–`64000` | `null` | Extended-thinking token budget. |
+| `thinking_level` | `off` `minimal` `low` `medium` `high` `xhigh` `max` \| null | `null` | When set, **overrides** `thinking_budget` via the level map. |
+| `fallbacks` | string[] | `[]` | Tried in order on a provider error; increments the `felix_model_switch` counter. The vision route tries the ones that can see. A turn a fallback answers is metered at the fallback's rates. |
+| `vision_model` | string \| null | `null` | Route for any call carrying an image when `id` is a text-only model. Null falls back to `FELIX_DEFAULT_VISION_MODEL_ID`; with neither, such a turn is a 422. See [Images and text-only routes](/internals/model-client/#images-and-text-only-routes). |
+| `confidence_escalation` | object | disabled | See below. |
+| `price` | map[string, float] | `{}` | USD per 1M tokens, overriding the built-in table for cost attribution. |
+
+Logical ids resolve through `DEFAULT_MODEL_ROUTES`, overridable with `FELIX_MODEL_ROUTES`:
+`claude-opus`, `claude-sonnet`, `claude-haiku`, `claude-fable`, `gpt-4.1`, `gpt-4.1-mini`,
+and on Workers AI `glm-5.3-cf`, `glm-5.3-flash-cf`, `deepseek-v4-pro-cf`, `deepseek-v4-flash-cf`,
+`qwen3.8-27b-cf`, `kimi-k2.7-code-cf`, `kimi-k2-cf`, `gpt-oss-120b-cf`, `gpt-oss-20b-cf`,
+`glm-flash-cf`. The suffixed `claude-sonnet-4` and `claude-haiku-4` are retained as
+legacy aliases onto the current model in the same tier, and `llama-3-pro` / `llama-3-fast` as aliases
+onto GLM-5.3 and GLM-5.3 Flash; prefer the current ids.
+Providers are `anthropic`, `openai`, `workers_ai`, `groq`, `together`, `deepseek`,
+`cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any registered through
+`register_model_provider`. Note that `limits.max_cost_usd` is refused at compile when a model the
+manifest routes to has no known rates. `spec.model.price` supplies them for the model, its fallbacks
+and the routes built from it (vision, escalation, plan/execute, heartbeat, memory capture), but not for judges,
+screening, the reflect verifier, memory consolidation or fetch extraction, which must route to a
+priced model. See
+[Model client](/internals/model-client/).
+
+`confidence_escalation` retries with a stronger model when the answer looks hedged:
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `escalate_to` | string | `""` |
+| `low_confidence_markers` | string[] | `["i am not sure", "i don't know", "i cannot answer", "unclear", "uncertain", "no information"]` |
+| `min_response_chars` | int ≥ 0 | `40` |
+| `decider` | bool | `false` |
+
+With `decider: true` the markers and length are not consulted: `spec.decider` is asked whether the
+reply fully answers the request, and a probability below `spec.decider.min_confidence` escalates. The
+heuristic stays as the fallback when the decider errors, and for side requests such as compaction
+summaries. Honoured on `react` and `deep` only — elsewhere it is refused at validation.
+
+:::note
+A client may override the model mid-session with `POST /chat` `{"model": "..."}`, but only against an
+allowlist built from `spec.model.id`, `spec.model.fallbacks`, `FELIX_DEFAULT_MODEL_ID` and the route
+table. Anything else is `400 model_not_allowlisted:<id>`. The override also answers to the manifest's
+own rules, and to those of every sub-agent it is handed to: its provider must be in
+`auth.outbound.providers`, and under a declared `limits.max_cost_usd` it must be priced, or with
+`spec.model.price` set, be a route the manifest names. A durable run checks again when it resumes.
+:::
+
+## `spec.system_prompt`
+
+```yaml
+spec:
+  system_prompt:
+    inline: |
+      You are a support agent. Cite the knowledge base.
+    soul: false
+    base: ""
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `inline` | string | `""` | Written in the manifest. |
+| `soul` | bool | `false` | Prepend the tenant's shared "soul" prompt. |
+| `base` | string | `""` | Shared preamble. |
+| `files` | string[] | `[]` | Keys loaded after base/inline and appended. |
+| `system_md` | string \| null | `null` | Key loaded as a **full replacement** (`SYSTEM.md` semantics). |
+| `append_system_md` | string \| null | `null` | Key appended after the composed prompt. |
+| `include_tool_guidance` | bool | `true` | Append the [tool guidance](/guide/manifest-reference/tools/#spectool_guidance) section. `false` for a prompt that must be exactly what was written. |
+| `include_datetime` | bool | `true` | Tell the model today's date and the current time, in [`FELIX_TIMEZONE`](/guide/deploy/#date-time-and-timezone). The date ends the system prompt; the time is a note on a react run's first model call, never stored. `false` for a run that must be reproducible, such as an eval replay. |
+
+<Aside type="caution">
+  All three resolve **only** under `workspace/{tenant}/` — in the object store and,
+  when `FELIX_WORKSPACE_ROOT` is set, on disk. A key naming anything else is rewritten
+  into your own prefix, and one containing `..` is refused. These fields are writable
+  by anyone with `manifests:write`, so they are not a way to reach a shared or another
+  tenant's file.
+
+  A bare `AGENTS.md`, `AGENTS.override.md` or `CLAUDE.md` **object** still works as an
+  operator-placed layer shared across tenants, and is used only when the tenant has no
+  file of its own. The same filename on disk under `FELIX_WORKSPACE_ROOT` is not read:
+  that directory is shared and agents can write to it.
+</Aside>
+
+Parts are joined with `"\n\n---\n\n"` in the order **soul → base → inline**, then file-sourced parts.
+Empty parts are dropped.
+
+## `spec.prompts`
+
+Named user-message templates, expanded with `$1` / `$@` / `${1:-default}`. A chat request runs one
+by passing `template` and `template_args`, or a person runs one as a slash command.
+
+```yaml
+spec:
+  prompts:
+    - name: triage
+      description: Triage a ticket
+      argument_hint: "<ticket> [priority]"
+      body: "Triage this ticket: $1. Priority hint: ${2:-normal}"
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string, 1–64 chars | required | A slash command too when it is letters, digits, `-` and `_` only. |
+| `body` | string | `""` | |
+| `file` | string \| null | `null` | Object-store / workspace key; used when `body` is empty. |
+| `description` | string \| null, ≤200 chars | `null` | One line a client shows beside the command. |
+| `argument_hint` | string \| null, ≤80 chars | `null` | How a client hints the arguments after the name. |
+
+### Slash commands
+
+A user turn on `POST /chat`, `/chat/stream` or `/v1/chat/completions` whose text is
+`/triage FEL-12 high` is replaced, before screening and hooks see it, by the expansion of `triage`
+with `["FEL-12", "high"]`. Arguments split like a shell's, so `"two words"` is one; an unclosed
+quote falls back to splitting on whitespace. The name matches regardless of case.
+
+Only a declared name is a command. `/etc/hosts is gone` or `/shrug` on an agent with no such prompt
+is sent as written, and an agent with no `spec.prompts` behaves exactly as before. A name that is no
+prompt may still be a skill a person can run ([`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name)); a prompt of the same name wins. A command whose
+prompt expands to nothing is `404 empty_prompt:<name>`. A turn sent as content parts (text beside
+an image) is never a command.
+
+Every user turn in the request is expanded, not only the newest, so a `/v1` client resending its
+history shows the model each earlier command as it was answered. One request may expand at most 16
+(`404 too_many_commands:16`), and arguments longer than 16,000 characters split on whitespace only.
+
+`GET /v1/models` lists each agent's commands as `felix.commands`:
+`[{name, description, argumentHint}]`, empty when there are none, and only the names a person can
+type. A client that has slash commands of its own should send a name it does not handle itself
+through to the harness when it is on that list.
+
+## `spec.output_styles`
+
+How the agent writes its answers, picked per conversation. Each style is a block of prose that
+joins the end of the system prompt of the agent the person is talking to.
+
+```yaml
+spec:
+  output_styles:
+    default: concise
+    styles:
+      - name: concise
+        description: Short, direct answers
+        prompt: Answer in as few sentences as the question allows. No preamble.
+      - name: teach
+        description: Explain as you go
+        prompt: Explain each step and why it matters, for someone learning the codebase.
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `default` | string \| null | `null` | A declared style's name. `null` leaves the system prompt as written. |
+| `styles` | list, at most 16 | `[]` | Names are unique, ignoring case. |
+| `styles[].name` | string | required | Letters, digits, `-` and `_`, up to 64. |
+| `styles[].description` | string \| null, ≤200 chars | `null` | One line a client shows in its style picker. |
+| `styles[].prompt` | string, 1–16,000 chars | required | Inline only: a style cannot come from a file, since a workspace file is one the agent may write. |
+
+A conversation picks one with [`POST /chat/style`](/guide/rest-api/#abort-continue-thinking-compact), from its next run;
+`null` returns it to `default`. The choice is stored on the thread (`outputStyle` on the session
+snapshot), so it holds across turns until changed, and is not carried into a fork. If the thread
+later runs a manifest that does not declare that style, the run uses that manifest's `default`.
+
+The style goes at the end of the system prompt, after `append_system_md` (a transparency notice stays at the top),
+so the cached prompt prefix stays whole until the style changes. Sub-agents and `task` children
+keep their own prompts, background ones included: they answer their parent, not the person. Only a
+pattern whose own prompt writes the answer (`react`, `deep`) accepts the field; on a `router` the
+chosen child writes it, so the manifest is refused at compile rather than storing a style that
+changes nothing. `GET /v1/models` lists the styles
+as `felix.outputStyles` (`[{name, description}]`) and `felix.defaultOutputStyle`.
+
+In chat-ui a **Style** picker appears beside Thinking whenever the selected agent declares styles,
+with `default` first (its description names the style it is); in the terminal, `/style` lists them and `/style <name>` (or
+`/style default`) sets one.
+
+## `spec.max_turns` and `spec.recursion_limit`
+
+```yaml
+spec:
+  max_turns: 4          # rounds for the multi-agent patterns; default 4, ceiling 100
+  recursion_limit: 10   # steps for a react loop; default 10, ceiling 50
+```
+
+They bound different loops. `max_turns` is read by `groupchat`, `plan_execute` and the other
+delegating patterns. A `react` agent — the default pattern — is bounded by `recursion_limit`,
+where one step is a model call plus the tool batch it asked for; `max_turns` on a react agent
+bounds nothing, and the compile step warns (`felix_rule_targets_nothing{kind="max_turns"}`).
+On the last step the model is still sent its tools, but with `tool_choice: none` and a note
+that no more calls can run, so it answers from what it has found instead of asking for a call
+that would never execute. A model that calls a tool anyway — or a provider whose wire format
+cannot refuse tools — ends with `stop_reason: max_turns`, a `truncated` session status, and
+`felix_run_stop_reason{reason="max_turns"}`.

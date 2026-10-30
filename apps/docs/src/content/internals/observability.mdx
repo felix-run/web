@@ -234,7 +234,7 @@ never the owner's subject. Feedback events name `skill`, `target_version`, `feed
 | `event_type` | Emitted | `status` | Payload adds |
 |---|---|---|---|
 | `skill_activation` | `activate_skill` / `deactivate_skill` | `ok`, `already_active` (activate only: the conversation already holds those instructions), `unknown_skill`; for `action: fork` (a [forked skill](/guide/concepts/#running-a-skill-in-a-subagent)) `ok`, `fork_refused`, `fork_unavailable`, `fork_denied`, `fork_failed` | `action` (`activate`, `deactivate`, `fork`), `skill`, `thread_id`, `tool_call_id`; `by` on an activation (`person` for a `/skill-name`, `preload` for a manifest's preload, `model`); `library` for a library skill |
-| `skill_script` | [`run_skill_script`](/guide/manifest-reference/#specskill_scripts): every decision about the skill, and every run | `ok` (the script is about to run), `unknown_skill`, `script_refused` (an unadopted import, or a source `FELIX_SKILL_SCRIPT_SOURCES` leaves out), `not_active` | `skill`, `script`, `thread_id`, `tool_call_id`; on `ok`, `version` and `sha256` (the script's content). A malformed path, an interpreter the host refuses and a bundle that cannot be read or written write no row |
+| `skill_script` | [`run_skill_script`](/guide/manifest-reference/memory/#specskill_scripts): every decision about the skill, and every run | `ok` (the script is about to run), `unknown_skill`, `script_refused` (an unadopted import, or a source `FELIX_SKILL_SCRIPT_SOURCES` leaves out), `not_active` | `skill`, `script`, `thread_id`, `tool_call_id`; on `ok`, `version` and `sha256` (the script's content). A malformed path, an interpreter the host refuses and a bundle that cannot be read or written write no row |
 | `skill_draft_saved` | Every save, agent, operator, import or promotion (reason `imported from <source>@<commit>`, or `updated from …` for an update) | `ok` | `parent`, `reason` (first 200 chars, redacted), `shadows_operator_upload`, `principal` |
 | `skill_published` | A publish | `ok`, `blocked` | `previous`, or `reasons` when blocked |
 | `skill_rolled_back` | A rollback | `ok`, `blocked` | `previous`, or `reasons` when blocked |
@@ -252,7 +252,7 @@ never the owner's subject. Feedback events name `skill`, `target_version`, `feed
 
 ### Notices
 
-`notify` ([`spec.notify`](/guide/manifest-reference/#specnotify)) writes one row per notice it
+`notify` ([`spec.notify`](/guide/manifest-reference/running/#specnotify)) writes one row per notice it
 sends. A refused call writes none — a `screened` one included, though it counts against the
 limits. `principal_subj` is the caller — `cron` for a scheduled task's
 firing — and `payload.recipient` is the person notified.
@@ -263,7 +263,7 @@ firing — and `payload.recipient` is the person notified.
 
 ### Posts
 
-`post` ([`spec.destinations`](/guide/manifest-reference/#specdestinations)) writes one row per call
+`post` ([`spec.destinations`](/guide/manifest-reference/running/#specdestinations)) writes one row per call
 that reached a destination or found its edition already in the ledger. A call refused before that —
 `attended`, `screened`, `rate_limited`, a bad argument — writes none.
 
@@ -303,7 +303,7 @@ or a log line.
 
 | `event_type` | Emitted | `status` | Payload |
 |---|---|---|---|
-| `job.state` | A person cleared a job's [state](/guide/manifest-reference/#specstate), or removed one key | `cleared`, `deleted` | `job`, `keys` (how many were removed) — never a key's value |
+| `job.state` | A person cleared a job's [state](/guide/manifest-reference/running/#specstate), or removed one key | `cleared`, `deleted` | `job`, `keys` (how many were removed) — never a key's value |
 
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.

@@ -112,7 +112,22 @@ export default defineConfig({
             // Every route, one line each, linking to where it is explained — the
             // way into the four below when you know the route but not the page.
             { label: 'Route index', slug: 'guide/routes' },
-            { label: 'Manifest reference', slug: 'guide/manifest-reference' },
+            {
+              // One page per band of fields; the overview holds the field index that
+              // links across them, and forwards the old one-page anchors.
+              label: 'Manifest reference',
+              collapsed: true,
+              items: [
+                { label: 'Overview and index', slug: 'guide/manifest-reference' },
+                { label: 'Model and prompts', slug: 'guide/manifest-reference/model' },
+                { label: 'Tools', slug: 'guide/manifest-reference/tools' },
+                { label: 'Tool families', slug: 'guide/manifest-reference/tool-families' },
+                { label: 'Agents and delegation', slug: 'guide/manifest-reference/agents' },
+                { label: 'Skills, memory and sessions', slug: 'guide/manifest-reference/memory' },
+                { label: 'Running and reaching people', slug: 'guide/manifest-reference/running' },
+                { label: 'Governance', slug: 'guide/manifest-reference/governance' },
+              ],
+            },
             { label: 'REST API', slug: 'guide/rest-api' },
             { label: 'Management API', slug: 'guide/management-api' },
             { label: 'MCP', slug: 'guide/mcp' },

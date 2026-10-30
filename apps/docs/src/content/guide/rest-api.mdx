@@ -235,7 +235,7 @@ Request (`extra: forbid`):
 | `template_args` | string[] | `[]` | |
 
 A user message written `/name args`, where `name` is one of the manifest's `spec.prompts`, is
-replaced by that prompt's expansion ([slash commands](/guide/manifest-reference/#slash-commands)); `/v1/chat/completions` does the same.
+replaced by that prompt's expansion ([slash commands](/guide/manifest-reference/model/#slash-commands)); `/v1/chat/completions` does the same.
 
 Either `messages` or `template` must produce a message, else `400
 messages_or_template_required`. An empty `manifest` is `400 manifest_required`. A `model` outside the
@@ -554,7 +554,7 @@ data: {"event":"permission_mode_changed","data":{"mode":"default"}}
 
 ### Child agents on the stream
 
-When an agent hands work to a child through the [`task` tool](/guide/manifest-reference/#specdelegation),
+When an agent hands work to a child through the [`task` tool](/guide/manifest-reference/agents/#specdelegation),
 the stream marks where the child's work begins and ends, so a client can render it apart from
 the parent's:
 
@@ -905,8 +905,8 @@ durable run's stream, where a side event cannot. chat-ui opens it in the thread'
 |---|---|---|---|
 | `POST` | `/chat/abort` | `{thread_id}` | Sets a flag the loop polls each step; emits `aborted`, phase becomes `aborted`. |
 | `POST` | `/chat/continue` | `{thread_id, manifest, model?}` | Resumes after an abort or error with no new user message. `400 nothing_to_continue` / `already_complete`. |
-| `POST` | `/chat/mode` | `{thread_id, mode}` | `default` `plan` `accept_edits` `bypass` — the conversation's [permission mode](/guide/manifest-reference/#specpermissions), from the next run. `bypass` needs `approvals:bypass` (`403 missing_scope:approvals:bypass`). Audited as `permission_mode_change`. |
-| `POST` | `/chat/style` | `{thread_id, manifest, style}` | The conversation's [output style](/guide/manifest-reference/#specoutput_styles), from the next run: one `manifest` declares, or `null` for its default. `manifest` is required with a style (`422 manifest_required`; `404 unknown_manifest`), and a name it does not declare is `422 unknown_output_style`. Answers `{ok, thread_id, style}`. |
+| `POST` | `/chat/mode` | `{thread_id, mode}` | `default` `plan` `accept_edits` `bypass` — the conversation's [permission mode](/guide/manifest-reference/governance/#specpermissions), from the next run. `bypass` needs `approvals:bypass` (`403 missing_scope:approvals:bypass`). Audited as `permission_mode_change`. |
+| `POST` | `/chat/style` | `{thread_id, manifest, style}` | The conversation's [output style](/guide/manifest-reference/model/#specoutput_styles), from the next run: one `manifest` declares, or `null` for its default. `manifest` is required with a style (`422 manifest_required`; `404 unknown_manifest`), and a name it does not declare is `422 unknown_output_style`. Answers `{ok, thread_id, style}`. |
 | `POST` | `/chat/ask` | `{thread_id, question}` | A side question: answered from the thread's context by the agent it last ran under, with no tools, and **added to nothing** — no session event, no lease (so it works mid-run, and from a client that only watches). Answers `{thread_id, manifest, status, answer, usage}`, `status` being `answered`, `not_in_context` or `withheld` (a final-response judge refused it). `404 unknown_thread` for a thread the harness has no record of. |
 | `POST` | `/chat/thinking` | `{thread_id, thinking_level}` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. Persisted as a `thinking_level_change` event. |
 | `POST` | `/chat/compact` | `{thread_id, manifest, instructions?}` | Compact the transcript now. Answers `{ok, outcome, messages, reason, thread_id, snapshot}`, `outcome` being `compacted`, `nothing_to_compact` (nothing old enough to cut), `cancelled` (a `before_compact` hook), or `empty_summary` (the summariser answered nothing, so nothing was stored). `502 compaction_failed` when the summariser's model call failed: nothing was compacted. `503` when the manifest's model provider is not configured, as a turn answers. `422`/`409` for the manifest's own rules ([provider pin](/guide/manifest-reference/)). The thread's phase is back to `idle` however it ends. |

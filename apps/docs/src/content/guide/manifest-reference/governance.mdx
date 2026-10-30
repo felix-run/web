@@ -1,0 +1,414 @@
+---
+title: "Governance"
+description: "The felix/v1 manifest fields for policies, limits, guardrails, screening, hooks and approvals."
+---
+
+What the agent is allowed to do, how much, and what a person must approve.
+
+## `spec.policies`
+
+Scope-gated tool access.
+
+```yaml
+spec:
+  policies:
+    - id: notion-writes
+      required_scopes: [notion:write]
+      tools: ["notion__create_page"]
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `id` | string | required |
+| `description` | string | `""` |
+| `required_scopes` | string[] | required, non-empty |
+| `tools` | string[] (glob, e.g. `github__*`) | required, non-empty |
+
+Both lists are required. A rule with `tools` and no `required_scopes` permits every caller
+while appearing to govern them, and one with no `tools` gates nothing while still counting
+toward the `soc2` profile — so both are rejected at parse rather than accepted as no-ops.
+
+Globs match in any position and are case-sensitive. A pattern matching no bound tool is logged
+and counted as `felix_rule_targets_nothing` at compile time rather than refused, since an MCP
+server whose discovery failed binds no tools.
+
+A denial emits a `policy_deny` audit event with `status: denied`.
+
+## `spec.limits`
+
+```yaml
+spec:
+  limits:
+    max_tool_calls: 200
+    max_wall_clock_seconds: 3600
+```
+
+| Field | Type | Unset means | Absolute ceiling |
+|---|---|---|---|
+| `max_tool_calls` | int \| null | 500 | **500** |
+| `max_wall_clock_seconds` | float \| null | 3600 | **3600** |
+| `max_peer_hops` | int \| null | 5 | **5** |
+| `max_input_tokens` | int \| null | 1,000,000 | **20,000,000** |
+| `max_output_tokens` | int \| null | 100,000 | **100,000** |
+| `max_cost_usd` | float \| null | 1,000.00 | **1,000.00** |
+
+**An unset limit is not unlimited.** Every run is bounded on all six: a field left out, or set
+to `null`, is filled from the harness's defaults (`DEFAULT_LIMITS`), which are the ceiling for
+every field but `max_input_tokens`. Its default stays at 1,000,000 so that a manifest that
+declares nothing is not given a 20M-token budget, while one that needs more can still declare
+it. A declared value above the ceiling is refused when the manifest is parsed rather than
+clamped to it.
+
+`max_cost_usd` is a per-run spend ceiling, accumulated from the model catalog's prices as tokens are
+metered. It fails closed: a model the catalog cannot price is a pricing gap that mis-enforces the
+cap, so supply `spec.model.price` for any model you route to that the built-in table does not
+cover. Only a *declared* cap is refused on an unpriced model; the default one is still applied,
+and on such a model its spend reads zero, so it never trips.
+
+`spec.recursion_limit` (int \| null, ceiling **50**) and `spec.max_turns` (ceiling **100**) are
+capped the same way. A breach denies the call like any other governance layer: the tool result
+becomes a deny string, `felix_tool_calls{status="denied"}` increments, and the run records a
+`policy_deny` audit row. There is no distinct `limit_exceeded` event type.
+
+## `spec.guardrails`
+
+```yaml
+spec:
+  guardrails:
+    providers: [pii]
+    block_on_match: true
+    targets: [input, output, final_response]
+    judges:
+      - name: helpfulness
+        criteria: "Answers the question without inventing facts."
+        threshold: 0.7
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `providers` | list of `pii` | `[]` |
+| `block_on_match` | bool | `false` |
+| `targets` | list of `input` \| `output` \| `final_response` | `["input","output"]` |
+| `judges` | JudgeRule[] | `[]` |
+
+`JudgeRule`: `name` (required), `criteria` (required), `threshold` (float 0–1, default `0.7`),
+`model` (string, `""`), `target_tools` (string[], `[]`), `final_response` (bool, `false`),
+`decider` (bool, `false`).
+
+A judge scores with, in order: [`spec.decider`](/guide/manifest-reference/agents/#specdecider) when `decider: true` — the probability
+the text meets `criteria`, read as written, so a negative criterion needs no `assert_absent:` prefix —
+then the model in `model`, then the heuristic. Each failure falls through to the next. Text longer
+than 8,000 characters skips the decider, which would otherwise judge only a prefix. A decider judge
+is a quality control, not a security boundary: the text it judges can argue for its own verdict.
+
+`providers` is a closed set, like `targets` beside it: a typo (`PII`, `pii-redaction`) is a
+compile error rather than a manifest that applies no wrapper while reporting guardrails enabled.
+
+The `pii` provider needs the `pii` extra (Presidio) **plus a spaCy English model**. Without both —
+which is the case on the lean image — it degrades to three regexes (email, US SSN, card-like digit
+runs), announced at `WARNING` with a `felix_control_degraded` counter, not silently. Guardrail
+blocks and below-threshold judge scores deny through the same path as every other layer — a
+`policy_deny` audit row and `felix_tool_calls{status="denied"}` — not under event types of their
+own.
+
+## `spec.content_screening`
+
+Screens tool **output** for prompt injection before the model sees it.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | |
+| `model` | string | `""` | Empty = marker-based only; set an id to add an LLM injection score. |
+| `tools` | string[] | `[]` | Screened **in addition to** every untrusted tool — anything not executing in-process: MCP, peers, browser, sandbox, container, queue, fetch, any plugin transport — which is always screened. |
+| `on_flag` | `quarantine` \| `block` | `quarantine` | Applies to output that is flagged **and** to output that could not be screened. |
+| `decider` | bool | `false` | Also ask [`spec.decider`](/guide/manifest-reference/agents/#specdecider): injection, jailbreak and exfiltration in one call. |
+| `model_tools` | string[] (globs) | `[]` | Which screened tools get the **paid** scoring — `model` and `decider`. Empty = every screened tool. Needs `model` or `decider: true`. |
+| `image_model` | string | `""` | A vision model that reads the text in each **user image**, and in each image a screened tool returns; the transcript is screened like typed text. `on_flag` applies per user image; a tool's image is always quarantined, never refused. Empty = user images are not screened, and an untrusted tool's images are quarantined. Needs `enabled: true`. |
+
+`decider` is **additive**: the markers run first, `model` runs beside it, either one flagging flags,
+and either one unable to run leaves the text unscreened rather than cleared. A decider is not
+adversarially robust, so it is an extra net, never a replacement for the model screener. The model
+screener and the decider read tool output and user turns window by window across the whole text;
+output longer than eight windows (32,000 characters) is reported unavailable, so `on_flag` decides.
+
+`model_tools` is a cost lever, not an exemption. The model screener and the decider cost a call
+per window, so a manifest binding twenty MCP tools pays twenty a turn; `model_tools` names the
+ones worth paying for. The marker scan still runs on **every** screened tool, so an untrusted tool
+left out of `model_tools` is screened by markers alone — never unscreened. A pattern matching no
+bound tool is counted as `felix_rule_targets_nothing`.
+
+```yaml
+content_screening:
+  enabled: true
+  decider: true
+  model_tools: ["github__get_*", "browser__*"]
+```
+
+Inbound user turns are screened on `/chat`, `/v1` and `/a2a` as well. The screen is part of the
+compiled agent, and those routes run it once more before the agent exists, to refuse a turn before a
+stream opens; the mark that saves the agent a second screen names the manifest the route screened
+for, and only that manifest's screen honours it. A composite with no inbound controls of its own
+(neither `content_screening.enabled` nor a `pii` guardrail on `input`) therefore does not let its first child (a router's pick, a `parallel` specialist) skip the child's screening.
+A child with inbound controls also screens a person's carried `/skill-name` turn as it does its
+own; quarantined, the turn no longer runs a skill.
+
+### Images
+
+A turn's screeners read its text. Text drawn *inside* an image — a screenshot that says "ignore
+previous instructions" — is invisible to them unless `image_model` is set:
+
+```yaml
+content_screening:
+  enabled: true
+  image_model: claude-sonnet   # any vision-capable model id
+  on_flag: quarantine
+```
+
+Each user image is sent to that model to be transcribed, and the transcript goes through the same
+marker scan, `model` score and decider as the turn's own text. Under `quarantine` a flagged image
+is removed and the turn carries `[quarantined] image flagged as potentially hostile` in its place;
+the text and any clean images still reach the agent. Under `block` the turn is a `422`.
+
+- An uploaded image (`POST /files`, then a `file` content part) is read under your tenant before it
+  is transcribed, so the screener sees exactly the bytes the model will.
+- A remote `https://` image is **not** screened: the model provider downloads it separately, so
+  there is no way to know the screener and the model got the same picture. It is treated as a
+  screener outage — removed under `quarantine`, `503` under `block`. Send image bytes or upload
+  them when screening is on.
+- Each distinct image costs one vision call, with at most 8 per request across all its messages;
+  past that, `block` answers `422 too_many_images` and `quarantine` removes the rest. Transcripts
+  are cached per tenant by content, so a client that resends its conversation every request pays
+  once per image.
+- A transcript counts only if the transcriber finished normally. A refusal, a filtered or
+  truncated reply, or an empty one is treated as unscreened; `NO_TEXT` is the only answer that
+  means "no text".
+- **History is screened as well as the incoming turn.** An image already in the thread —
+  sent through a different manifest in the same thread, or before `image_model` was set — is
+  screened whenever the history is rebuilt for the model, including after compaction. A flagged
+  replayed image is always quarantined, even under `block`: refusing would refuse every later
+  turn of the thread, since its history can't be rewritten. A router's image screen also applies
+  to the sub-agents it hands the thread to, on top of any screen of their own.
+- It screens for injection only: the input PII guardrail does not read image text.
+- The transcriber reads the image it is screening, and a crafted image can try to talk it out of
+  reporting its text. Treat this as one layer, like every model-based screener.
+
+A screener that cannot run has not cleared anything. If the model is unreachable — missing key,
+expired credential, 429, provider outage — or returns a score that cannot be parsed, the result is
+*unavailable*, not clean: `on_flag: block` denies (inbound: `503`), `quarantine` replaces the
+content, and a `felix_control_unavailable` counter is emitted. This matters most on the tool-output
+path, which is what screens MCP, A2A, browser, and sandbox content.
+
+## `spec.command_screening`
+
+Pattern rules over shell-style command arguments.
+
+```yaml
+spec:
+  command_screening:
+    enabled: true
+    include_defaults: true
+    rules:
+      - pattern: "rm -rf /"
+        decision: deny
+        reason: "Destructive"
+      - pattern: "git push"
+        decision: require_approval
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | |
+| `include_defaults` | bool | `true` | Ship-with floor rules. |
+| `rules` | CommandRule[] | `[]` | |
+| `target_tools` | string[] | `[]` | |
+| `approval_ttl_seconds` | int, `0 < x ≤ 86400` | `300` | How long a `require_approval` rule waits before failing closed. |
+
+`CommandRule`: `pattern` (1–256 chars, required), `decision` (`allow` \| `deny` \| `require_approval`,
+required), `reason` (string \| null).
+
+`require_approval` creates a real approval request and blocks on it, bounded by
+`approval_ttl_seconds` so a run cannot wait forever on an approver who never comes.
+
+## `spec.anomaly`
+
+Thresholds for the Worker's anomaly scan. Read from the manifest — findings carry the values
+that produced them.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` | `false` disables the scan for this manifest. |
+| `min_volume` | int ≥ 1 | `10` | Below this call volume the window is not scored. |
+| `baseline_factor` | float ≥ 1 | `3.0` | Multiple of the baseline that counts as an anomaly. |
+| `min_rate` | float 0–1 | `0.2` | **Still unimplemented** — deliberately, since its intended semantics are not recoverable from the code. |
+
+## `spec.permissions`
+
+```yaml
+spec:
+  permissions:
+    default_mode: default                          # the mode a conversation starts in
+    allowed_modes: [default, plan, accept_edits]   # accept_edits and bypass are opt-in
+    read_only_tools: [search__*]                   # more tools plan mode may run
+    edit_tools: [notes__save]                      # more tools accept_edits waives approvals for
+```
+
+Each conversation is in one **permission mode**, set with [`POST /chat/mode`](/guide/rest-api/) and
+shown on the session snapshot as `permissionMode`. It applies from the next run.
+
+| Mode | What the agent may do |
+|---|---|
+| `default` | Everything the rest of the manifest allows, with approvals as written. |
+| `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task`, the skill tools (so a person's `/skill-name` runs) — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
+| `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
+| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](/guide/manifest-reference/running/#specscheduling), [`notify`](/guide/manifest-reference/running/#specnotify) or [`save_workflow`](/guide/manifest-reference/running/#specworkflow_authoring), or on `post` in a manifest with [`spec.destinations`](/guide/manifest-reference/running/#specdestinations), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+
+`allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
+so they apply only where you list them. **Plan mode binds every agent**, whatever its
+`allowed_modes` — it only narrows — and `allowed_modes` decides whether the agent offers
+`exit_plan_mode`; a conversation whose agent does not offer it leaves plan mode through
+`POST /chat/mode`. A plan approval is single-use, for the person who asked, bound to the
+conversation, and expires after 30 minutes. Every skipped approval is audited (`approval_waived`).
+An MCP tool's own read-only annotation does not count for plan mode (the server wrote it); list the
+tool in `read_only_tools`.
+
+## `spec.hooks`
+
+```yaml
+spec:
+  hooks:
+    - id: no-friday-deploys
+      event: pre_tool_use
+      tools: [deploy__*]          # tool events only; empty means every tool
+      endpoint: policy            # an id from FELIX_WEBHOOK_ENDPOINTS, never a URL
+      timeout_ms: 3000            # at most 10000
+      on_error: block             # allow (default) or block
+```
+
+On each event Felix sends a [signed](/guide/rest-api/) POST to the endpoint — the operator registers
+it for your tenant and opens it to hooks (`"hooks": true`) — and acts on the JSON it answers:
+
+```json
+{"decision": "block", "reason": "No deploys on Fridays", "additional_context": "..."}
+```
+
+| `event` | Fires | `decision: block` |
+|---|---|---|
+| `session_start` | a conversation's first run | refuses the run (422; an `error` frame of type `blocked_by_hook` on a stream) |
+| `user_prompt_submit` | each run, before the model sees the prompt | refuses the run (as above) |
+| `pre_tool_use` | before a call to one of the agent's tools — ahead of policies and approvals | refuses the call |
+| `post_tool_use` | after a tool call, with its result (or its error) | — |
+| `stop` | when the agent would finish | sends it back with `reason` (up to 3 times a run, never on its last step) |
+| `subagent_stop` | when a [`task`](/guide/manifest-reference/agents/#specdelegation) child finishes | — |
+
+The request body is `{type: "hook.<event>", hook, tenant_id, manifest_id, thread_id, data}`, with
+`data` carrying the prompt, the tool's name/arguments/result, or the answer (each cut to 32,000
+characters). An empty 2xx is `allow`. `additional_context` — and a `stop` reason — reach the model
+screened, fenced as reference material from that hook, for that call only; one event's hooks share
+8,000 characters of it and 15 seconds. A `stop` hook that errors lets the agent finish. An endpoint that is down, slow, or answers anything else is an error, and
+`on_error` decides — `allow` treats the hook as advisory, `block` makes it a control that fails
+closed. Every call is audited (`hook_call`).
+
+**A hook on your own host.** There is no way to point a hook at a command or script, on purpose:
+Felix can only run programs inside the agent's workspace, where the agent can write — so it could
+rewrite the very hook that decides its calls. Run the hook as a small HTTP service the agent cannot
+reach (a sidecar beside the API) and have the operator register it with `"private": true` and
+`"hooks": true`; it receives the same signed request and answers the same JSON. Hooks run on `react` and `deep`; any other pattern
+refuses a manifest that declares them. Hook ids must be unique; at most 16.
+
+## `spec.approvals`
+
+Human-in-the-loop gates on named tools.
+
+```yaml
+spec:
+  approvals:
+    - id: workspace-write
+      description: Confirm writes to the workspace
+      tools: [write_file]
+      ttl_seconds: 600
+      one_shot: true
+      bind_principal: true
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `id` | string | required | |
+| `description` | string | `""` | Shown to the approver. |
+| `tools` | string[] | `[]` | |
+| `ttl_seconds` | int > 0 \| null | `null` | How long the run waits for a decision. |
+| `one_shot` | bool | `false` | The grant is consumed once — by the call that waited for the decision, or by the first identical call that finds it. Enforced with a conditional update, so two concurrent identical calls cannot both spend it: a waiting call that loses is refused with `[approval already used]`, and one that finds the grant already spent asks for a new approval. |
+| `bind_principal` | bool | `false` | The grant is bound to the principal that asked; it will not authorize another user's identical call — including while it waits: an identical call from another principal is refused rather than joining the pending request. |
+| `allow_unattended` | bool | `false` | Permit the call with no human present. |
+| `when_args` | string[] | `[]` | Gate only the calls carrying **all** of these arguments, non-empty. Empty gates every call. |
+
+`when_args` exists because a tool can be harmless in one shape and a privileged
+operation in another. `remember` is ordinary capture until it carries a `topic_key`, at
+which point its value becomes the one the model is shown as current for that topic. It no
+longer retires what else holds the key — only an operator does that — but a human seeing a
+key-changing write is still worth an approval. Gating the whole tool would put one in front
+of every memory write:
+
+```yaml
+spec:
+  approvals:
+    - id: memory-retopic
+      description: Confirm a new current value for a remembered topic
+      tools: [remember]
+      when_args: [topic_key]
+```
+
+A call that does not carry every named argument reaches the tool untouched — no
+approval, no `approval_required` event, no added latency.
+
+A gated call creates a pending row keyed by a SHA-256 signature of its arguments, emits
+`approval_required`, and blocks on the decision. Operators answer with
+`POST /approvals/{id}/decide` (`approved` / `denied`, optional `note`, optional `edited_args` which
+replace the call arguments). It **fails closed**: no request context, no store, or a store error all
+deny.
+
+A tool can attach a **preview** the harness computes from the call — `publish_commits` attaches
+the diff it is about to publish. It appears on the pending row and the `approval_required` frame
+as `args.preview`, is never part of the signature, and is stripped from `edited_args`. A preview
+that fails refuses the call (`[approval preview failed]`) and writes no row, so nothing is
+approved unseen.
+
+chat-ui's approval card reads a preview as what it is: its first line — for `publish_commits`,
+`publish <sha> to <repo>:<branch> (new branch from <parent>)` — is the card's headline, the rest
+(the commits, the `--stat` and the diff) is shown with its line breaks under *What approving
+does*, and the remaining arguments are listed apart. It is shown as the harness wrote it, shas
+included, since the approval is bound to exactly that.
+
+## `spec.governance`
+
+Opt-in framework mapping. These are compile-time requirements, **not a certification**.
+
+```yaml
+spec:
+  governance:
+    frameworks: [soc2]
+    forbid_plaintext_secrets: true
+    pin_compile: true
+    retention_days: 365
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `frameworks` | list of `soc2` \| `eu_ai_act` | `[]` | Empty is a no-op, so local manifests stay valid. |
+| `risk_tier` | `limited` \| `high` | `limited` | EU AI Act deployer hint. |
+| `transparency_notice` | bool | `false` | Prepends an "you are talking to an AI agent" notice. |
+| `forbid_plaintext_secrets` | bool | `false` | Also forced on when `FELIX_ENVIRONMENT=production`. |
+| `pin_compile` | bool | `false` | Freezes the manifest version for a thread — and every sub-agent it compiles, recursively; drift → `409`. |
+| `retention_days` | int 1–3650 \| null | `null` | Shortens this manifest's **audit** rows below `FELIX_AUDIT_RETENTION_DAYS`, never lengthens them. Does not reach its spilled artifacts, which follow `FELIX_ARTIFACT_RETENTION_DAYS`. |
+
+Setting any framework forces `forbid_plaintext_secrets` and `pin_compile` to `true`, and then:
+
+**`soc2`** requires `observability.trace: true`, `anomaly.enabled: true`, at least one of
+`policies` / `approvals` / `limits`, at least one of `auth.inbound.schemes` / `required_scopes`, and
+`auth.inbound.allow_anonymous: false` outside development.
+
+**`eu_ai_act`** requires `governance.transparency_notice: true` and at least one of
+`content_screening.enabled` or guardrails targeting `input`. With `risk_tier: high` it additionally
+requires a non-empty `approvals` list in which no rule sets `allow_unattended: true`.
+
+Verify in CI with `felix validate-manifest <file> -e production`. See
+[`deploy/GOVERNANCE.md`](https://github.com/felix-run/felix/blob/main/deploy/GOVERNANCE.md).

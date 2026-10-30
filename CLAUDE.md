@@ -1073,8 +1073,12 @@ modules don't resolve under the workspace options); those apps type-check via th
 
 Prose is MDX under `apps/docs/src/content/` — note **not** `src/content/docs/`; `content.config.ts`
 overrides Starlight's loader base for that reason. New pages must also be added to the explicit
-`sidebar` in `astro.config.mjs` (autogenerate is off). `src/styles/theme.css` is checked in but
-generated from `@felix/design`'s `starlightThemeCss()` — change the tokens in
+`sidebar` in `astro.config.mjs` (autogenerate is off). A long page splits into a **hub** at its
+old slug plus child pages in a folder of the same name (`guide/manifest-reference.mdx` +
+`guide/manifest-reference/*.mdx`); the hub renders `<MovedAnchors hub="…" />`, which forwards an
+old `#anchor` to the child page that now holds it, built from the children's own headings — so
+links into the one-page version keep working without a redirect table. `src/styles/theme.css` is
+checked in but generated from `@felix/design`'s `starlightThemeCss()` — change the tokens in
 `packages/design/src/tokens.ts` and run `pnpm sync:theme`. Hand edits to the CSS are blocked by a
 hook, because the next regeneration would silently revert them.
 

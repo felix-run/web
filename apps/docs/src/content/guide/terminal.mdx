@@ -142,7 +142,7 @@ looks like the rest of the code on your machine.
 | `/think <level>` | `off` `minimal` `low` `medium` `high` `xhigh` `max`. |
 | `/plan` | Plan mode on or off, from the next run: the agent only reads and proposes until you approve its plan. The status line says when a thread is in a mode other than its default. |
 | `/ask <question>` | A side question about this conversation, answered in a notice and not added to it — so it works mid-run, or while another client drives the thread. |
-| `/style [name]` | How the agent writes, from the next run: one of the [output styles](/guide/manifest-reference/#specoutput_styles) it declares, or `default`. With no name, lists them and marks the thread's. |
+| `/style [name]` | How the agent writes, from the next run: one of the [output styles](/guide/manifest-reference/model/#specoutput_styles) it declares, or `default`. With no name, lists them and marks the thread's. |
 | `/manifest [name]` | Switch agent, or list what the harness serves. |
 | `/start <n>` | Put the agent's `n`th starter prompt in the composer, to read and send with Enter. The empty thread numbers them; they come from the manifest's `metadata.starters`, and an agent that declares none has none here. |
 | `/rename <name>` | A durable name, replacing the title derived from the first message. |

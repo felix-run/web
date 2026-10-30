@@ -1,0 +1,227 @@
+---
+title: "Agents and delegation"
+description: "The felix/v1 manifest fields for peers, sub-agents, delegation, deciders and plan-execute."
+---
+
+Other agents this one hands work to, asks, or routes between.
+
+## `spec.peers`
+
+Each entry becomes a `peer__{name}` tool that calls a remote Felix over A2A.
+
+```yaml
+spec:
+  peers:
+    - name: billing
+      url: https://billing.example.com
+      auth: secret:BILLING_TOKEN
+```
+
+`name` and `url` are required; `auth` accepts a literal or `secret:NAME`. Hop depth is bounded by
+`limits.max_peer_hops`.
+
+## `spec.sub_agents` and `spec.aggregator_prompt`
+
+`sub_agents` is a list of manifest names, required by the multi-agent patterns and resolved at build
+time the way a request resolves a manifest — the tenant's stored versions, then object storage, then
+bundled YAML. A name that resolves nowhere fails the compile; each child compiles once however many
+parents name it, nesting deeper than four routers is refused, and so is a cycle. `aggregator_prompt`
+(string, `""`) tells `parallel` and `groupchat` how to merge their results.
+
+A child **inherits the caller's admission**: `spec.auth.inbound` is checked on the manifest a request
+names, not again on each child. Put the admission you need on the router — a child's own
+`required_scopes` apply when it is called by name, not when a router hands it a request. A
+person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) is the exception at run
+time: it runs in a child only when the caller passes the child's own `spec.auth.inbound` and
+credential pin, so a parent's callers do not reach the child's manual-only skills. The other
+exception is checked at compile: a parent an anonymous caller may enter is refused when a child it
+names would turn that caller away — by `allow_anonymous: false`, by `required_scopes`, or by
+`schemes`. That is why the bundled `router` requires a caller — it names `deep`. A child found under
+one name whose manifest calls itself another is refused too (`the names must match`). Everything
+else a child declares (tools, policies, approvals, screening, limits) is compiled into it and applies
+however it was reached. A `router` with [`spec.decider`](#specdecider) picks its child with the
+decider and falls back to its model classifier when the decider is unsure.
+
+## `spec.delegation`
+
+```yaml
+spec:
+  pattern: react
+  delegation:
+    agents:
+      - name: researcher                 # a manifest name, resolved like `sub_agents`
+        description: Looks things up and reports back with sources.
+      - name: reviewer
+        description: Reviews a draft against the style guide.
+```
+
+Binds a `task` tool: the model hands a self-contained job to one of `agents` and gets that agent's
+final answer back as the tool result. Unlike [`sub_agents`](#specsub_agents-and-specaggregator_prompt),
+which make the agent a composite with no tools of its own, a delegating agent keeps its tools and
+decides at run time whether to delegate. `description` is what the model reads to choose; names
+must be unique.
+
+- **Fresh context.** The child starts with its own system prompt and only the `prompt` the model
+  wrote — none of the parent's conversation — so a long search spends the child's context and the
+  parent keeps one tool result.
+- **Resolved and pinned like a sub-agent.** Children resolve through the tenant's store, then object
+  storage, then bundled YAML. A name that resolves nowhere, a cycle, or nesting deeper than four
+  fails the compile, and [`pin_compile`](/guide/manifest-reference/governance/#specgovernance) covers the children.
+- **The child's own door.** Each call checks the child's
+  [`spec.auth.inbound`](/guide/manifest-reference/running/#specauth) against the caller — anonymity, schemes, `required_scopes` — so a
+  caller who could not call the child by name cannot reach it through `task`, however the model was
+  steered. A refusal is a tool error the model sees; the child never runs. (A router's children
+  inherit its admission instead; there the caller chose the route, not the model.)
+- **Governed twice.** `task` passes the parent's governance stack like any tool — a policy, approval
+  or screening rule can name it — and each child runs its own manifest's stack on its own tools,
+  including inbound screening of the prompt it is handed. The child's answer is treated as untrusted
+  output by the parent's content screening, as a peer's reply is.
+- **One budget, every cap.** The child spends the parent run's counters, and is held to the parent's
+  [`limits`](/guide/manifest-reference/governance/#speclimits) as well as its own: a lead capped at `max_cost_usd: 0.50` cannot buy more by
+  delegating to an uncapped child. Every `task` call counts against `max_peer_hops`, shared with
+  [`peers`](#specpeers).
+- **Forked skills.** A skill with `context: fork` in its frontmatter runs in one of `agents` (the one
+  its `agent:` names, else the first) as a call of this `task` tool, so every rule above holds for it.
+  Without `spec.delegation`, a forked skill that names no `agent:` (or names this manifest) runs in
+  the manifest itself, compiled on the first fork through a governed `task` tool the model is never
+  offered, one level deep; a composite, or a manifest with a provider tool already named `task`,
+  answers `fork_unavailable`
+  ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
+
+**Background children.** With `background: true` (and optionally `max_background`) beside `agents`, the model may pass
+`background: true` to `task`: the child starts as a [durable run](/guide/rest-api/#durable-runs) and
+`task` returns a task id at once, and a second tool, `task_result(task_id, wait_seconds)`, reads its
+status and — once it is done — its answer, waiting up to 60 seconds. The child runs in
+`felix-worker` (so the Worker and `felix-scheduler` must be running), on a thread of its own linked
+to the parent's, as the caller who started it, and pinned to the manifest the parent compiled — a
+child edited before the Worker picks it up does not run. It expires no later than the token or run
+that started it. Since the parent's run may end first, the child cannot share its counters; instead
+it runs on what is **left** of every budget above it when it starts — a lead capped at ten tool
+calls that has made four hands its background child six. A background child cannot start
+background children of its own (foreground delegation still nests), and a conversation may have
+at most `max_background` (default 3, at most 16) in flight at once — the next start is refused until
+one ends, which is what bounds a thread's total exposure across turns. `task_result` reads only
+tasks its own thread started.
+
+**Children in a repository.** In a thread with a [repository of its own](/guide/manifest-reference/tools/#specworkspace), a child
+can work in a git worktree of it: its own working tree, on its own branch
+(`felix/task/<id>`), sharing the repository's history. What it commits is in the thread's
+repository at once (`git log felix/task/<id>`, `git merge`), and the parent's working tree is
+untouched while it works.
+
+- **A background child always does.** On a thread of its own, it would otherwise have no copy of
+  the repository at all. The start message names its branch.
+- **A foreground child does under `worktree: true`.** Without it, a foreground child edits the
+  thread's checkout directly, which suits a helper whose edits the parent should see at once. Set it
+  for children that change code side by side, so two of them never write the same files. The child
+  keeps the parent's run: its budgets, its approvals, its stream. When it finishes, the parent is
+  told the branch, how many commits it made, and whether it left changes it never committed (which
+  only its worktree holds). A worktree it left nothing in is removed with its branch. In
+  [plan mode](/guide/manifest-reference/governance/#specpermissions) a foreground child is read-only and gets no worktree.
+- **Refused rather than misplaced.** A thread whose repository is still cloning, failed or expired
+  starts no child; neither does a repository whose git configuration names a filter driver
+  (checked from inside the new worktree, includes resolved), since the checkout would run it. A
+  thread holds at most eight task worktrees holding work; past that, a `task` call that needs one
+  is refused until one expires. A thread with no repository delegates exactly as before.
+- **Local checkouts only.** Under the hosted workspace backend each thread's repository is in its
+  own sandbox, and a worktree cannot span two. There a background child is told it has no copy of
+  the repository, and a foreground child shares the thread's.
+- **Lifetime.** When a child's run ends, foreground or background, a worktree it left nothing in
+  is removed with its branch. Any other is removed with its thread's checkout, or after
+  `FELIX_REPO_CHECKOUT_TTL_DAYS` unused, and using it keeps the parent's checkout from expiring.
+  Its branch and commits stay in the repository. Removing the parent thread's checkout marks its
+  children's worktrees failed. A child's own children branch from the child's worktree.
+- **Publishing is the parent's.** `publish_commits` from a child's worktree is refused: its
+  commits are already in the parent's repository, and the parent publishes them.
+
+```yaml
+spec:
+  delegation:
+    worktree: true      # foreground children get worktrees too
+    background: true
+    agents:
+      - name: coder
+        description: Implements one change on its own branch.
+```
+
+Several `task` calls in one turn run side by side when
+[`spec.execution.tools`](/guide/manifest-reference/running/#specexecution) is `parallel`. `delegation` and `sub_agents` on the same
+manifest are refused: the composite pattern would never offer the tool to a model. For an agent
+on another deployment, use [`spec.peers`](#specpeers).
+
+## `spec.decider`
+
+A **decision model** answers typed questions — pick one option, score against levels, true or false —
+with calibrated probabilities instead of generating text. Naming one here does nothing on its own;
+each consumer opts in with its own flag, and each keeps its previous behaviour as the fallback.
+
+```yaml
+spec:
+  decider:
+    id: clef             # a FELIX_DECISION_ROUTES id
+    min_confidence: 0.5
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `id` | string | `""` | Off when empty. `clef` and `clef-flash` (Cloudflare's, on Workers AI), `jev` (TypeSafe) and `jev-cf` (Jev on Workers AI) are built in; an id not in `FELIX_DECISION_ROUTES` fails the compile. |
+| `min_confidence` | float 0–1 | `0.5` | Below this a consumer treats the decision as unsure and takes its fallback. |
+
+| Consumer | Flag | What the decider decides |
+|---|---|---|
+| Tool selection | `tools_retrieval.decider` | Which tools the model is offered this turn |
+| Router | `pattern: router` with `decider.id` set | Which sub-agent answers |
+| Escalation | `model.confidence_escalation.decider` | Whether the reply answers the request |
+| Judges | `guardrails.judges[].decider` | Probability the text meets `criteria` |
+| Reflect | `reflect.decider` | Whether a draft meets the criteria |
+| Skill hints | `skill_suggestion.enabled` | Which skill fits a task, sent as a hint |
+| Screening | `content_screening.decider` | Injection, jailbreak and exfiltration risk |
+
+Every decision is metered like a model turn and counts against `limits.max_cost_usd`. The request
+text — and, for the consumers that judge them, replies and tool output — goes to the decider's
+provider unmasked. The bundled `decider-support` manifest switches on every consumer that fits a
+support agent. See [Model client](/internals/model-client/#decision-models).
+
+## `spec.reflect`
+
+| Field | Type | Default |
+|---|---|---|
+| `verifier_model` | string | `""` |
+| `threshold` | float 0–1 | `0.7` |
+| `max_iterations` | int 1–5 | `2` |
+| `criteria` | string | `""` |
+| `decider` | bool | `false` |
+
+`decider: true` verifies each draft with [`spec.decider`](#specdecider) instead of asking
+`verifier_model` for a bare number; the model verifier and the heuristic remain the fallback.
+
+## `spec.plan_execute`
+
+| Field | Type | Default |
+|---|---|---|
+| `planner_model` | string | `""` |
+| `executor_model` | string | `""` |
+| `max_subtasks` | int 1–20 | `8` |
+| `replan_on_failure` | bool | `true` |
+| `max_replans` | int 0–5 | `2` |
+| `executor_recursion_limit` | int 1–20 | `6` |
+
+`planner_model` routes the planning turn and `executor_model` the per-subtask agent; empty
+keeps `spec.model` for that turn, and everything else on `spec.model` — price overrides,
+fallbacks, thinking level — is carried across either way. Naming a planner route chooses
+which route plans, not which model configuration applies. A `model` named on the request
+outranks both.
+
+`replan_on_failure` replaces the *unfinished remainder* of the plan when a subtask ends
+early, keeping the completed steps and their notes; `max_replans` bounds it, and `0` turns
+it off as surely as the boolean does. "Ends early" means the subtask stopped on `refusal`
+or `max_tokens` — a governance denial or a truncated answer. A short answer is not a
+failure, so it does not replan. `max_subtasks` bounds the whole run, not each plan: a
+replan is asked only for the budget the ceiling has left.
+
+:::caution[Removed after 0.3.0]
+`planner_few_shots` is gone. It named a count of planner examples with no corpus behind it,
+so nothing could make it mean anything. A stored manifest that sets it still loads — the
+field is stripped on read with a warning rather than failing under `extra: forbid`. Delete
+the line to clear the warning; nothing else changes, because nothing ever read the value.
+:::

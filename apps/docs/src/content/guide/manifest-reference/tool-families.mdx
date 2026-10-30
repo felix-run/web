@@ -1,0 +1,457 @@
+---
+title: "Tool families"
+description: "Shell, browser, image, search, HTTP, GitHub publishing and client tool blocks in the felix/v1 manifest."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Tools declared by kind: a shell, a browser, image generation, web search, HTTP endpoints, publishing to GitHub, and tools the client runs. Each block adds tools to the agent alongside [`spec.tools`](/guide/manifest-reference/tools/#spectools).
+
+## `spec.shell_tools`
+
+Exec an allowlisted argv in the manifest's workspace scope ([`spec.workspace`](/guide/manifest-reference/tools/#specworkspace)) — the tool that lets a coding agent
+run the repository's own gates. No shell interpreter: `&&`, `|` and `;` are literal arguments. It
+runs as a child of the API process, or in a separate shell runner when `FELIX_SHELL_RUNNER_URL` is
+set (below).
+
+```yaml
+spec:
+  shell_tools:
+    - name: run
+      commands: [uv run ruff, ./scripts/test.sh, git status, git diff]
+      timeout_ms: 300000
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | |
+| `description` | string | `""` | Defaults to a sentence naming the allowed prefixes. |
+| `commands` | string[] | required | argv prefixes, matched token for token from `argv[0]`. `git status` covers `git status --short`, not `git push` and not `git -c x status`. |
+| `timeout_ms` | int \| null | `null` | Default 300 s; the process is killed at the limit. |
+| `fatal` | bool | `false` | |
+| `background` | bool | `false` | Offer `run_in_background`, and bind `shell_output` and `shell_kill`. See [background commands](#background-commands). |
+
+The tool takes `argv` (list), `cwd` (relative to the workspace root) and optional `stdin`, and
+returns `exit_code`, `stdout`, `stderr` (each capped and marked `truncated`), `timed_out` and
+`duration_ms`. `argv` is command-screened like a sandbox payload. The web UI's tool card
+recognises that shape and leads with the exit status, drawing the two streams as streams rather
+than as one JSON object.
+
+:::caution[disabled by default]
+Every prefix in `commands` must be covered by one in `FELIX_SHELL_ALLOWED_COMMANDS` (comma-separated;
+empty, the default, refuses every shell tool). Checked on manifest **write** (`400`), at compile,
+and per call. The child inherits only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TZ`. What the allowlist
+cannot bound: a listed command runs repository code. Without a shell runner that code runs as the
+API's user, beside it, and can read the API process's environment through `/proc` — model keys,
+database credentials, any token the API holds. Run untrusted work through a runner.
+:::
+
+### Background commands
+
+A dev server, a file watcher or a long build should not hold the turn. A shell tool with
+`background: true` takes one more argument, `run_in_background`. The command starts, and the call
+answers at once with an `id` and `status: running`. Two tools are bound beside it, once however many
+shell tools set `background`:
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `shell_output` | `id`, optional `wait_ms` (≤ 20,000) | The command's status, and what it wrote to each stream since the last read: at most the last 64 KB of each, with `stdout_skipped` / `stderr_skipped` counting what was passed over. While the command runs, waits up to `wait_ms` for something new. Without `id`, lists every background command in this workspace scope. Read-only. |
+| `shell_kill` | `id` | Ends the command and every process it started, and answers its status. |
+
+`status` is `running`, `exited` (with `exit_code`), `killed`, `timed_out`, `output_exceeded`, `failed`
+(it could not start; `error` says why) or `lost` (its supervisor is gone, so nothing will end or
+report it, and it no longer counts against the limits below).
+
+- **The same gates.** A background start passes the manifest's and the operator's allowlists and the
+  command screening a foreground call does, and runs in the same place: the API process on a
+  development box, the shell runner, or the hosted workspace's sandbox. Off a development box it is
+  refused in the API, as a foreground call is.
+- **Bounded.** A command still ends at the tool's `timeout_ms`, and when its two streams pass the
+  foreground's 8 MB budget. At most 4 run at once per workspace scope, 8 per tenant across its
+  scopes, and 32 on the host that runs them; a start past any of them is refused with a message
+  saying which. A finished command is kept for
+  an hour, and at most 16 are kept per scope.
+- **Reads take turns.** Two `shell_output` calls on one command never return the same output: each
+  byte goes to one reader.
+- **Per scope.** An id is only found in the workspace scope that started it: one thread's tools cannot
+  read or end another's command. The commands themselves are another matter: where scopes share a
+  host they run as one user and can reach each other's state, as they can each other's files — see
+  `deploy/GOVERNANCE.md`, "Background commands", in the harness repository.
+- **Outside the workspace.** Each command runs under a small supervisor, detached from the call that
+  started it, that writes its output to a private directory under the host's temp directory. The
+  model's file tools never see those files. A restart of the API or runner process leaves the
+  command running; a restart of its container or host ends it, after which it reads `lost` or is
+  no longer found.
+- **On the hosted backend,** the command lives in the scope's sandbox, which stops after 10 minutes
+  with no workspace call. A `shell_output` poll counts as one, so polling keeps the sandbox and its
+  command alive; an unpolled command ends when the sandbox stops.
+
+```yaml
+spec:
+  shell_tools:
+    - name: dev
+      commands: [npm run dev, npm test]
+      timeout_ms: 3600000   # a dev server for up to an hour
+      background: true
+```
+
+**The shell runner.** `felix-shell-runner` executes shell tools in a container of its own. With
+`FELIX_SHELL_RUNNER_URL` set, the API runs every check above, then sends the argv to the runner;
+the runner checks the argv against its own `FELIX_SHELL_ALLOWED_COMMANDS` and the `cwd` against the
+same scope under its own `FELIX_WORKSPACE_ROOT` again (the API sends the scope, and the runner accepts
+only that shape; run the runner on the same release as the API), and kills the process group at the deadline or when the API goes
+away. A runner that is down, errors, times out or answers anything malformed fails the call — it
+never falls back to running the command in the API.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `FELIX_SHELL_RUNNER_URL` | `""` | Empty runs shell tools in the API process. Operator configuration only: no manifest or model can set it. |
+| `FELIX_SHELL_RUNNER_TOKEN` | `""` | Bearer shared by the API and the runner; 32+ characters, required when the URL is set. |
+
+The builder stack (`make up-self`) runs one: a `shell` service that shares only the workspace
+volume, holds no secrets, sits on its own network so it cannot reach Postgres or Valkey, and runs
+with `cap_drop: ALL`, `no-new-privileges` and a process limit. Workspace clone and fetch run there
+too, since `git fetch` runs hooks the agent can write. It still has outbound internet for
+`git fetch` and `uv`, so a builder host must not carry a cloud instance role.
+
+## `spec.browser_tools`
+
+Browser automation through the `browser` extra (Playwright). Install it explicitly — it is never in
+the default image.
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `binding` | string | required |
+| `op` | `content` \| `links` \| `snapshot` \| `screenshot` \| `pdf` \| `json` | `content` |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
+| `path_prefix` | string | `""` |
+| `args_schema` | JSON Schema \| null | `null` |
+| `fatal` | bool | `false` |
+
+`screenshot` returns the viewport as an **image the model sees**, not base64 text. It rides on the
+tool result and is stored in the attachment store under the request's tenant, with the same quota
+and retention as an upload. A request keeps at most 16 tool images across every agent it runs, and 4 from any one call. The browser
+is untrusted, so under `content_screening` each screenshot is screened by
+`content_screening.image_model`. **Without `image_model` every screenshot is quarantined**, and the
+build logs a warning saying so: set `image_model` to let screenshots through. A screenshot over 600
+KiB is reported by size instead. `pdf` is not an image either wire can show and is still returned
+inline as text, up to 32 KB.
+
+## `spec.image_tools`
+
+Image operations the model can run on the images in its conversation, backed by Pillow. Install the
+`image` extra (`uv sync --extra image`, or `FELIX_DOCKER_EXTRAS=image`). Without it each tool still
+binds and answers with what to install.
+
+```yaml
+spec:
+  image_tools:
+    - { name: list_images, op: list }
+    - { name: thumbnail_image, op: thumbnail }
+    - { name: crop_image, op: crop }
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | a description of the op |
+| `op` | `list` \| `info` \| `resize` \| `crop` \| `rotate` \| `convert` \| `thumbnail` | required |
+| `allow_path` | bool | `false` |
+| `fatal` | bool | `false` |
+
+One op per tool, so a manifest grants exactly the operations it names. A model sees an image's
+pixels, not its file id, so every op except `list` takes `image`:
+- `latest`, the default: the newest image in the thread's active branch;
+- `#n`, as a `list` tool numbers them;
+- a `felix-file://` reference the thread holds.
+
+A reference to any other upload is refused. A tool whose entry sets `allow_path: true` also takes
+`path`, a file in the manifest's workspace scope ([`spec.workspace`](/guide/manifest-reference/tools/#specworkspace)). Reading it is
+opt-in, as with `read_file`. The ops' own arguments:
+
+| Op | Arguments | Returns |
+|---|---|---|
+| `list` | none | The thread's images, newest last, as `#n` with where each came from |
+| `info` | — | Format, size, mode and frame count, as text |
+| `resize` | `width`, `height` (either alone keeps the aspect ratio) | The resized image |
+| `crop` | `left`, `top`, `right`, `bottom` in pixels | The box |
+| `rotate` | `degrees`, counter-clockwise | The rotated image, on a canvas grown to fit |
+| `convert` | `format` (`png`, `jpeg`, `webp`, `gif`), `quality` | The re-encoded image |
+| `thumbnail` | `max_size` for the longest side (default 512) | The shrunk image |
+
+Each result comes back as an image the model sees. It is stored under the request's tenant, with
+the attachment quota and retention, and it counts against the request's 16 tool images (charged
+before anything is written). Its `felix-file://` reference is named in the reply, so the next call
+can work on it.
+
+Bounds:
+- Only png, jpeg, gif and webp are parsed, as sniffed from the bytes, so no other Pillow decoder is
+  reachable.
+- Input is read up to 20 MiB, and an image whose header claims more than 4096×4096 pixels is
+  refused before decoding.
+- Output is at most 4096 px a side and is downscaled to fit the 600 KiB attachment limit.
+- At most two images are decoded at once per process.
+
+Under `content_screening`, results are screened according to where their input came from:
+- with `image_model`, every result is screened like an untrusted tool's image;
+- without it, a result made from a workspace file is quarantined, and one made from a thread image
+  passes.
+
+## `spec.search_tools`
+
+Search the web through the backend an **operator** configured. The model supplies a query,
+not a destination — the inverse of [`spec.http_tools`](#spechttp_tools) below, and the reason
+this ref has no confinement field: the only address it reaches is
+`FELIX_SEARCH_URL`.
+
+```yaml
+spec:
+  search_tools:
+    - name: search
+      description: Search the web for sources.
+      max_results: 8
+  content_screening:
+    enabled: true
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `max_results` | int \| null | `null` (5); 1–20 |
+| `fatal` | bool | `false` |
+
+Configure the backend with `FELIX_SEARCH_BACKEND` (default `none`) and `FELIX_SEARCH_URL`.
+**SearXNG** ships built in because it is self-hostable and needs no account; anything else —
+Brave, Tavily, an internal index — is a plugin registering through
+`felix.search.register_search_backend`, and the setting is validated against that registry at
+startup. `FELIX_SEARCH_API_KEY` is optional and resolves through your secrets backend like any
+other credential.
+
+Results render as numbered `title / url / snippet` blocks, because the next thing an agent
+does with a result is fetch its URL. A search **is** replay-safe, unlike a fetch: the endpoint
+is yours and a query has no side effect.
+
+<Aside type="caution" title="Turn on content screening with it">
+A title and snippet are written by whoever ranked for the query, so results are untrusted
+input — the transport is `search`, and [content screening](/internals/governance/) covers it
+once enabled. Compiling a manifest that binds a search tool without
+`spec.content_screening.enabled` logs `untrusted tool(s) … unscreened`.
+
+Screening covers what comes **back**. It does not inspect the URL a model then hands to a
+fetch tool, so pairing search with an unconfined `http_tools` entry is an egress path that
+screening does not close — which is why the bundled `deep` manifest requires authentication.
+</Aside>
+
+**Declaring one without a backend** still binds the tool, and every call reports that
+`FELIX_SEARCH_BACKEND` is unset — rather than the field silently doing nothing. The compile logs a
+warning too.
+
+## `spec.http_tools`
+
+Read a URL the **model** chooses. This is the inverse of an MCP server or an A2A peer, where
+the manifest fixes the destination — so `path_prefix` is how an author narrows it back down,
+and the caps live here rather than with the caller.
+
+```yaml
+spec:
+  http_tools:
+    - name: fetch_docs
+      description: Read a page from the Felix documentation site.
+      path_prefix: https://docs.felix.run/
+      max_bytes: 60000
+      timeout_ms: 10000
+  content_screening:
+    enabled: true
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `path_prefix` | string | `""` — an absolute http(s) URL, normalised to end in `/` |
+| `allow_any_host` | bool | `false` |
+| `timeout_ms` | int \| null | `null` (15,000 ms); 1–3,600,000 ms |
+| `max_bytes` | int \| null | `null` (100,000); up to 5,000,000 |
+| `format` | `text` \| `raw` | `text` — renders HTML to readable text |
+| `fatal` | bool | `false` |
+| `extract_model` | string | `""` — a model route; set, the tool answers a `prompt` instead of returning the page |
+| `extract_max_tokens` | int \| null | `null` (1,024); up to 8,192 |
+
+An entry must set **either** `path_prefix` or `allow_any_host: true`; a manifest that sets
+neither fails validation. Every other outbound ref names a destination you chose, so leaving
+this one open by default would make unrestricted egress the path of least resistance.
+`allow_any_host` is logged when the agent compiles: as a warning when nothing bounds it, or when
+the `network.allow_hosts` that does holds a wildcard (named in the line, since `*.github.io` covers
+hosts anyone can register), and at info when that list is exact hosts only.
+
+The request is a `GET`. Redirects are followed up to five hops, and each hop is re-checked
+against both the egress guard and `path_prefix` — a redirect cannot leave the prefix.
+`timeout_ms` is a whole-call deadline covering the chain and every read, not a per-read
+timeout. The body is streamed and truncated at `max_bytes`, counted after decompression. A
+response that is not textual is described rather than decoded, and a non-2xx keeps its body,
+because the error message is usually the useful part.
+
+<Aside type="caution" title="Turn on content screening with it">
+A fetched page is attacker-controlled input. The tool's transport is untrusted, so
+[content screening](/internals/governance/) covers its output — but only once you enable it.
+Compiling a manifest that binds a fetch tool without `spec.content_screening.enabled` logs
+`untrusted tool(s) … unscreened`, and pages reach the model unexamined.
+</Aside>
+
+**Not replay-safe.** A resumed run will not re-issue a fetch. The model names the endpoint, and a
+`GET` that changes something is ordinary on the open web.
+
+### Answering a prompt instead of returning the page
+
+Set `extract_model` to a [model route](/guide/deploy/#model-routes) and the tool takes a `prompt`
+beside the `url`. Felix fetches the page as above, hands its text and the prompt to that model,
+and returns the response header lines followed by the model's answer — not the page. An 80 KB
+page costs the agent a paragraph of context instead of the whole document.
+
+```yaml
+spec:
+  http_tools:
+    - name: web_fetch
+      allow_any_host: true
+      extract_model: claude-haiku
+  content_screening:
+    enabled: true
+```
+
+- The tool's description tells the model it gets an answer, not the page, so ask for exact
+  quotes when wording matters.
+- An error, an empty body, a page with no readable text or a non-text response comes back as it
+  would without extraction, and no model call is made.
+- If the extraction model fails or runs past `FELIX_MODEL_TIMEOUT_SECONDS`, the result says
+  `http_fetch_error: extraction failed (…)`. It never falls back to the page.
+- The call is metered under `kind: web_fetch_extract` and counts against the run's `limits`. The
+  route must be allowed by `auth.outbound.providers`, and priced when `limits.max_cost_usd` is
+  set.
+- An `extract_model` that is not a configured route fails the compile.
+
+<Aside type="caution" title="Extraction saves context, not trust">
+The answer is written from attacker-controlled input, and a page can steer the model that writes
+it. Content screening still applies to the answer. With screening enabled, the injection-marker
+scan also runs over the page as served, and a marked page is refused before the extraction model
+reads it — a paraphrase would otherwise carry the instruction past the markers. The paid
+screening `model`, if you set one, sees only the answer.
+</Aside>
+
+The bundled `deep` agent binds its fetch tool this way, as `web_fetch`. Its route is
+`claude-haiku`; on an install with no Anthropic key, point `extract_model` at a route you have.
+
+## `spec.github_publish`
+
+Publish commits the agent already made in its workspace to GitHub, without the file contents
+passing through the model. Binds one tool, `publish_commits`.
+
+```yaml
+spec:
+  github_publish:
+    repo: felix-run/felix
+    auth: secret:GITHUB_MCP_TOKEN
+    base: main
+    branch_prefix: felix/
+  approvals:
+    - id: publish
+      description: Publish these commits — read the diff in the preview
+      tools: [publish_commits]
+      one_shot: true
+      bind_principal: true
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `repo` | string | required | `owner/name` on github.com. |
+| `auth` | string | required | A `secret:NAME` ref, never a literal — the value is a write credential. |
+| `base` | string | `"main"` | The branch a new branch starts from, and one the tool never writes. Must not start with `branch_prefix`. |
+| `branch_prefix` | string | required | Every branch the tool may create or move starts with this. |
+
+The model calls `publish_commits(branch, head_sha, title?)`: a branch under `branch_prefix` and
+the full sha of a commit it made locally. The harness reads those commits with read-only git and
+writes them through GitHub's Git Data API — blobs, one tree, one commit, then the ref — so a
+196 KiB file with a one-line change is never a tool argument.
+
+- **An approval binds the content.** `head_sha` is an argument and commits are content-addressed,
+  so approving one sha does not approve another on the same branch. Every blob sha GitHub
+  returns, and the final tree, are checked against the local ones before the ref moves.
+- **It only fast-forwards.** The new commit's parent is the branch's current remote tip (or
+  `base`'s, for a new branch), which must be an ancestor of `head_sha`; the ref update is
+  `force: false`. Several local commits publish as one commit listing their subjects.
+- **The approval row shows the diff.** The harness computes the diff stat and unified diff
+  between that parent and `head_sha` and attaches it as the row's `preview` (below); if it
+  cannot, the call is refused rather than approved blind.
+- **Bounds:** 300 files and 8 MiB per publish, the preview's diff capped at 32 KiB (the stat is
+  never cut), 300 s per publish.
+- **Where the token is.** Felix uses it in one HTTP client and passes it to no git process or
+  workspace environment. Where shell tools run in the API process — `FELIX_SHELL_RUNNER_URL`
+  unset — code the agent runs can still read that process's environment, token included; run
+  them through a [shell runner](#specshell_tools), as the builder stack does. Either way keep the
+  token's GitHub permissions to contents and pull requests, and its Workflows permission off.
+
+## `spec.client_tools`
+
+Tools the **browser or CLI client** executes, not the server. This is how the web clients run local
+shell commands and open local files.
+
+```yaml
+spec:
+  client_tools:
+    - name: local_shell
+      description: Run a shell command in the user's local environment.
+      args_schema:
+        type: object
+        properties:
+          command: { type: string }
+          cwd: { type: string }
+        required: [command]
+        additionalProperties: false
+      timeout_seconds: 300
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | |
+| `description` | string | `""` | |
+| `args_schema` | JSON Schema \| null | `null` | |
+| `timeout_seconds` | float, `0 < x ≤ 3600` | `null` → 120 s | |
+| `fatal` | bool | `false` | |
+
+### The user's folder: `local_*` file tools
+
+Both bundled clients answer seven file tools by name, against the folder the person has open — in
+chat-ui the mounted folder (or the tab's own files when none is mounted), in the terminal client
+its working directory. Declare them under `client_tools` and the agent works on that folder rather
+than on the server's workspace. The bundled `cowork` manifest does exactly this.
+
+| Name | Arguments | Answers |
+|---|---|---|
+| `local_list` | `path?`, `recursive?` | One path per line, directories ending in `/`. A recursive listing skips `.git` and `node_modules`, and stops at 1,000 entries, saying so. |
+| `local_read` | `path`, `offset?`, `limit?` | The file's text, 100,000 characters unless `limit` says otherwise, with a line naming the next `offset` when there is more. |
+| `local_search` | `query`, `path?`, `regex?`, `max_hits?` | `path:line:text` per matching line, binaries and `.git`/`node_modules` skipped, 20 hits unless `max_hits` (at most 200) says otherwise. |
+| `local_write` | `path`, `content`, `append?` | `wrote N chars to <path>`. |
+| `local_edit` | `path`, `old_string`, `new_string`, `replace_all?` | `{"path", "replacements"}`, the shape `edit_file` reports. Refused when `old_string` is missing, or appears more than once without `replace_all`. |
+| `local_delete` | `path` | `{"path", "deleted": true}`, the shape `delete_file` reports. Files only, never a folder; there is no undo. |
+| `local_rename` | `path`, `to_path` | `{"path", "to_path"}`. Never overwrites: refused when `to_path` exists. Folders on the way to `to_path` are created. |
+
+The arguments are the workspace tools' own, so the changes list and the approval diff treat both
+families alike. A failure comes back as `error: …`, which both clients draw as a failed call.
+Gate `local_write`, `local_edit`, `local_delete` and `local_rename` with an
+[approval](/guide/manifest-reference/governance/#specapprovals) — a delete must never be less gated than a write. chat-ui acts once the
+banner is approved, and a delete's banner shows the file it removes; the terminal client also asks
+on its own prompt, naming the absolute path, and refuses `.git/`, `.husky/`, `node_modules/`,
+executable files and symbolic links outright.
+
+On a [durable](/guide/manifest-reference/running/#specexecution) run the agent is in the Worker, not the process serving the stream,
+so the harness records each pending request and the durable stream announces it as the same
+`tool_request` frame a streamed run sends. A harness older than that (`felix-run/felix#513`)
+cannot run client tools on a durable run at all: the request never reaches the client, and the
+call times out.
+
+When the model calls one, the harness emits a `tool_request` frame and **blocks** until the client
+answers with `POST /chat/tool_result`. A client that never answers stalls the run until the timeout,
+which returns `[error/timeout] client tool timed out` as the tool result. See
+[the streaming contract](/guide/rest-api/#client-executed-tools).
