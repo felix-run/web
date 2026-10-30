@@ -149,6 +149,14 @@ Discovery remembers which era a server speaks, so a legacy server's calls go str
 `initialize`. A server's tool list (with its `instructions`) is cached for 60 seconds, per server
 and credential. A failed discovery binds nothing and is not cached.
 
+**A server that cannot be reached is named, not dropped.** When discovery fails (a server that is
+down, refused, or a stdio command that cannot start), the run's system prompt says which servers
+could not be reached and that what they hold is unknown rather than empty, so an agent asked what
+is new does not answer "nothing new" for a source it never read. A scheduled job's run result lists
+them under `unavailable_sources`, keyed by the manifest that named each server (a child agent's
+server is listed under the child), whether the run succeeded or failed. A run that answered is still
+`ok`.
+
 | Transport | What runs |
 |---|---|
 | `http`, `sse` | Streamable HTTP. Both values mean the same; the deprecated 2024-11-05 HTTP+SSE transport is not spoken. |
