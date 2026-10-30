@@ -317,8 +317,8 @@ Read the lockfile and report …
   and MCP tool lists load when it is compiled, at the first fork. A composite (`spec.sub_agents`)
   has no tool loop to run it in, and a manifest whose provider already binds a tool named `task` is
   left alone; there a fork is `fork_unavailable`.
-- **What it is handed.** The body inside a `<skill_instructions name="…">` block, followed by the
-  model's `task`. A person's arguments are substituted into the body as for any `/name` run, and the
+- **What it is handed.** The model's `task`, followed by the body inside a
+  `<skill_instructions name="…">` block, so an approver of the `task` call reads the job first. A person's arguments are substituted into the body as for any `/name` run, and the
   model's `task` is not added.
 - **`model:`.** Applies only to a fork, and only when it names a model route the deployment
   defines (built in or added by `FELIX_MODEL_ROUTES`) that passes the rules a request's `model`
@@ -328,7 +328,8 @@ Read the lockfile and report …
   handler by a call id the harness mints, never through an argument the model can set.
 - **A call of `task`.** The fork is a call of the manifest's governed `task` tool, so everything that
   holds for `task` holds for it: approvals, policies, the permission mode, the limits and their
-  `max_peer_hops`, the child's own inbound auth, and `subagent_stop`. See
+  `max_peer_hops`, the child's own inbound auth, `subagent_stop`, and hooks on `task`. It counts as
+  one call against `max_tool_calls`, the model's `activate_skill`. See
   [Governance → Skills](/internals/governance/#skills).
 - **Never an activation.** The instructions never enter the conversation: nothing is retained,
   `list_skills` never shows a forked skill active, and running it again runs the subagent again.

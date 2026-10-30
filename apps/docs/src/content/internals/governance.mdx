@@ -402,13 +402,16 @@ request was admitted. Its own forks are `fork_unavailable`, so a fork is one lev
 compile repeats none of the manifest's compile-time warnings or `felix_rule_targets_nothing`
 counters. A composite (`sub_agents`) has no tool loop to run it in, and a provider tool already
 named `task` is left alone; there the compile warns that the forks have nowhere to run. Only the child's answer returns, as
-untrusted output content screening reads, and a deny is passed on as one. The tool runner's own
-per-call layer is the exception: it runs around `activate_skill`, the call the model made, not around
-the `task` call the fork makes inside it. So manifest `pre_tool_use` / `post_tool_use` hooks, plugin
-`before_tool` / `after_tool` hooks and the `tool_call` audit row keyed on `task` do not see a fork;
-the skill's own `skill_activation` row with `action: fork` does, and the compile warns about manifest
-hooks on `task`. Name `activate_skill` too where such a hook must hold. A fork counts as two tool
-calls against `max_tool_calls` (the activation and its `task` call) and one peer hop. The inner
+untrusted output content screening reads, and a deny is passed on as one. The `task` call goes
+through a tool runner as the model's own would: manifest `pre_tool_use` / `post_tool_use` hooks and
+plugin `before_tool` / `after_tool` hooks on `task` fire for it, a hook's block stops it, and it has
+its own `tool_call` audit row (`<id>:fork`) beside the `activate_skill` one and the skill's
+`skill_activation` row with `action: fork`. A refused fork writes a `policy_deny` row for both calls,
+and a hook with no `tools:` filter fires for both. A hook on `task` is sent the call's arguments, so
+its endpoint receives the skill's instructions; a hook's `terminate` on the inner call is not carried
+out. A fork counts as one tool call against `max_tool_calls` (the `activate_skill` call it runs
+inside) and one peer hop. The subagent's turn puts the model's `task` before the skill's
+instructions, so a person approving the `task` call reads the job first. The inner
 call's id is `<id>:fork`, derived from the activation's, so an approval it waits on is withdrawn when
 the run is interrupted, like any other call's. A `model:` the skill asks for reaches the `task`
 handler by a harness-minted call id, never through the model-facing schema. An imported skill nobody
