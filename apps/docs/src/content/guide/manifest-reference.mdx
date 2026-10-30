@@ -461,6 +461,17 @@ A symbol a backend does not know answers `no data for …`, not a price of zero.
 `spec.network` the stock tools need `finnhub.io` (or `www.alphavantage.co`) and the exchange-rate
 tool `api.frankfurter.dev`.
 
+Wikipedia, keyless, in any language edition:
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__wikipedia_search` | `{query, lang?, limit?}` | Articles matching `query`, each title with the snippet where it matched; `limit` 1–10, default 5. |
+| `connectors__wikipedia_article` | `{title, lang?}` | The article's lead (up to 3,000 characters), its URL to cite, its short description and when it last changed. A redirected title ("NYC") is followed and says what it came from; a disambiguation page, a special page or another wiki's title is named as one. One title per call: a `\|` in it is refused. |
+
+`lang` is the edition's language code (`en` by default; `de`, `ja`, `zh-yue`, `simple` …), so the
+host is always `<code>.wikipedia.org`. Wikipedia is written by anyone: turn on `content_screening`.
+Under `spec.network` the tools need `*.wikipedia.org`.
+
 With the `google` extra (`felix-connectors[google]`), a person's own Google, acting as the person
 the run acts for with the account they connected ([Connecting Google](/internals/auth/#connecting-google)):
 
