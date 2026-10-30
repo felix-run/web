@@ -2210,6 +2210,115 @@ sign-in to a personal tenant — leaves Felix nothing to re-check, so enrolment 
 `exp` and the heartbeat stops there (step 1). The person turns it on again with a fresh
 credential. [`GET /heartbeats`](/guide/management-api/#heartbeats) shows that end as `expires_at`.
 
+### `spec.destinations`
+
+```yaml
+spec:
+  pattern: react
+  destinations:
+    ids: [team-brief]    # FELIX_DESTINATIONS ids open to this tenant; 1 or more, no repeats
+    max_per_run: 3       # posts one run may make, across every destination; 1–20
+    approval: false      # hold every post call for a person
+    attended: refuse     # a call from a conversation: refuse, or approval
+```
+
+Lets a scheduled job, a heartbeat or a trigger's run publish to a shared place — a team channel, a
+status feed — rather than to one person, as [`notify`](#specnotify) does. The places are the
+operator's: each id is an entry of [`FELIX_DESTINATIONS`](/guide/deploy/#shared-destinations), and a
+manifest never carries a URL, a channel or a token. The registration is the advance approval, so
+the manifest only picks among the destinations open to its tenant. Binds one tool; unset binds
+nothing.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `post` | `destination` (one of `ids`), `edition`, `text` (1–8,000 characters), `title` (optional, ≤ 200) | `{status, destination, edition, ref}` |
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ids` | string[], 1–64 | required | `FELIX_DESTINATIONS` ids (`^[a-z0-9][a-z0-9_-]{0,63}$`), no repeats. Advertised to the model as the `destination` enum. |
+| `max_per_run` | int 1–20 | `3` | Posts one run may make, across every destination. A durable run's resume, a background delegation child and each workflow step start their own count; the edition ledger is the bound across runs. |
+| `approval` | bool | `false` | Hold every `post` call for a person (below). |
+| `attended` | `refuse` \| `approval` | `refuse` | What a call from an attended run — a person's conversation — does. |
+
+**Who may post.** A run nobody is watching: a [scheduled job](#specscheduling)'s firing, a
+[heartbeat](#specheartbeat)'s, an [inbound trigger](/guide/deploy/#inbound-triggers)'s run, and
+anything those start (a workflow's agent step, a durable child). A call from a conversation is
+refused as `attended` — a post speaks for the deployment in a shared place, and a conversation can
+be steered by whatever it reads — unless `attended: approval`, which holds that call for the person's
+approval instead: rule `destinations.post.attended`, `one_shot` and `bind_principal`, gating only
+attended calls. `attended: approval` cannot be combined with a [`spec.approvals`](#specapprovals)
+rule matching `post` unless `approval` is on; the compile is refused. A call that is not part of a
+run is refused (`no_context`).
+
+**The edition.** Each post names an `edition`: one stable name per logical post, such as
+`brief:2026-10-29` or `release:1.4.0` — letters, digits and `:._-`, 1–128 characters, starting with
+a letter or digit. Felix posts one manifest's edition to one destination at most once, whoever asks:
+a retry, a resumed run, the job's next firing. Two manifests posting `brief:2026-10-29` to one
+destination are two posts. The ledger is read before anything is cleaned or screened, then claimed
+before anything is sent, so of two calls racing for one edition exactly one delivers.
+
+**What is sent.** Before anything leaves, in order:
+
+1. **Secrets are redacted** from `title` and `text`, as for `notify`: the governance stack masks a
+   tool's output, and a post's text is its arguments.
+2. **Links are handled as the destination's registration says**: removed by default, exactly as
+   `notify` removes them; kept only for the hosts the operator listed, or all kept. The manifest
+   cannot loosen it.
+3. **The cleaned text is screened**: the marker scan always, and the manifest's
+   [`content_screening`](#speccontent_screening) model and decider when enabled and its
+   `model_tools`, if set, match `post`. A flag, or a screener that cannot run, refuses the call with
+   `screened`.
+
+**The result.** A delivery the destination confirmed answers
+`{"status": "posted", "destination", "edition", "ref"}`, `ref` being the destination's id for the
+post (for a `webhook` destination, its `webhook-id`). An edition already posted answers
+`{"status": "already_posted", …, "ref"}` with the first post's ref. Both are successes. Everything else is a refusal the model reads,
+`{"error": <code>, "detail": …}`:
+
+| Code | When | May the edition be tried again? |
+|---|---|---|
+| `attended` | A call from a conversation under `attended: refuse`. | — |
+| `no_context` | The call is not part of a run. | — |
+| `unknown_destination` | `destination` is not one of `ids`. | — |
+| `invalid_edition`, `invalid_text`, `invalid_title` | Outside the bounds above. | — |
+| `rate_limited` | The run has made `max_per_run` posts. | — |
+| `screened` | Screening flagged the cleaned text, or a screener could not run. | — |
+| `unavailable` | The ledger could not be read or claimed, so whether the edition was posted is unknown. | Yes; nothing was sent. |
+| `not_posted` | The destination certainly did not take it (refused before sending, a `4xx` other than `408` and `409`). The ledger row is released. | Yes. |
+| `in_flight` | Another call claimed this edition under two minutes ago and is delivering it now. | No — under no edition. |
+| `maybe_posted` | A delivery of this edition did not finish with an answer — a timeout, a `5xx`, a `408` or `409`, a connection lost after the request went, a delivery past its 90-second budget, or a claim over two minutes old whose process stopped. | No. Never retried by Felix; a person checks the destination and an operator [clears the edition](/guide/deploy/#a-stuck-edition). |
+
+A `detail` written by the destination's kind is cut to 300 characters. The model is told, in the
+tool's description and in each refusal, not to repost a `maybe_posted` or `in_flight` edition under
+any name.
+
+**Counting.** A call takes its `max_per_run` slot before anything awaits, so a turn's parallel `post`
+calls cannot all pass the cap. A `screened`, `not_posted` or `maybe_posted` call still counts; an
+`already_posted` one does not, since it posted nothing.
+
+**The approval.** Off by default: the runs a post is for have nobody watching, and registering the
+destination was the approval. With `approval: true` every call waits for a person — rule
+`destinations.post`, `one_shot` and `bind_principal` — and, like any approval without
+`allow_unattended`, a call from an unattended run is refused at once rather than parked. The
+approver reads a preview of the post as it would leave (redacted, links handled, screened); the
+preview runs the tool's checks and the ledger read first, so a call it would refuse, an edition
+already posted included, opens no approval row. A manifest rule naming `post` literally with no
+`when_args` applies instead of `destinations.post`. **No [permission mode](#specpermissions) waives
+any approval on `post` in a manifest with `spec.destinations`, `bypass` included, whichever rule asked
+for it.**
+
+**Refused at compile.** An id not registered for the manifest's tenant fails the compile as
+`unknown destination: <id>` — the same words for an id that is unregistered and one that is another
+tenant's — answered `422` on `/chat`. So does an id whose kind is not installed, or whose
+registration its kind refuses (a `webhook` endpoint not open to the tenant). A manifest whose [inbound auth](#specauth) admits an
+anonymous caller — judged by the same check a request makes — cannot bind `post`, since anyone
+could then make the deployment speak in a shared place as no one; nor can one that already has a
+tool named `post`.
+
+`post` is bound before the governance stack, so policies, limits and screening apply to it. It is
+not read-only, so plan mode refuses it. Each delivery, and each edition found already there, is
+audited as [`post.sent`](/internals/observability/#posts) — never with its text.
+
 ### `spec.workflow_authoring`
 
 Lets the agent build [workflows](/guide/management-api/#workflows) for the person it is talking to,
@@ -2651,7 +2760,7 @@ shown on the session snapshot as `permissionMode`. It applies from the next run.
 | `default` | Everything the rest of the manifest allows, with approvals as written. |
 | `plan` | Only read-only tools — the workspace's reads, search, `recall`, `todo_write`, `ask_user`, a foreground `task`, the skill tools (so a person's `/skill-name` runs) — and `read_only_tools`. Anything else is refused before an approval is asked. The agent presents its plan with `exit_plan_mode`; a person approves it through [approvals](#specapprovals) (rule `plan-approval`, found with `GET /approvals`), and the conversation returns to `default_mode`. |
 | `accept_edits` | Approvals for `write_file`, `edit_file`, `delete_file`, `rename_file` and `edit_tools` are skipped; every other approval is asked as written. |
-| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), [`notify`](#specnotify) or [`save_workflow`](#specworkflow_authoring), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
+| `bypass` | Every approval is skipped except a plan's and any on [`schedule_task`](#specscheduling), [`notify`](#specnotify) or [`save_workflow`](#specworkflow_authoring), or on `post` in a manifest with [`spec.destinations`](#specdestinations), whichever rule asked for it. It cannot be the `default_mode`; setting it needs the `approvals:bypass` scope, and each run checks that scope again for whoever drives the conversation then. |
 
 `allowed_modes` defaults to `[default, plan]`: `accept_edits` and `bypass` skip approvals you wrote,
 so they apply only where you list them. **Plan mode binds every agent**, whatever its

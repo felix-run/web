@@ -238,6 +238,16 @@ firing — and `payload.recipient` is the person notified.
 |---|---|---|---|
 | `notify.sent` | A `notify` call that passed its checks, both limits and screening, after the send was attempted | `ok` (at least one channel delivered it: a browser took the push, or it was left in the linked conversation), `undelivered` (neither) | `channels` (the channels that delivered it: `["push", "thread"]`, `["push"]`, `["thread"]` or `[]`), `delivered` (browsers that took the push), `thread` (what became of it in the linked conversation: `appended`, `run_live`, `missing`, `failed`, `not_eligible`), `thread_id`, `recipient` — never the title or message, since `audit:read` holders read this log |
 
+### Posts
+
+`post` ([`spec.destinations`](/guide/manifest-reference/#specdestinations)) writes one row per call
+that reached a destination or found its edition already in the ledger. A call refused before that —
+`attended`, `screened`, `rate_limited`, a bad argument — writes none.
+
+| `event_type` | Emitted | `status` | Payload |
+|---|---|---|---|
+| `post.sent` | A delivery was attempted, or the edition was found already there | `posted`, `not_posted`, `maybe_posted` (the delivery's outcome); `already_posted`, `in_flight`, `maybe_posted` (the ledger's answer) | `destination`, `edition`, `status`, `ref` (the destination's id for the post) — never the title or text, since `audit:read` holders read this log |
+
 Payloads are secret-redacted before persist. Per-request audit caps drop excess events (with a
 truncation marker) so a runaway loop cannot flood storage.
 
