@@ -32,7 +32,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
 | `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, adopt an import, decide feedback, queue evaluations and set the publish policy |
-| `skills:invoke` | running a `disable-model-invocation` skill as [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) on `/v1` (`/chat` needs none); implied by nothing but `admin` / `*` |
+| `skills:invoke` | running a `disable-model-invocation` skill as [`/skill-name`](/guide/skills/#running-a-skill-as-skill-name) on `/v1` (`/chat` needs none); implied by nothing but `admin` / `*` |
 | `skills:personal` | writing the caller's own [personal library](#personal-libraries) under `/skill-library/~me`, and promoting from it; implied by nothing but `admin` / `*` |
 
 Three rules make this practical:
@@ -659,7 +659,7 @@ reference.
 
 ## Skills
 
-Read-only inspection of the [Agent Skills](/guide/concepts/#skill) a manifest compiles: which
+Read-only inspection of the [Agent Skills](/guide/skills/) a manifest compiles: which
 skills the model can reach, the instructions activation would hand it, and which skills were
 activated where. Activation is made mid-turn — by the model, by a person's `/skill-name`, or by a
 manifest's `preload` — and it belongs to the conversation it was made in: a skill is active in a thread when that thread's session log holds its
@@ -684,7 +684,7 @@ The list returns `{manifest, declared_only, items}`, sorted by name. Each item i
 |---|---|
 | `has_body` | the skill has instructions; the body itself is only on the single-skill route |
 | `model_invocable` | `false` when the skill sets `disable-model-invocation`, or is a declared ref no source answered — in the catalog, but neither listed to the model nor activatable or readable by a model that guesses its name |
-| `user_invocable` | a person can run it as [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name): resolved and not `user-invocable: false`. A `disable-model-invocation` skill reports `true` here but runs by `/name` only where `declared` is `true` |
+| `user_invocable` | a person can run it as [`/skill-name`](/guide/skills/#running-a-skill-as-skill-name): resolved and not `user-invocable: false`. A `disable-model-invocation` skill reports `true` here but runs by `/name` only where `declared` is `true` |
 | `argument_hint` | the frontmatter's `argument-hint` as written (`[issue-number]`), or `null` |
 | `declared` | the manifest named it in `spec.skills` |
 | `source` | `bundled` (the harness's `skills/` or `FELIX_SKILLS_DIR`), `store` (an operator's object-store upload) or `library` (the live version of a tenant-library skill) |
@@ -716,7 +716,7 @@ from the `skill_activation` row in the audit log.
 The tenant's own skills: every skill an agent drafted (`create_skill`, `update_skill`), an operator
 saved, a person imported from GitHub or a person promoted from their own library, each version's review record, the feedback on it, its evaluations, and the publish policy.
 `/skills/{manifest}` answers "what can this manifest's model reach"; this answers "what is in the
-library, and what is waiting on a person". [Concepts → Skill](/guide/concepts/#skill) has the model.
+library, and what is waiting on a person". [Skills](/guide/skills/) has the model.
 
 Reads need `skills:read`; anything that changes the library needs `skills:write`, which implies the
 read. The principal is recorded as the author of a save, as `decided_by` on a decision, and on every
@@ -1613,7 +1613,7 @@ that step read, such as a page it fetched. Only the inputs a person started the 
 agent's prompt as written.
 
 A run an agent started for a person (`trigger: agent:<manifest>`, see [workflow
-authoring](/guide/manifest-reference/#specworkflow_authoring)) is that person's: its agent steps ran as them, with their
+authoring](/guide/manifest-reference/running/#specworkflow_authoring)) is that person's: its agent steps ran as them, with their
 memory. Its record, stream, step transcripts and cancel answer only that person or an operator
 (`admin` / `*`), `404` to anyone else holding `workflows:*`, and `GET /workflows/{id}/runs` leaves it
 out for others. Every other run is visible to `workflows:read`. An approval step's row still carries

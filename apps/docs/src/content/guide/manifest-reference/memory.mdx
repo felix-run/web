@@ -27,21 +27,21 @@ catalog — each skill's name and description — and `activate_skill` returns t
 instructions. `description` here is not read by the loader (the SKILL.md's own frontmatter supplies
 the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
 `skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
-name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
+name; see [Skills → where skills come from](/guide/skills/#where-skills-come-from) for the full precedence.
 `preload: true` starts every conversation with the skill activated, once, before the model's first
 step; a `react` agent and what wraps one (`deep`, `reflect`, `plan_execute`) run it, while a
 `router`, `parallel` or `groupchat` manifest cannot and its compile warns. An imported skill nobody
 adopted is never preloaded. A person can also run a skill as `/skill-name args` in a chat turn, in
 any pattern: a composite carries the turn into each child step, which activates the skill under its
 own catalog, and a parent's `spec.skills` does not reach the child
-([Concepts → running a skill](/guide/concepts/#running-a-skill-as-skill-name)). A skill whose frontmatter says
+([Skills → running a skill](/guide/skills/#running-a-skill-as-skill-name)). A skill whose frontmatter says
 `context: fork` runs in one of [`spec.delegation`](/guide/manifest-reference/agents/#specdelegation)'s agents instead (or, with no
-`spec.delegation`, in the manifest itself as its own subagent) and is never preloaded ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
+`spec.delegation`, in the manifest itself as its own subagent) and is never preloaded ([Skills → running a skill in a subagent](/guide/skills/#running-a-skill-in-a-subagent)).
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
-| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
+| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/skills/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
 
 ## `spec.skill_scripts`
 
@@ -417,7 +417,7 @@ spec:
 - **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
   names its artifact id in the stub, so `read_artifact` still reaches the full output.
 - **Skill instructions are never stubbed.** An `activate_skill` result is instructions the model
-  follows for the rest of the conversation; see [Concepts → Skill](/guide/concepts/#skill).
+  follows for the rest of the conversation; see [Skills → how a skill reaches the model](/guide/skills/#how-a-skill-reaches-the-model).
 - **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
   what it returned. A result content screening replaced with a `[quarantined]` notice is never
   stubbed.

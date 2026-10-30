@@ -31,7 +31,7 @@ parents name it, nesting deeper than four routers is refused, and so is a cycle.
 A child **inherits the caller's admission**: `spec.auth.inbound` is checked on the manifest a request
 names, not again on each child. Put the admission you need on the router — a child's own
 `required_scopes` apply when it is called by name, not when a router hands it a request. A
-person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) is the exception at run
+person's [`/skill-name`](/guide/skills/#running-a-skill-as-skill-name) is the exception at run
 time: it runs in a child only when the caller passes the child's own `spec.auth.inbound` and
 credential pin, so a parent's callers do not reach the child's manual-only skills. The other
 exception is checked at compile: a parent an anonymous caller may enter is refused when a child it
@@ -86,7 +86,7 @@ must be unique.
   the manifest itself, compiled on the first fork through a governed `task` tool the model is never
   offered, one level deep; a composite, or a manifest with a provider tool already named `task`,
   answers `fork_unavailable`
-  ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
+  ([Skills → running a skill in a subagent](/guide/skills/#running-a-skill-in-a-subagent)).
 
 **Background children.** With `background: true` (and optionally `max_background`) beside `agents`, the model may pass
 `background: true` to `task`: the child starts as a [durable run](/guide/rest-api/#durable-runs) and

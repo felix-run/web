@@ -155,7 +155,7 @@ quote falls back to splitting on whitespace. The name matches regardless of case
 
 Only a declared name is a command. `/etc/hosts is gone` or `/shrug` on an agent with no such prompt
 is sent as written, and an agent with no `spec.prompts` behaves exactly as before. A name that is no
-prompt may still be a skill a person can run ([`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name)); a prompt of the same name wins. A command whose
+prompt may still be a skill a person can run ([`/skill-name`](/guide/skills/#running-a-skill-as-skill-name)); a prompt of the same name wins. A command whose
 prompt expands to nothing is `404 empty_prompt:<name>`. A turn sent as content parts (text beside
 an image) is never a command.
 

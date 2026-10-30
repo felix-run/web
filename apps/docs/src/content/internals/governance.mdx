@@ -593,7 +593,7 @@ itself, which the schema allows only behind an approvals rule that gates every `
 approved by a person before it was saved. An agent's edit of a version an operator wrote is never
 published automatically, whatever the mode.
 
-A person's [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) and a manifest's
+A person's [`/skill-name`](/guide/skills/#running-a-skill-as-skill-name) and a manifest's
 `preload` are `activate_skill` calls the harness makes before the model's first step, through the
 same tool round as the model's, so every wrapper applies. What such a call may do that the model's
 may not — reach a `disable-model-invocation` skill the manifest declares, pass `arguments` — is
@@ -626,7 +626,7 @@ A composite with no tool loop of its own (`router`, `parallel`, `groupchat`) sti
 own `preload`; its compile warns. A `plan_execute` planner reads `/name args` as written, without
 the skill's instructions.
 
-A [forked skill](/guide/concepts/#running-a-skill-in-a-subagent) (`context: fork`) runs as a call of
+A [forked skill](/guide/skills/#running-a-skill-in-a-subagent) (`context: fork`) runs as a call of
 the manifest's *governed* `task` tool, bound once every wrapper has wrapped it, so every control that
 names `task` holds for it: an approval, a policy, the limits and their `max_peer_hops`, the
 permission mode, the child's own inbound auth, `subagent_stop`. A manifest with no

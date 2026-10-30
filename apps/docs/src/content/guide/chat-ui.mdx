@@ -1,0 +1,57 @@
+---
+title: "Chat UI"
+description: "What the browser client shows beyond the conversation — View levels, what a reply changed, folded tool calls, and choosing where a thread runs."
+---
+
+The browser client draws the same runs the harness serves to every surface. A few of its
+behaviours are its own and worth knowing before you use it daily. On a phone or iPad, see
+[Phones and iPads](/guide/phones-and-tablets/); in a terminal, the
+[Terminal client](/guide/terminal/).
+
+## View levels
+
+chat-ui's **View** setting (in the header menu, or `/view`) has three levels. **Everyday** is the
+conversation and what waits on you. **Harness view** adds the harness pages — Skills, Activity,
+Memory and the rest — to the sidebar, along with the run instrument, the context meter and each
+reply's token counts. **Harness + debug** (or `/debug`) adds the instrument's Debug tab, the event
+ids under each turn and tool card, and tool input and output left open. In Everyday, the sidebar
+shows a *Skill drafts* row only while a draft is waiting for review, which links straight to the
+Skills page.
+
+## What a reply changed
+
+At every level, a reply that changed workspace files ends with one line — *2 files changed ·
+Review*. It counts the files a write, edit, delete or rename actually landed on (a denied or failed
+call changed nothing, and a rename is one file). **Review** opens that reply's changes in the side
+pane: each path with what was done to it, the same list as the run instrument's Changes tab but
+scoped to the one reply, so Everyday can answer "what did it do to my files" without the instrument.
+
+## Folded tool calls
+
+Three or more routine tool calls in a row — finished, with nothing that needs you — fold into one
+line that says what they did (*Read 3 files, ran 1 command*) and opens to their cards. A failed,
+refused or denied call, a non-zero exit, an image, a skill draft, a background child and a publish
+always keep their own card, and Harness + debug folds nothing. A `web_search` or `document_search`
+result opens as its sources: each hit's title, linked when it is an http(s) URL, with Raw a click
+away. A `publish_commits` call says under its card where it landed — files, `repo:branch`, the
+commit and whether the branch is new — with a link to the compare page. A command that failed with a
+Python traceback or a Node stack in its output shows the error and its frames above the raw
+output, innermost first, with frames in installed packages folded into one line.
+
+## Where a thread runs
+
+Where a thread runs is chosen before its first message, in the line under the empty thread's
+greeting. For an agent whose file tools work in the browser, **Mount a folder** (Chrome or Edge on
+a computer) gives them a folder on your computer instead of the tab's own storage, or **Reconnect**
+brings back last session's. A mounted folder is the browser's, so every thread in it uses the same
+one. For an agent whose tools work on the harness, a person signed in with GitHub sees a
+**Repository** line: **Open a repository** clones one of theirs into that thread's own checkout,
+where the agent's file and shell tools then work. The line goes away with the first message, and
+Files in the side pane has the same controls from then on.
+
+Once a repository is open there, the starter prompts gain **Start from an issue or PR**: pick one
+of its open issues or pull requests (filtered by title, the 30 most recently updated) and its
+title, link and description go into the message box. Unlike a starter, nothing is sent — the
+description is whoever opened the issue, so you read it and add what you want done first.
+When the repository's issues can't be listed (issues are turned off, or the deployment's GitHub
+App lacks the Issues permission), the list holds its pull requests only and says why.
