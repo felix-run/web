@@ -110,9 +110,10 @@ no `tool` — `inbound_screening` carries `surface` (`turn` or `tool_arguments`)
 `policy_deny` covers every governance denial **that a tool call ran into**, not only
 `spec.policies`: command and content screening, limits, guardrails, tool-targeted judges and pending
 approvals all return a deny marker the loop records under this one name. The row's `payload.control`
-names the layer — one of `policy`, `limits`, `guardrails`, `approvals`, `command`, `screening`, or
+names the layer — one of `policy`, `limits`, `guardrails`, `approvals`, `command`, `screening`,
 `hook` when a [plugin's `before_tool` hook](/internals/plugins/#agent-loop-hooks) blocked the call,
-in which case `payload.hook` names it — so
+or `manifest_hook` when a manifest's `pre_tool_use` hook did; on the call the hook refused,
+`payload.hook` names it — so
 `GET /audit?event_type=policy_deny` filtered on it answers "every call approvals blocked this week"
 without correlating counters. The web UI's Activity page names the layer on the row and can narrow
 its threads to those with a denial by one layer; a row from a harness that predates the field reads
