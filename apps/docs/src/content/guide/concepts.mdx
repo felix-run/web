@@ -281,7 +281,9 @@ screened tool result, never with the authority of the person's own words.
 - **Which skills.** Any resolved skill unless its frontmatter sets `user-invocable: false`, which
   keeps it for the model only. A `disable-model-invocation` skill is runnable by `/name` only where
   the manifest declares it in `spec.skills`; it still never reaches the model, and an undeclared one
-  stays unavailable to everyone.
+  stays unavailable to everyone. On `/v1`, whose caller is as often an agent as a person, it also
+  needs a caller holding `skills:invoke`; without it the turn is sent as written. `/chat` needs no
+  scope for it, and an A2A or MCP caller's message runs no skill.
 - **Arguments.** What follows the name goes into the body: `$ARGUMENTS` is the whole text,
   `$ARGUMENTS[N]` and `$N` the Nth argument from 0, split as a shell would (one past the end is
   empty). A body that never names `$ARGUMENTS` gets `ARGUMENTS: <text>` appended, so they are never

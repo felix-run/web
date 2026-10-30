@@ -32,6 +32,7 @@ Management routes require a scope on the bearer token in addition to authenticat
 | `artifacts:read` | `/artifacts/{manifest_id}/{artifact_id}` |
 | `files:read` / `files:write` | read an upload back / upload and delete |
 | `skills:read` / `skills:write` | `/skills/{manifest_name}` and every `/skill-library` read / save, publish, roll back, reject, archive, adopt an import, decide feedback, queue evaluations and set the publish policy |
+| `skills:invoke` | running a `disable-model-invocation` skill as [`/skill-name`](/guide/concepts/#running-a-skill-as-skill-name) on `/v1` (`/chat` needs none); implied by nothing but `admin` / `*` |
 | `skills:personal` | writing the caller's own [personal library](#personal-libraries) under `/skill-library/~me`, and promoting from it; implied by nothing but `admin` / `*` |
 
 Three rules make this practical:
