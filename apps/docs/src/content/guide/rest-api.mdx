@@ -1309,8 +1309,14 @@ gets `422 content_screening_denied`.
 
 A tool result written here is stored under `queue:<name>`, whatever `name` it carries: the harness
 reads a result back by its name as what it ran (a skill's activation, the thread's `todo_write`
-checklist), so one from outside never passes for a harness tool's. The model still sees it as the
-answer to its `tool_call_id`; the OpenAI wire leaves out a message `name` the API would refuse.
+checklist), so one from outside never passes for a harness tool's. The OpenAI wire leaves out a
+message `name` the API would refuse.
+
+Call ids are scoped the same way: a result's `tool_call_id`, and each id in an `assistant` event's
+`tool_calls`, are stored as `queue_<id>` (shortened to `queue_` and a digest past 40 characters). A
+result you write therefore answers a call you wrote, never one the agent made: a call a run left
+unfinished still gets the harness's own "do not call it again" result when the thread resumes. The
+queue envelope carries no call id, and the queue tool answers its own call when it enqueues.
 
 `session_id` is the **full, tenant-prefixed** thread id as it appears in the queue envelope
 (`{tenant}:{suffix}`, or `{tenant}:fiber:{id}` for a durable run) — not a bare suffix. It must belong
