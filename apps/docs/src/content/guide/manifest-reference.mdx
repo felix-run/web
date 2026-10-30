@@ -479,6 +479,22 @@ connected several. Mail and shared files are text anyone could have written: tur
 behind approvals. Under `spec.network` the tools need `www.googleapis.com` (Calendar, Drive) and
 `gmail.googleapis.com`.
 
+With the `icloud` extra (`felix-connectors[icloud]`), a person's own iCloud, with the Apple ID and
+app-specific password they connected ([Connecting iCloud](/internals/auth/#connecting-icloud)), over
+CalDAV and CardDAV:
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__icloud_calendar_events` | `{start?, days?, limit?, account?}` | Upcoming events from every calendar the person sees, shared ones included, in time order. A repeating event shows on each day it falls; one that repeats too often to list (every second, say) is left out and the answer says so. |
+| `connectors__icloud_calendar_create_event` | `{summary, start, end, description?, location?, calendar?, account?}` | Not read-only. Adds the event to one of the person's *own* writable calendars -- the first, or the one `calendar` names -- never a calendar shared with them, and never one picked between two of the same name. No guests, so nothing is mailed; a repeat of the same title and time finds the event already made. |
+| `connectors__icloud_contacts_search` | `{query, limit?, account?}` | Name, email or phone containing the words; name, emails, phones and organisation of each. |
+
+Reminders are not offered: Apple does not serve upgraded Reminders lists over CalDAV. Calendars
+and contacts are text anyone who can invite or email the person could have written: turn on
+`content_screening`, and put `connectors__icloud_calendar_create_event` behind an approval. Under
+`spec.network` the tools need `*.icloud.com` -- iCloud answers from a numbered server of the
+person's (`p42-caldav.icloud.com`), so an exact host list refuses the compile.
+
 ### `spec.workspace`
 
 Which directory the workspace tools, [`shell_tools`](#specshell_tools), an image tool's `path` and
