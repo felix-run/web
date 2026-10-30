@@ -1,0 +1,46 @@
+---
+/*
+ * A hub page's forwarding for links into sections that moved to its child pages.
+ * `guide/manifest-reference/#specapprovals` was a heading on one long page; it is
+ * now on `guide/manifest-reference/governance/`. Links from elsewhere — the
+ * harness repo, bookmarks, a chat-ui build still cached by its service worker —
+ * keep the old address, and a fragment that names no element loads the top of
+ * the hub with nothing to say the section moved.
+ *
+ * Built at build time from the child pages' own headings, so there is no table
+ * to keep: every heading on `guide/<hub>/<page>.mdx` forwards to that page, and
+ * so does the page's title, which was the section's heading on the long page.
+ * A fragment that is an element on the hub itself is left alone.
+ */
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { anchorsOf, HUB_DIR, readPage, slug } from './headings';
+
+interface Props {
+  /** The hub's slug under `guide/`, which is also its folder of child pages. */
+  hub: string;
+}
+
+const { hub } = Astro.props;
+const dir = join(HUB_DIR, hub);
+const moved: Record<string, string> = {};
+for (const file of readdirSync(dir).sort()) {
+  const page = file.replace(/\.mdx?$/, '');
+  const base = `/guide/${hub}/${page}/`;
+  const { title, body } = readPage(join(dir, file));
+  moved[slug(title)] ??= base;
+  for (const anchor of anchorsOf(body)) moved[anchor] ??= `${base}#${anchor}`;
+}
+---
+
+<script is:inline define:vars={{ moved }}>
+  (() => {
+    const forward = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (!id || document.getElementById(id) || !Object.hasOwn(moved, id)) return;
+      location.replace(moved[id]);
+    };
+    forward();
+    addEventListener('hashchange', forward);
+  })();
+</script>

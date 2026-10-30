@@ -282,7 +282,7 @@ A browser subscribes to be **woken when a run is waiting on a person**: a new ap
 agent's question (`ui_request`). It is the one signal that reaches a device whose page is not
 running, such as a phone that suspended the web app when its owner switched apps. The web UI does
 this from the installed app (see [Phones and iPads](/guide/phones-and-tablets/)); any client can.
-The same subscription is where an agent with [`spec.notify`](/guide/manifest-reference/#specnotify)
+The same subscription is where an agent with [`spec.notify`](/guide/manifest-reference/running/#specnotify)
 reaches its subscriber with a notice.
 
 The deployment must opt in. Until `FELIX_PUSH_VAPID_PRIVATE_KEY` and `FELIX_PUSH_VAPID_SUBJECT`
@@ -313,7 +313,7 @@ no `:`); otherwise the run's own thread. In that case the notice is also left in
 conversation, before the push goes, as an entry for the person that the model never reads (a
 `custom` entry with `metadata.type: "notice"`), so it is there when they open it even if no device
 took the push. See
-[`spec.notify`](/guide/manifest-reference/#specnotify).
+[`spec.notify`](/guide/manifest-reference/running/#specnotify).
 
 ### `GET /push/vapid-public-key`
 
@@ -448,7 +448,7 @@ principal_not_a_person`.
 `POST` takes `{content, kind, manifest_id, topic_key, importance, principal}`. With `principal`,
 the memory goes to that person's pool, where every agent working for them reads it. Without it, the
 memory goes to the agent pool `manifest_id` names, and under
-[`scope: person`](/guide/manifest-reference/#memoryscope) every person's agent reads it, because an
+[`scope: person`](/guide/manifest-reference/memory/#memoryscope) every person's agent reads it, because an
 operator wrote it. A memory stored with no `principal` and an empty `manifest_id` is recalled by no
 agent. The answer is `{id, status, principal}`. `409 memory_held_by_another_pool` means the
 content's id is held by a row of another pool, which only `felix memory assign` leaves behind.
@@ -595,7 +595,7 @@ Returns `{artifact_id, manifest_id, chars, content}`. Spill is kept for `FELIX_A
 
 This is the client's way back. The model's is the `read_artifact` tool, which pages through the same
 object but only for the conversation that spilled it — see
-[`spec.artifacts`](/guide/manifest-reference/#specartifacts).
+[`spec.artifacts`](/guide/manifest-reference/memory/#specartifacts).
 
 **The tenant is in the key and is not a parameter.** It comes from your own credentials, so no
 spelling of a reference reaches another tenant's data — while the manifest, which is needed to locate
@@ -970,7 +970,7 @@ counts. Changes are audited as `skill_policy_updated` and `skill_policy_deleted`
 A principal with a verified identity has a personal library in its tenant, keyed by issuer and
 subject; an anonymous caller, `FELIX_AUTH_MODE=none`, and an API key configured without its own
 `sub` have none. Its skills reach only its owner's turns, and only on a manifest with
-[`spec.personal_skills`](/guide/manifest-reference/#specskills) set to `read` or `write`.
+[`spec.personal_skills`](/guide/manifest-reference/memory/#specskills) set to `read` or `write`.
 `/skill-library/~me` mirrors the library routes for the caller's own library:
 
 | Method | Path | Scope | Success |
@@ -1341,7 +1341,7 @@ else, a non-empty string of at most 8 KiB in UTF-8 bytes. `DELETE` clears them.
 
 ### A job's own state
 
-A job whose manifest sets [`spec.state`](/guide/manifest-reference/#specstate) keeps a few short text
+A job whose manifest sets [`spec.state`](/guide/manifest-reference/running/#specstate) keeps a few short text
 values its runs leave the next one — a bookmark per source, a ledger of what was posted — written
 only by the job's own firings through `state_set`. These routes let a person read them and reset
 them; none writes a value.
@@ -1387,7 +1387,7 @@ against the job's own firing, so a write from a firing already in flight can lan
 
 ### Tasks an agent scheduled
 
-An agent with [`spec.scheduling`](/guide/manifest-reference/#specscheduling) writes jobs itself,
+An agent with [`spec.scheduling`](/guide/manifest-reference/running/#specscheduling) writes jobs itself,
 through `schedule_task`: each is named `task-<hex>`, targets that manifest, carries the prompt in
 `payload.prompt` and is marked by `payload.scheduled_by` (`{tool: "schedule_task", manifest,
 thread_id}`). It is recorded as written by the person the conversation acted for, with their scopes,
@@ -1413,7 +1413,7 @@ has never run, and any job written through this API are never swept.
 ## Heartbeats
 
 A person's own periodic check-in, on a manifest whose operator defined one
-([`spec.heartbeat`](/guide/manifest-reference/#specheartbeat)). The operator decides what a firing
+([`spec.heartbeat`](/guide/manifest-reference/running/#specheartbeat)). The operator decides what a firing
 checks, how often, on which model and how far it may go; the caller decides only whether theirs is
 on. Every route acts on the caller's heartbeat and no one else's.
 
@@ -1476,7 +1476,7 @@ refusal's `detail` is the written message as a string.
 **`GET /heartbeats`** answers `{items: [...]}`, the caller's heartbeats on every manifest, each
 `{manifest, name, enabled, schedule, timezone, thread_id, next_run_at, last_run_at, last_status,
 expires_at}`, where `timezone` is the zone a cron `schedule` is read in
-([`spec.heartbeat.timezone`](/guide/manifest-reference/#specheartbeat); `null` is UTC), `thread_id`
+([`spec.heartbeat.timezone`](/guide/manifest-reference/running/#specheartbeat); `null` is UTC), `thread_id`
 is the heartbeat conversation and `expires_at` is when it stops for good (above), or `null`. Nobody else's are listed, an operator's included; an
 operator sees every heartbeat's job through `GET /jobs`.
 
@@ -1500,7 +1500,7 @@ manifest the caller has no heartbeat on, whether or not someone else does — it
 `HEARTBEAT_OK` when nothing needs the person or one `notify` when something does, unattended, on the
 heartbeat's `model` and `max_turns`, at most `max_firings_per_day` a UTC day when set, older firing threads
 pruned to `keep_threads` — is described
-under [`spec.heartbeat`](/guide/manifest-reference/#specheartbeat). A heartbeat's run records read
+under [`spec.heartbeat`](/guide/manifest-reference/running/#specheartbeat). A heartbeat's run records read
 like any job's, through `GET /jobs/{name}/runs`, with `result.quiet` saying whether a notice went.
 Firing transcripts are the tenant's to read, like any job's: each firing thread is an ordinary
 thread of the tenant, so whoever may read the tenant's sessions reads what a heartbeat checked on
@@ -1570,7 +1570,7 @@ skipped or none of its `when` ports fired. A failed step fails the run.
 **Who made it.** Each workflow carries `created_by` and `authored_via`, in the list too.
 - A save through these routes records the caller as `created_by` when it creates the workflow and
   leaves `authored_via` empty.
-- An agent with [`spec.workflow_authoring`](/guide/manifest-reference/#specworkflow_authoring) records
+- An agent with [`spec.workflow_authoring`](/guide/manifest-reference/running/#specworkflow_authoring) records
   the person's issuer-qualified key and `agent:<manifest>`.
 - Your save over an agent's workflow takes it over. If it was made for you it becomes
   `owner:agent:<manifest>`, which that agent may still run but no longer change. Anyone else's save

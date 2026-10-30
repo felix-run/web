@@ -302,7 +302,7 @@ When a manifest's catalog offers a live skill of import lineage:
 |---|---|
 | The system prompt's skill catalog | The skill is listed with `untrusted="true"` under a preamble saying such skills come from third parties. A description carrying the injection markers is withheld; the name is still listed |
 | `list_skills` | The item carries `"untrusted": true`; the same description rule applies |
-| `activate_skill`, `read_skill_file`, `list_skills` | Their output about that skill is marked as relayed from an untrusted author, and [content screening](/guide/manifest-reference/#speccontent_screening) (`spec.content_screening.enabled`) screens it as it screens an untrusted tool's: markers, the optional scoring model, quarantine or block |
+| `activate_skill`, `read_skill_file`, `list_skills` | Their output about that skill is marked as relayed from an untrusted author, and [content screening](/guide/manifest-reference/governance/#speccontent_screening) (`spec.content_screening.enabled`) screens it as it screens an untrusted tool's: markers, the optional scoring model, quarantine or block |
 
 Operator and agent skills are not screened this way. A manifest **without** content screening still
 gets a floor for imported text: the free injection markers — no scoring model, no decider — run over

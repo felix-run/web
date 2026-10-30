@@ -54,7 +54,7 @@ API, deploy, and internals. The harness itself is a separate repo
    | `apps/*/worker/index.ts`, wrangler config | `guide/deploy.mdx` |
    | `src/api.ts`, `src/types.ts` (protocol) | `guide/rest-api.mdx`, `internals/architecture.mdx` |
    | Auth, the sign-in gate | `internals/auth.mdx`, `guide/deploy.mdx` |
-   | Manifest fields | `guide/manifest-reference.mdx`, `internals/manifest-pipeline.mdx` |
+   | Manifest fields | `guide/manifest-reference/*.mdx` (one page per band; a new page goes in `PAGES` in `FieldIndex.astro`), `internals/manifest-pipeline.mdx` |
    | Audit/metrics surfaces | `internals/observability.mdx` |
    | `packages/design/src/tokens.ts` | `pnpm sync:theme` to regenerate `src/styles/theme.css` |
    | A harness `docs/diagrams/*.mmd` (felix-run/felix) | `pnpm sync:diagrams <checkout>` re-renders `src/diagrams/`; never hand-edit an SVG there. A new one goes in `src/diagrams/diagrams.json` and on its page as `<HarnessDiagram name="…" />` |

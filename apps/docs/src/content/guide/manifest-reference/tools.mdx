@@ -1,0 +1,434 @@
+---
+title: "Tools"
+description: "The felix/v1 manifest fields for what an agent can call, where those calls run, and what reaches the network."
+---
+
+What the agent can call, where those calls run, and what reaches the network.
+
+Tools declared by kind — shell, browser, image, search, HTTP, publishing to GitHub, and tools the client runs — are on [Tool families](/guide/manifest-reference/tool-families/).
+
+## `spec.network`
+
+Which hosts this agent's tools may reach. Unset, it is any public address the egress guard
+allows, as before; set, it is these and nothing else.
+
+```yaml
+spec:
+  network:
+    allow_hosts: [api.github.com, "*.githubusercontent.com", docs.example.com]
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `allow_hosts` | string[] \| null, at most 64 | `null` | `null` is unrestricted; `[]` allows nothing. |
+| `credentials` | string[], at most 64 | `[]` | Ids of [operator-registered credentials](/guide/deploy/#credentials-the-model-never-holds) this agent's `http_tools` may send. Needs `allow_hosts`, naming each credential's host. |
+
+Each entry is a host (`api.github.com`), `*.` and a host (`*.github.com` matches any name under
+it, never `github.com` itself), or an IP address. No scheme, port or path. Write an
+internationalised name in punycode (`xn--mnchen-3ya.de`).
+
+- **[`http_tools`](/guide/manifest-reference/tool-families/#spechttp_tools)** refuse a URL on any other host, and the same check runs on
+  every redirect hop: `http_fetch_error: egress_blocked: destination not permitted`.
+- **[`browser_tools`](/guide/manifest-reference/tool-families/#specbrowser_tools) cannot be combined with it.** A page reaches hosts
+  through channels the browser's request interceptor never sees, so a browser held to a list
+  would look confined and not be: the manifest is refused when written, and a child with a
+  browser under a parent's list is refused at compile.
+- **URLs the manifest names** must be on the list: `mcp_servers[].url`, `peers[].url`, a container
+  `gateway_url`, and an `http_tools` `path_prefix`. A manifest naming one that
+  is not is refused when it is written.
+- **Child agents** (sub-agents and [`delegation`](/guide/manifest-reference/agents/#specdelegation) children, background ones
+  included) answer to this list as well as their own, so delegating cannot widen what an agent
+  reaches.
+- **A2A peers are pinned.** With a list set, a `peer__*` tool has no `manifest` argument: the
+  agent answering on the far side is the peer's default, not one the model picks.
+
+### Credentials the model never holds
+
+With `credentials: [github]`, a fetch to the operator's registered host and path carries the
+registered header — `Authorization: Bearer …` — which the harness adds as the request leaves. The
+model never sees the key: not in its tools' arguments, the URL, the result or a log. A server that
+echoes the header back is shown to the model as `[REDACTED]`.
+
+```yaml
+spec:
+  network:
+    allow_hosts: [api.github.com]
+    credentials: [github]
+  http_tools:
+    - name: github_api
+      path_prefix: https://api.github.com/repos/acme/
+```
+
+The header goes only over https, only to that exact host and port, only under the credential's path
+prefix, and each redirect hop is judged again: a hop to another host goes without it. An id the
+operator has not registered for your tenant, or whose host `allow_hosts` does not name exactly,
+fails the compile. Child agents do not inherit a parent's credentials.
+
+The list bounds the requests Felix sends for the model. It does not reach a process that opens
+its own connections — `shell_tools`, a sandbox, a stdio MCP server — nor what a listed MCP server
+or A2A peer fetches on its side. A tool a plugin binds is held to it only if it declares the hosts
+it reaches: the [connector tools](#connector-tools) do, and an agent whose list does not cover them
+is refused at compile (`binds tools that reach hosts its network.allow_hosts … does not allow`). A
+plugin tool that declares nothing is not bounded. Hooks, webhooks, push and model calls are the
+operator's traffic, not the agent's.
+
+On a host many people publish to — `*.github.io`, `*.vercel.app`, `docs.google.com` — a listed
+host still admits pages anyone wrote. Pair it with an `http_tools` `path_prefix` there.
+
+## `spec.tools`
+
+A list of built-in tool names.
+
+```yaml
+spec:
+  tools: [calculator, read_file, write_file, edit_file, search_files, list_dir]
+```
+
+| Tool | Args | Notes |
+|---|---|---|
+| `calculator` | `{expression}` | Safe expression evaluator. |
+| `time_now` | `{zones}` | The current time in up to 10 IANA zones, each with its UTC offset and abbreviation; `FELIX_TIMEZONE` when `zones` is empty. |
+| `time_convert` | `{time, from_zone, to_zones}` | An ISO 8601 date-time shown in other zones. Without an offset it is a wall time in `from_zone` (default `FELIX_TIMEZONE`). A wall time a clock change skips is read as the moment after the gap, one it repeats as the first reading, and the answer says which. |
+| `date_math` | `{start, op, add, end, zone}` | `op: add` moves a date or date-time by `{years, months, weeks, days, hours, minutes}`: months clamp to the month's end, calendar units keep the wall clock across a DST change, hours are elapsed time. `op: between` gives the days, the calendar difference counted from `start` (the inverse of `add`) and the Monday-to-Friday count, or the elapsed time between two date-times. A date-time without an offset is read in `zone` (default `FELIX_TIMEZONE`). |
+| `list_dir` | `{path}` | Max 500 entries. |
+| `read_file` | `{path, offset, limit}` | Max 512 KB; flags binary files. |
+| `write_file` | `{path, content, append}` | Max 512 KB. Like `edit_file` and `multi_edit`, refuses any path inside `.git` and any `.gitattributes`: they decide what git runs. |
+| `edit_file` | `{path, old_string, new_string, replace_all}` | Replaces one exact string, leaving the rest of the file untouched. Max 4 MB file; refuses a match it cannot find, and a match it finds more than once unless `replace_all` is set; refuses when the resulting file would exceed the limit before writing it. |
+| `multi_edit` | `{path, edits: [{old_string, new_string, replace_all}]}` | Up to 50 exact-string edits to one file, applied in order, each to the result of the one before. All land or none do: an edit `edit_file` would refuse refuses them all, and the file is written once, only if it has not changed since it was read. Max 512 KB file; use `edit_file` above that. |
+| `search_files` | `{query, path, regex, max_hits}` | ≤ 50 hits; skips files over 256 KB. |
+| `glob` | `{pattern, path, max_results}` | Finds files by name: `*` within a name, `**` across folders (`**/*.py`, `src/**/test_*.py`), matched against the whole path under `path`, case-sensitive. Files only, never `.git`; up to 500 results, with `truncated` when there were more or the workspace was too large to walk whole. A `path` that does not exist or is a file is refused; so is a pattern with `..`, a leading `/`, more than 8 `*`/`?` or more than 4 `**`. |
+| `list_skills` / `activate_skill` / `deactivate_skill` / `read_skill_file` | `{name}`; `read_skill_file` also `{path}`; `activate_skill` also `arguments`, honoured only on a person's `/skill-name`, and `task`, the job for a [forked skill](/guide/concepts/#running-a-skill-in-a-subagent) | Bound to the real catalog when `spec.skills` or `spec.skill_authoring.enabled` is set; `read_skill_file` is added whenever any skill tool is. Read-only, so they run in plan mode. |
+| `ask_user` | `{question, kind, options, timeout_seconds}` | Asks the person watching the run and waits for the answer. `kind` is `confirm`, `select` (implied by `options`) or `input`; the timeout defaults to 300 s, max 900. Returns `{answered, value}`, or `{answered: false, reason}`. Only a live `/chat/stream` can reach a person, so anywhere else it returns `reason: "no_one_watching"` at once. |
+| `todo_write` | `{todos: [{content, status, active_form?}]}` | The agent's checklist for a task with several steps. Each call replaces the whole list (at most 100 items); `status` is `pending`, `in_progress` (at most one) or `completed`. The session snapshot returns it as `todos`, read off the conversation's current branch — so it survives a reload and follows a rewind or fork — and each write is announced on the stream as `todo_updated`. A write refused by governance changes nothing. |
+| `trigger_event` | none | The event an [inbound trigger](/guide/deploy/#inbound-triggers) started this run for: its type, delivery id and the payload as its sender posted it. Its output is third-party data, screened like an MCP server's; outside a triggered run it returns an error. A trigger's manifest must list it. |
+
+`ask_user` is how an agent puts a decision to a person instead of guessing: both web clients
+draw the question as a banner above the composer and post the answer back. Use it for choices that
+are genuinely the person's to make. A question nobody can see is no question at all, so the tool
+refuses on a non-streaming `POST /chat`, a durable run, `/v1` and A2A rather than holding the run
+for its whole timeout.
+
+`edit_file` reads and writes bytes, not text — a universal-newline read would turn every `\r\n` in
+a file into `\n`, and writing the result back would rewrite every line ending in a CRLF file the
+edit never touched. Use it instead of `write_file` on any file the model did not just create: it is
+the only one of the two that cannot lose a byte the model failed to reproduce.
+
+The five workspace tools resolve every path under the manifest's workspace scope
+([`spec.workspace`](#specworkspace)), a directory under `FELIX_WORKSPACE_ROOT`, rejecting absolute
+paths and any traversal that escapes it. With the variable unset they fail with
+`workspace_root is not configured (set FELIX_WORKSPACE_ROOT)`.
+
+They never follow a symlink. Each path is opened one component at a time from the root with
+`O_NOFOLLOW`, so a link anywhere in it — a directory or the file itself — is refused
+(`symlinks are not followed in workspace paths`), and a `FELIX_WORKSPACE_ROOT` that is itself a
+symlink is refused. Checking a path and then opening it by name would let anything else
+writing the workspace swap a directory for a link between the two. `list_dir` reports a link as
+`symlink`; `search_files` does not descend into one.
+
+Patterns contribute their own tools: `plan_create` / `plan_update_step` / `plan_get` (`deep`), and
+`remember_procedure` when procedural memory is on.
+
+### Connector tools
+
+With the optional [`felix-connectors` plugin](/guide/deploy/#connector-tools) installed, these
+names can be listed in `spec.tools` too. Each reaches a host the operator configured, never one
+the model names.
+
+```yaml
+spec:
+  tools: [connectors__geocode, connectors__weather_forecast, connectors__route]
+  content_screening:
+    enabled: true
+```
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__weather_current` | `{latitude, longitude, units?}` | Conditions now, with the time the upstream observed them. `units` is `metric` or `imperial`; the operator's default when omitted. |
+| `connectors__weather_forecast` | `{latitude, longitude, days?, units?}` | One line a day, today included: conditions, high, low, precipitation and its chance, wind. `days` is 1–16, default 3. |
+| `connectors__weather_alerts` | `{latitude, longitude}` | Active US National Weather Service alerts, at most five. A point it does not cover answers `no active alerts (coverage: US states and territories)`, not "all clear". |
+
+Every answer starts with its `source:`. Upstream text is flattened to one capped line per field, so
+an alert cannot write lines of its own; a failure is a tool error naming the service and its status
+(`US National Weather Service answered 502`), never the upstream's own words. The tools are
+read-only, so they run in plan mode. Their output is untrusted: with
+[`content_screening`](/guide/manifest-reference/governance/#speccontent_screening) on it is screened without listing them, and with it
+off it reaches the model as is, as an MCP server's would. Under [`spec.network`](#specnetwork) each
+needs its host listed: `api.open-meteo.com` for the first two with the default backend,
+`api.weather.gov` for alerts.
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__geocode` | `{query, limit?, country_codes?}` | Places for an address or name, with coordinates to hand to the weather and route tools. `limit` 1–10, default 3; `country_codes` are ISO two-letter codes. |
+| `connectors__reverse_geocode` | `{latitude, longitude}` | The address at a point. A point in the sea answers `no places found`. |
+| `connectors__places_search` | `{query, latitude, longitude, radius_km?, limit?}` | Places matching `query` inside a box `radius_km` (default 5, at most 50) around the point, each with its distance. |
+| `connectors__route` | `{origin: {latitude, longitude}, destination: {…}, profile?}` | Distance, travel time and up to fifteen steps. `profile` is `driving` (default), `walking` or `cycling`. No route between the points is an answer, not an error. |
+| `connectors__timezone_at` | `{latitude, longitude}` | The IANA zone and the current local time there. |
+
+The weather tools take coordinates, not a place name, so an agent that is asked about a city calls
+`connectors__geocode` first. Under `spec.network` the maps tools need `nominatim.openstreetmap.org`
+(the first three), `routing.openstreetmap.de` (routes) and `api.open-meteo.com` (time zones) with
+the default backends. Answers name OpenStreetMap as their source, which is also the attribution
+its licence requires. OpenStreetMap is edited by anyone, so a place or road name is
+user-generated text: a manifest offering these tools should turn on
+[`content_screening`](/guide/manifest-reference/governance/#speccontent_screening).
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__quote` | `{symbol}` | The latest price, change, open, high, low and previous close, with the time it is from and how long ago that was. Never called real-time: whether a plan's prices are delayed is the plan's. Needs `FELIX_MARKET_API_KEY`. |
+| `connectors__quote_history` | `{symbol, days?}` | Daily open, high, low, close and volume, oldest first; `days` 1–100, default 30. On the default Finnhub backend this answers that it has no daily history. |
+| `connectors__symbol_search` | `{query, limit?}` | Ticker symbols for a company name; `limit` 1–10, default 5. |
+| `connectors__fx_rate` | `{base, symbols?, amount?, day?}` | Converts `amount` (default 1) of `base` into each of `symbols` (all if empty, at most 10) at the ECB's reference rate. `day` asks for a past fixing (from 1999-01-04); a weekend or holiday answers with the nearest published fixing and names its day. A code Frankfurter does not quote is named (`no rate for XYZ`). Keyless. |
+
+A symbol a backend does not know answers `no data for …`, not a price of zero. Under
+`spec.network` the stock tools need `finnhub.io` (or `www.alphavantage.co`) and the exchange-rate
+tool `api.frankfurter.dev`.
+
+Wikipedia, keyless, in any language edition:
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__wikipedia_search` | `{query, lang?, limit?}` | Articles matching `query`, each title with the snippet where it matched; `limit` 1–10, default 5. |
+| `connectors__wikipedia_article` | `{title, lang?}` | The article's lead (up to 3,000 characters), its URL to cite, its short description and when it last changed. A redirected title ("NYC") is followed and says what it came from; a disambiguation page, a special page or another wiki's title is named as one. One title per call: a `\|` in it is refused. |
+
+`lang` is the edition's language code (`en` by default; `de`, `ja`, `zh-yue`, `simple` …), so the
+host is always `<code>.wikipedia.org`. Wikipedia is written by anyone: turn on `content_screening`.
+Under `spec.network` the tools need `*.wikipedia.org`.
+
+With the `google` extra (`felix-connectors[google]`), a person's own Google, acting as the person
+the run acts for with the account they connected ([Connecting Google](/internals/auth/#connecting-google)):
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__calendar_list_events` | `{start?, days?, limit?, account?}` | Upcoming events in the primary calendar. Needs `calendar_read` or `calendar_events`. |
+| `connectors__calendar_find_free_time` | `{start, end, duration_minutes?, account?}` | Free windows of at least the duration between two times with offsets (at most 31 days apart). |
+| `connectors__calendar_create_event` | `{summary, start, end, description?, location?, account?}` | Not read-only. Creates an event with no guests and no notification: an invitation is mail from the person's account. A repeat of the same title and time finds the event already made. Needs `calendar_events`. |
+| `connectors__gmail_search` | `{query, limit?, account?}` | Gmail search syntax; date, sender, subject and snippet. Needs `gmail_read`. |
+| `connectors__gmail_read` | `{message_id, account?}` | One message as plain text, cut at 8000 characters. |
+| `connectors__gmail_draft` | `{to, subject, body, account?}` | Not read-only. Saves a draft; nothing is ever sent. Needs only `gmail_compose`. |
+| `connectors__drive_search` | `{query, limit?, account?}` | Files whose text or name contains the words. Needs `drive_read`. |
+| `connectors__drive_read` | `{file_id, account?}` | Docs and Slides as text, Sheets as CSV, text files as they are; anything else is named and left alone. |
+
+A run that acts for no one person, a person with no Google account connected, or one whose grant
+lacks the scope a tool needs, gets that said in words. `account` names one when a person has
+connected several. Mail and shared files are text anyone could have written: turn on
+`content_screening`, and put `connectors__calendar_create_event` and `connectors__gmail_draft`
+behind approvals. Under `spec.network` the tools need `www.googleapis.com` (Calendar, Drive) and
+`gmail.googleapis.com`.
+
+With the `icloud` extra (`felix-connectors[icloud]`), a person's own iCloud, with the Apple ID and
+app-specific password they connected ([Connecting iCloud](/internals/auth/#connecting-icloud)), over
+CalDAV and CardDAV:
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__icloud_calendar_events` | `{start?, days?, limit?, account?}` | Upcoming events from every calendar the person sees, shared ones included, in time order, from now in `FELIX_TIMEZONE` when `start` is left out. A repeating event shows on each day it falls; one that repeats too often to list (every second, say), or past a calendar's budget, is left out and the answer says so. |
+| `connectors__icloud_calendar_create_event` | `{summary, start, end, description?, location?, calendar?, account?}` | Not read-only. Adds the event to one of the person's *own* writable calendars -- the first, or the one `calendar` names -- never a calendar shared with them, and never one picked between two of the same name. No guests, so nothing is mailed; a repeat of the same title and time finds the event already made. |
+| `connectors__icloud_contacts_search` | `{query, limit?, account?}` | Name, email or phone containing the words; name, emails, phones and organisation of each. |
+
+Reminders are not offered: Apple does not serve upgraded Reminders lists over CalDAV. Calendars
+and contacts are text anyone who can invite or email the person could have written: turn on
+`content_screening`, and put `connectors__icloud_calendar_create_event` behind an approval. Under
+`spec.network` the tools need `*.icloud.com` -- iCloud answers from a numbered server of the
+person's (`p42-caldav.icloud.com`), so an exact host list refuses the compile.
+
+With the `ics` extra (`felix-connectors[ics]`), the calendars a person published as `.ics` links --
+Outlook's published calendar, Google Calendar's secret iCal address, an iCloud public calendar --
+and connected ([Connecting a calendar feed](/internals/auth/#connecting-a-calendar-feed)):
+
+| Tool | Args | Notes |
+|---|---|---|
+| `connectors__ics_events` | `{feed?, start?, days?, limit?}` | Upcoming events from every feed the person connected (up to five), or the one `feed` names, in time order and each named by its feed; from now in `FELIX_TIMEZONE` when `start` is left out. A feed that cannot be read is named in the answer, with what the person can do about it, and the rest are still read. The feed's link is never shown. |
+
+Each calendar is held to a budget -- 20,000 events, 500,000 rule steps, 2,000 occurrences in the
+window, 20,000 steps for one series -- and what is left out is counted in the answer: anyone can
+publish a calendar, so a feed's content is whatever the person pointed it at. Turn on
+`content_screening`. Under `spec.network` the tool needs the hosts `FELIX_ICS_HOSTS` lists.
+
+## `spec.workspace`
+
+Which directory the workspace tools, [`shell_tools`](/guide/manifest-reference/tool-families/#specshell_tools), an image tool's `path` and
+[`publish_commits`](/guide/manifest-reference/tool-families/#specgithub_publish) work in. Each is a directory under `FELIX_WORKSPACE_ROOT`:
+
+```yaml
+workspace:
+  scope: thread      # thread (default) | tenant | deployment
+```
+
+| `scope` | Directory | For |
+|---|---|---|
+| `thread` | `<root>/.felix-scopes/<tenant>/<hash of tenant and thread>` | a conversation's files are its own |
+| `tenant` | `<root>/.felix-scopes/<tenant>/shared` | agents meant to share one workspace across a tenant's threads |
+| `deployment` | `<root>` itself | the self-build manifests (`contributor`, `triage`), whose root is a real checkout |
+
+- **No thread, no `thread` workspace.** A call that carries no thread — an MCP or A2A call that
+  names none — is refused under `scope: thread` rather than given a shared directory.
+- **`deployment` is the operator's.** The root holds every other scope, so it is honoured only for
+  the tenants in `FELIX_WORKSPACE_DEPLOYMENT_TENANTS` (comma-separated, default `default`). Any other
+  tenant running a manifest that asks for it is refused, never given the root.
+- **The scope is set per call, outermost**, so an approval's preview reads the same directory the
+  call will write.
+- **A thread with its own repository** (`POST /chat/sessions/{thread}/workspace/repo`) works in that
+  checkout instead, whatever the scope.
+- **Instruction files** (`AGENTS.md`, `SYSTEM.md`) are read from the root, which only the
+  `deployment` scope can write.
+
+On the default `local` backend, scopes keep one tenant's *paths* out of another's. They do not
+separate *processes*: every tenant's tools run as the same user on the same host, so code
+[`shell_tools`](/guide/manifest-reference/tool-families/#specshell_tools) runs can reach past the path checks. The
+[hosted backend](/guide/deploy/#hosted-workspaces) separates them: each scope gets its own sandbox,
+and `shell_tools` run there. A deployment that admits tenants it does not trust binds `shell_tools`
+only under `hosted`.
+
+**Upgrading from a release before scopes.** Files agents wrote at the root are visible only to the
+`deployment` scope afterwards. Move them, once, into the `default` tenant's `shared` scope where the
+workspace is mounted — `--keep` leaves a name at the root, and nothing is overwritten:
+
+```bash
+docker compose exec api felix workspace migrate --dry-run
+docker compose exec api felix workspace migrate --keep AGENTS.md
+```
+
+## `spec.tool_guidance`
+
+One line of advice per tool, keyed by tool name or glob, appended to the system prompt under a
+**Tool guidance** heading — only for tools the agent actually has once the manifest compiles.
+
+```yaml
+spec:
+  tool_guidance:
+    search: Use `search` to find sources; a result is a title, URL and snippet, not the page.
+    fetch: Use `fetch` to read a page before relying on it, and quote what the page says.
+    "github__*": Read an issue's comments before proposing a change to it.
+```
+
+Advice written into `system_prompt` about a tool outlives the tool: remove `fetch` and the prompt
+goes on recommending it. Keyed by tool, the advice goes with the binding. It works for any tool the
+manifest binds — built-ins, integration tools, MCP tools by `server__tool` name or glob. Each line
+is at most 500 characters; identical lines appear once. A key that matches no bound tool is counted
+as `felix_rule_targets_nothing`, like the other tool lists. Tools defined in code (plugins) can
+carry their own line, which is listed alongside. Set `system_prompt.include_tool_guidance: false`
+to leave the section out.
+
+## `spec.mcp_servers`
+
+Each entry becomes one tool per remote tool, namespaced `{name}__{tool}`. The client is the official
+MCP Python SDK's, on either protocol era; how discovery, calls, failures and timeouts behave is on
+the [MCP](/guide/mcp/#felix-as-an-mcp-client) page.
+
+```yaml
+spec:
+  mcp_servers:
+    - name: notion
+      url: https://mcp.notion.example.com
+      transport: sse
+      auth: secret:NOTION_TOKEN
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | Tool namespace. |
+| `url` | string | `""` | Required for `http` / `sse`. |
+| `command` | string | `""` | Required for `stdio`. |
+| `args` | string[] | `[]` | |
+| `cwd` | string | `""` | |
+| `env` | map[string,string] | `{}` | |
+| `auth` | string | `""` | Literal token, `secret:NAME`, or `person:<provider>` to send the token of the person the agent runs for ([MCP servers as the person](/guide/mcp/#mcp-servers-as-the-person)). |
+| `transport` | `http` \| `sse` \| `stdio` | `sse` | `http` and `sse` are both Streamable HTTP. |
+| `timeout_ms` | int | 30 000 | Per request, at most the integration ceiling. A whole session (handshake, listing, call) is bounded at three times this. |
+| `use_instructions` | bool | `false` | Use the server's `instructions` as one line of tool guidance in the system prompt: collapsed, capped at 1000 characters, dropped if the injection markers flag it. |
+| `tools` | string[] | `[]` | Glob patterns over the **remote** tool names (`issue_write`, not `github__issue_write`). Empty binds every tool the server lists. Non-empty binds only matches, which is what lets an approval or policy rule enumerate a server's write tools rather than gate whatever it served on the day; a pattern that matches nothing is logged at bind time, not refused. |
+
+Outbound URLs pass an SSRF guard. Parsing checks what needs no lookup — scheme, plain `http`
+outside development, internal names and suffixes, and IP literals including the decimal form.
+The address check happens when the connection is made: the harness resolves once, validates
+every returned address, and connects to one it validated, so the address that was checked is
+the address that is used. See [Egress](/internals/governance/#egress).
+
+:::caution[stdio is disabled by default]
+`transport: stdio` spawns a subprocess from manifest-supplied argv — arbitrary code execution as the
+API process. It is refused unless the operator names the exact command in
+`FELIX_MCP_STDIO_ALLOWED_COMMANDS` (comma-separated; empty, the default, disables stdio entirely).
+The check runs on manifest **write** (`400`), at compile, and at every spawn. A bare name is resolved
+on the API's own `PATH` and spawned by absolute path. The child inherits only the API's `PATH`
+(absolute entries only), `HOME`, `LANG`, `LC_ALL`, `TZ`, the SDK's `LOGNAME`, `SHELL`, `TERM`,
+`USER`, and the declared keys. A declared key that runs code is rejected: `PATH`, the loaders
+(`LD_*`, `DYLD_*`), bash's exported functions and hooks, interpreter options and paths
+(`JAVA_TOOL_OPTIONS`, `NODE_OPTIONS`, `PYTHONPATH`, `PYTHONWARNINGS`, …), and git's program and
+config variables (`GIT_CONFIG_*`, `GIT_SSH_COMMAND`, `GIT_TRACE*`, …). Saving such a manifest is a
+`400`; a stored one binds no tools for that server. The child's git is disarmed, so a credential
+helper is unavailable ([details](/guide/mcp/#felix-as-an-mcp-client)). Allowlisting an interpreter or package runner (`uvx`,
+`npx`) lets a manifest run anything through its arguments. The server must speak newline-delimited
+JSON on stdio, as the protocol specifies.
+:::
+
+## `spec.containers`
+
+An HTTPS container gateway, one tool per entry.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | |
+| `description` | string | `""` | |
+| `gateway_url` | string | required | |
+| `image` | string | required | |
+| `container_tool_name` | string | `""` | |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
+| `auth` | string | `""` | Literal or `secret:NAME`. |
+| `args_schema` | JSON Schema \| null | `null` | |
+| `fatal` | bool | `false` | When true, a failure aborts the tool batch. |
+
+## `spec.queues`
+
+Asynchronous work handed to a separate consumer over a **Valkey/Redis list**. The result lands back
+on the session later, so the run can continue without blocking.
+
+```yaml
+spec:
+  queues:
+    - name: reindex
+      queue_binding: felix-jobs
+      deadline_ms: 600000
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `name` | string | required | |
+| `description` | string | `""` | |
+| `queue_binding` | string | required | The Redis list key the executor pushes to. |
+| `deadline_ms` | int \| null | `null` | |
+| `args_schema` | JSON Schema \| null | `null` | |
+| `fatal` | bool | `false` | |
+
+The consumer writes the result back with `POST /internal/sessions/{session_id}/events`, which
+requires the `X-Felix-Consumer-Secret` header.
+
+## `spec.sandboxes`
+
+Container-backed code execution (the `sandbox` extra, Docker).
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `description` | string | `""` |
+| `binding` | string | required |
+| `sandbox_tool_name` | string | `""` |
+| `timeout_ms` | int \| null | `null` | 1–3,600,000 ms. |
+| `path_prefix` | string | `""` |
+| `args_schema` | JSON Schema \| null | `null` |
+| `fatal` | bool | `false` |
+
+## `spec.tools_retrieval`
+
+Selects a relevant subset of tools per turn instead of sending the whole catalogue.
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `top_k` | int ≥ 1 | `20` |
+| `model` | string | `"bge-base-en-v1.5"` |
+| `decider` | bool | `false` |
+
+With `decider: true`, [`spec.decider`](/guide/manifest-reference/agents/#specdecider) picks the shortlist: one choice over the whole
+catalogue per user turn, the `top_k` most probable offered, tools already used this thread always
+kept. It falls back to the embedding (or keyword) ranking when the decider errors or when the
+shortlist holds less than `spec.decider.min_confidence` of the probability mass. Needs `enabled`.

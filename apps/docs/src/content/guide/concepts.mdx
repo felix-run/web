@@ -243,7 +243,7 @@ or an approval refused never counts. Activation only reaches skills in the manif
   sending them again.
 
 The skill tools change nothing outside the conversation's log, so all four are read-only and run in
-[plan mode](/guide/manifest-reference/#specpermissions).
+[plan mode](/guide/manifest-reference/governance/#specpermissions).
 
 ### Running a skill as `/skill-name`
 
@@ -269,13 +269,13 @@ screened tool result, never with the authority of the person's own words.
   parent's `spec.skills` does not reach its child: a `disable-model-invocation` skill runs in a
   child only if the child declares it.
 - **Whose door.** A person's `/name` runs in a manifest only when the caller passes that manifest's
-  own [`spec.auth.inbound`](/guide/manifest-reference/#specauth) — anonymity, `schemes`,
+  own [`spec.auth.inbound`](/guide/manifest-reference/running/#specauth) — anonymity, `schemes`,
   `required_scopes` — and any `felix_manifests` pin on the credential. A router's pick or a
   composite's child is checked on its own door even though the rest of the request
-  [inherits the parent's admission](/guide/manifest-reference/#specsub_agents-and-specaggregator_prompt),
+  [inherits the parent's admission](/guide/manifest-reference/agents/#specsub_agents-and-specaggregator_prompt),
   so a parent open to more callers than its child does not hand them the child's manual-only
   skills. Refused, the skill is not activated and the turn runs without it.
-- **Which names.** A declared [prompt](/guide/manifest-reference/#slash-commands) of the same name
+- **Which names.** A declared [prompt](/guide/manifest-reference/model/#slash-commands) of the same name
   wins, since prompts are expanded before the agent runs. A name that is no skill the person may run
   is sent as written. The name matches exactly.
 - **Which skills.** Any resolved skill unless its frontmatter sets `user-invocable: false`, which
@@ -295,7 +295,7 @@ screened tool result, never with the authority of the person's own words.
 `argument-hint` is read as written (`argument-hint: [issue-number]` is the hint `[issue-number]`), and
 [`GET /skills/{manifest}`](/guide/management-api/#skills) reports it with `user_invocable`.
 
-**Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/#specskills) entry
+**Preload.** `preload: true` on a [`spec.skills`](/guide/manifest-reference/memory/#specskills) entry
 activates that skill the same way at the start of a conversation, once: a skill the thread has ever
 activated, even one since deactivated, is not activated again. An imported skill nobody adopted is
 never preloaded, and neither is a forked skill. Preloads run where `/name` runs before a first
@@ -311,7 +311,7 @@ Each activation's `skill_activation` audit row records who asked as `by`: `perso
 A skill whose frontmatter says `context: fork` runs in a subagent instead of in the conversation.
 `activate_skill` — the model's call, with a `task` argument saying what the job is, or a person's
 `/skill-name args` — hands the skill to one of the manifest's
-[`spec.delegation.agents`](/guide/manifest-reference/#specdelegation), or, in a manifest that
+[`spec.delegation.agents`](/guide/manifest-reference/agents/#specdelegation), or, in a manifest that
 delegates to nothing, to the manifest itself, and returns only that agent's answer, as
 `{ran, agent, result}`.
 
@@ -371,7 +371,7 @@ and no way to run them in the manifest itself) and for an `agent:` outside where
 ### Running a skill's scripts
 
 A skill's `scripts/` run through `run_skill_script(name, script, args)`, which
-[`spec.skill_scripts`](/guide/manifest-reference/#specskill_scripts) binds. It runs a script only
+[`spec.skill_scripts`](/guide/manifest-reference/memory/#specskill_scripts) binds. It runs a script only
 from a skill active in the calling conversation, so beside the instructions that say when to run
 it, and only under an interpreter that both the manifest (by extension) and the operator's
 `FELIX_SKILL_SCRIPT_INTERPRETERS` allow. That list is empty by default, so nothing runs.
@@ -418,7 +418,7 @@ A catalog is built in this order, and the first source to hold a name answers it
    of the same name). The library refuses to save a host name, or a name an operator uploaded at an
    unversioned key (`409 name_shadows_host_skill`).
 2. **The caller's own library**, live versions only, where the manifest sets
-   [`spec.personal_skills: read`](/guide/manifest-reference/#specskills). A caller with a verified
+   [`spec.personal_skills: read`](/guide/manifest-reference/memory/#specskills). A caller with a verified
    identity has a personal library; an anonymous caller, or an API key with no subject of its own,
    has none. A personal skill shadows a tenant skill of the same name for that caller alone, and
    only an ambient one: a name the manifest declares in `spec.skills` always resolves from the
@@ -454,12 +454,12 @@ an `evals/` file. The personal skill stays as it was.
 
 ### Skills an agent writes
 
-A manifest with [`spec.skill_authoring.enabled`](/guide/manifest-reference/#specskill_authoring)
+A manifest with [`spec.skill_authoring.enabled`](/guide/manifest-reference/memory/#specskill_authoring)
 gets three more tools:
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` (to the caller's own under [`spec.personal_skills: write`](/guide/manifest-reference/#specskill_authoring)) |
+| `create_skill` | `name`, `description`, `body`, `reason` | Saves a new skill to the tenant library at `0.1.0` (to the caller's own under [`spec.personal_skills: write`](/guide/manifest-reference/memory/#specskill_authoring)) |
 | `update_skill` | `name`, `body`, `reason`, `parent_version`, `description?` | Saves a new version with a new body; every other file is kept from the parent |
 | `submit_skill_feedback` | `name`, `body`, `suggested_patch?` | Files feedback on a library skill in this agent's catalog; changes nothing |
 

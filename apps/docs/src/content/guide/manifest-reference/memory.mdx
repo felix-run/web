@@ -1,0 +1,508 @@
+---
+title: "Skills, memory and sessions"
+description: "The felix/v1 manifest fields for skills, memory, sessions and artifacts."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+What the agent keeps between turns and between conversations.
+
+## `spec.skills`
+
+```yaml
+spec:
+  skills:
+    - name: calculator-help
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `name` | string | required |
+| `version` | string \| null | `null` |
+| `description` | string \| null | `null` |
+| `preload` | bool | `false` |
+
+A skill is a `SKILL.md` with YAML frontmatter and a Markdown body. The system prompt carries the
+catalog — each skill's name and description — and `activate_skill` returns the body to the model as
+instructions. `description` here is not read by the loader (the SKILL.md's own frontmatter supplies
+the catalog's); it is surfaced on the A2A agent card. `version` pins an operator upload at
+`skills/{tenant}/{name}/{version}/SKILL.md`, which then wins over a tenant library skill of the same
+name; see [Concepts → Skill](/guide/concepts/#where-skills-come-from) for the full precedence.
+`preload: true` starts every conversation with the skill activated, once, before the model's first
+step; a `react` agent and what wraps one (`deep`, `reflect`, `plan_execute`) run it, while a
+`router`, `parallel` or `groupchat` manifest cannot and its compile warns. An imported skill nobody
+adopted is never preloaded. A person can also run a skill as `/skill-name args` in a chat turn, in
+any pattern: a composite carries the turn into each child step, which activates the skill under its
+own catalog, and a parent's `spec.skills` does not reach the child
+([Concepts → running a skill](/guide/concepts/#running-a-skill-as-skill-name)). A skill whose frontmatter says
+`context: fork` runs in one of [`spec.delegation`](/guide/manifest-reference/agents/#specdelegation)'s agents instead (or, with no
+`spec.delegation`, in the manifest itself as its own subagent) and is never preloaded ([Concepts → running a skill in a subagent](/guide/concepts/#running-a-skill-in-a-subagent)).
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `spec.skills_declared_only` | bool | `false` | `false` seeds the catalog with every bundled skill, every skill in `FELIX_SKILLS_DIR` and every live tenant-library skill, and `spec.skills` adds to that. `true` makes the declared names the whole catalog. |
+| `spec.personal_skills` | `off` \| `read` \| `write` | `off` | `read` offers each authenticated caller the live skills in their own personal library, ahead of the tenant's (see [where skills come from](/guide/concepts/#where-skills-come-from)). A caller's skill never replaces one the manifest names in `spec.skills`. A durable run keeps the library of the caller who started it. `write` reads as `read` does and points the [authoring tools](#specskill_authoring) at the caller's library; it needs `skill_authoring.enabled`. Anything but `off` is refused together with `skills_declared_only: true`. |
+
+## `spec.skill_scripts`
+
+Lets the agent run the scripts in an active skill's `scripts/` (agentskills.io): binds
+`run_skill_script(name, script, args)`. Off by default, and disabled on the host until the operator
+lists interpreters.
+
+```yaml
+spec:
+  skills:
+    - name: release-notes
+  skill_scripts:
+    enabled: true
+    interpreters: { .py: python3, .sh: bash }
+    timeout_ms: 120000
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | |
+| `interpreters` | map ext → interpreter | `{.py: python3, .sh: bash}` | At most 16. A key is an extension, `.` and 1–8 lowercase letters or digits. A value is one word: no whitespace, `,`, `=` or NUL, no leading `-`, and a bare name or an absolute path. Each value must also be in `FELIX_SKILL_SCRIPT_INTERPRETERS`. |
+| `timeout_ms` | int \| null | `null` | Default 300 s, at most 3,600,000; the process is killed at the limit. |
+
+`.js: node` is not a default: node resolves `require()` by walking `node_modules` up every parent
+directory, the workspace root included, and the model's file tools write there. List only
+interpreters that stop reading options at the script (python, bash, sh, node, perl and ruby do); a
+tool that reorders options after positionals, such as `make`, `find`, `npx` or `ts-node`, does not
+belong in the map.
+
+The tool takes `name` (the skill), `script` (its path in the bundle under `scripts/`, as
+`activate_skill` listed it) and `args` (at most 64 strings and 64,000 bytes, no NUL), and returns
+what a [shell tool](/guide/manifest-reference/tool-families/#specshell_tools) returns. A call runs only when all of these hold, in order:
+
+1. The skill is offered to the model, or is hidden from it and active in this conversation.
+2. It is not an imported skill nobody has adopted, and its source is one
+   `FELIX_SKILL_SCRIPT_SOURCES` lists: `host` (bundled and `FELIX_SKILLS_DIR`) by default.
+3. It is active in this conversation, per the thread's log, so a script runs only beside the
+   instructions that say when to run it.
+4. `script` is a text bundle path under `scripts/` that the bundle lists.
+5. The script's extension maps to an interpreter that `FELIX_SKILL_SCRIPT_INTERPRETERS` also
+   allows, read per call.
+
+The bundle is then written for that one call to `.felix-skills/<skill>/<token>/` under the scope's
+workspace root and removed when the script ends. The script runs from the workspace root, as
+`[interpreter, <script>, *args]`, so no argument can be an interpreter option. It runs where a shell
+tool's command would: in the shell runner, or in the API process on a development box. See
+[Governance → Skill scripts](/internals/governance/#skill-scripts).
+
+A refusal before the run answers a JSON error, and the host's own refusals answer a
+`permission_denied` tool error beginning `[shell denied]`:
+
+| `error` | When |
+|---|---|
+| `unknown_skill` | No skill of that name is available here |
+| `script_refused` | An unadopted import, a source `FELIX_SKILL_SCRIPT_SOURCES` leaves out, or a skill name that is not a valid one |
+| `not_active` | The skill is not active in this conversation; activate it first |
+| `invalid_path` | `script` is not a text bundle path under `scripts/` |
+| `file_not_found` | The bundle has no such script, or the skill is an operator upload, whose files cannot be listed |
+| `bundle_unavailable` | The skill's files could not be read |
+| `bundle_too_large` | The bundle passes 8 MiB |
+| `workspace_unavailable` | The bundle could not be written to the workspace |
+| `permission_denied` | No interpreter for the extension, one outside `FELIX_SKILL_SCRIPT_INTERPRETERS`, no isolated place to run, or the hosted workspace backend |
+
+:::caution[disabled by default]
+Every interpreter in `interpreters` must be in `FELIX_SKILL_SCRIPT_INTERPRETERS` (empty, the
+default, refuses every one). Checked on manifest **write** (`400`), at compile, and per call. The
+write and the compile also refuse what a shell tool's would: no shell runner off a development box
+(scripts need one there), and anonymous callers (`auth.inbound.allow_anonymous`) off one. They refuse the hosted workspace
+backend's sandbox, which has no way to write the bundle yet, and the write refuses a manifest with
+no skills at all (no `spec.skills`, `personal_skills: off`, no `skill_authoring`). A script is code:
+its egress is the shell runner's network, with no egress guard of Felix's in between.
+:::
+
+| Setting | Default | Notes |
+|---|---|---|
+| `FELIX_SKILL_SCRIPT_INTERPRETERS` | `""` | Comma-separated interpreters, each one word as above. Empty disables skill scripts. Set it on the shell runner too: the runner admits a script only under an interpreter of its own list. The boot refuses a malformed entry, or the list set without the isolation a shell tool needs. |
+| `FELIX_SKILL_SCRIPT_SOURCES` | `host` | Whose skills may run scripts: `host` (bundled and `FELIX_SKILLS_DIR`), `library` (the tenant libraries, so whoever holds `skills:write` or adopts an import), `personal` (each caller's own, so whoever holds `skills:personal`). Each word added turns that authoring grant into a grant to run code on the runner. An unknown word fails boot when interpreters are set. |
+
+`felix doctor` prints the interpreter list, or `disabled` when it is empty.
+
+## `spec.skill_authoring`
+
+Lets the agent write to its tenant's skill library: binds `create_skill`, `update_skill` and
+`submit_skill_feedback`. Off by default.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: draft
+    max_pending: 20
+    auto_eval: false
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Bind the three tools. |
+| `mode` | `draft` \| `publish` | `draft` | `draft`: every save waits for a person to publish it. `publish`: a save is published at once if the publish gate passes, and stays a draft (the result carries `publish_blocked` with the reasons) if not. |
+| `max_pending` | int 1–200 | `20` | Undecided agent drafts this manifest may hold in the tenant's library, and undecided feedback it may have filed, before the tools refuse (`pending_cap_reached`, `feedback_cap_reached`). |
+| `auto_eval` | bool | `false` | Queue an evaluation (`FELIX_SKILL_EVAL_MODEL`) of every draft the agent saves; the result carries its `eval_id`. Model calls on the tenant's bill. |
+
+With `spec.personal_skills: write` the tools save into the caller's own library instead:
+
+| Tool | Saves into |
+|---|---|
+| `create_skill` | the caller's library, always |
+| `update_skill` | the caller's library when it holds the name (live, or a draft not yet in a catalog) and the manifest does not name it in `spec.skills`; the tenant's otherwise |
+| `submit_skill_feedback` | the tenant's library only; feedback on one of the caller's own skills is refused (`personal_skill`) |
+
+A personal save needs a caller who has a library and holds the `skills:personal` scope, checked when
+the tool runs. Without either it is refused (`no_personal_library`, `missing_scope`) and nothing is
+saved; it is never redirected to the tenant's library. The result carries `library: "personal"`.
+`max_pending` and `mode` apply as for the tenant's library, except that in `publish` mode a personal
+skill that would replace a tenant or host skill for its owner stays a draft for them to publish.
+`auto_eval` skips a personal save. An approval of the call binds the library it saves into, so a
+grant for one caller's save authorizes none into another's or the tenant's. Under `read` or `off`
+the tools write the tenant's library and refuse a name that is the caller's own skill in the catalog
+(`personal_skill`).
+
+**`mode: publish` needs an approval on both writes.** Validation refuses the manifest unless the
+approval rule [`spec.approvals`](/guide/manifest-reference/governance/#specapprovals) would select for `create_skill`, and the one it
+would select for `update_skill`, both exist and carry no `when_args` — a conditional rule lets the
+calls without those arguments through ungated. Literal tool names win over globs and the last match
+wins, as for any approval. So a person reads every skill an agent publishes, in the approval preview
+the harness renders: the SKILL.md that would be saved and, for an edit, the parent version and every
+file kept from it by sha256.
+
+```yaml
+spec:
+  skill_authoring:
+    enabled: true
+    mode: publish
+  approvals:
+    - id: skill-author
+      description: Confirm saving a skill to the library
+      tools: [create_skill, update_skill]
+      ttl_seconds: 600
+      allow_unattended: false
+```
+
+In either mode, an agent's edit of a version an operator wrote is saved as a draft and never
+published automatically, and `submit_skill_feedback` only reaches library skills in this agent's own
+catalog. Drafts and feedback are decided through [`/skill-library`](/guide/management-api/#skill-library).
+The self-build `contributor` manifest enables authoring in `draft` mode.
+
+## `spec.memory`
+
+```yaml
+spec:
+  memory:
+    checkpointer: postgres   # default; `none` also built in
+    store: pgvector          # default
+    scope: person            # default; `agent` keeps one pool per manifest
+```
+
+<Aside type="caution">
+  `checkpointer: none` keeps no session state, so anything that needs one has
+  nothing to act on. A `session.strategy` other than `full_replay`,
+  `session.compact_after_turn`, and `memory.capture.enabled` are each refused
+  alongside it, rather than being silently dropped.
+</Aside>
+
+**There is no in-process built-in, on purpose.** A thread is not manifest-scoped — the session
+routes address one by id with no manifest in hand — so a manifest choosing a different *backend*
+would leave the agent reading one log while `/history`, `/continue` and `/compact` read another.
+`none` is exempt because it is a claim about the agent, not a competing backend.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `checkpointer` | `postgres` \| `none`, or a registered name | `postgres` | Where the session log lives. `none` keeps no session state, so every turn starts from the messages it was given. Add your own with `register_checkpointer`. |
+| `store` | `pgvector` \| `memory` \| `none` (aliases `agentcore`, `vectorize` accepted but inert) | `pgvector` | Durable-fact vector store. |
+| `capture` | object | disabled | Extract durable facts from a turn. |
+| `recall` | object | tools off | How stored facts reach the model beyond the prelude. |
+| `consolidate` | object | disabled | Periodically merge agent-written facts that say the same thing (below). |
+| `scope` | `person` \| `agent` | `person` | Whose long-term memory the agent reads and writes (below). A closed set: an unknown value fails validation. |
+
+The bundled `assistant` manifest is the worked example: `capture` on `claude-haiku` with
+`max_facts: 3` and `min_chars: 200`, `recall.tools: true`, `content_screening` on, an approval
+(`memory-forget`) on `forget`, and `auth.inbound.allow_anonymous: false`, since an anonymous caller
+names no person and would remember nothing.
+
+### `memory.scope`
+
+Memory rows live in pools (`memory_vectors.principal`). An agent pool is one manifest's own rows
+(`principal` empty). A person pool is one person's rows, whichever of their agents wrote them.
+
+| `scope` | Writes | Reads |
+|---|---|---|
+| `person` (default) | The pool of the person the request acts for | That pool, plus the operator-written rows (`POST /memory`) of this agent's own pool |
+| `person`, no person | Nothing | The operator-written rows of this agent's own pool |
+| `agent` | This agent's own pool | Every row of this agent's own pool, the behaviour before Felix 0.17.0 |
+
+- **The person** is `issuer|subject` of the request's verified caller, or of whoever a durable run,
+  job or workflow step was started for. `FELIX_PRINCIPAL_ALIASES` maps a second sign-in to the same
+  person; see [Person keys](/internals/auth/#person-keys).
+- **No person, no writes.** An anonymous caller, an API key with no `sub` of its own, an inbound
+  trigger's run, a GitHub Actions workflow, a Slack message and an eval item name no person.
+  Capture skips without spending an extraction call, and `remember` answers `not stored`.
+- **Agent-written rows of the agent pool reach no person.** They are what the agent learnt before
+  person pools, or from runs that named no one, and whose they are is not known. Move them with
+  [`felix memory assign`](/guide/management-api/#moving-an-agents-memory-to-a-person).
+- **The tools stay in their pool.** `forget` reaches only rows of the pool the agent writes. An id
+  from another person's pool, or from the shared agent pool, is a miss. Capture's known topic-keyed
+  values are the whole person pool's, whichever agent stored them.
+- **Use `agent`** for an agent that serves a shared purpose rather than a person, or for local
+  `make dev`: `FELIX_AUTH_MODE=none` names no person, so under `person` capture writes nothing.
+- **Procedural memory is always the agent's.** `remember_procedure` writes the agent pool and every
+  caller's turn retrieves from it. Leave `spec.procedural_memory` off where how-tos must not travel
+  between people.
+
+Isolation between people is the memory store's filter inside a tenant, not a database policy, and it
+stops at thread access. Someone posting into another person's thread runs with their own pool, but
+their facts appear in that thread's replies.
+
+### `memory.consolidate`
+
+Capture only adds, so a pool of facts grows on every long turn. Consolidation merges the ones that
+say the same thing.
+
+```yaml
+spec:
+  memory:
+    consolidate:
+      enabled: true
+      model: claude-haiku
+      after_facts: 50
+      max_facts: 200
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Opt in, per manifest. |
+| `model` | string | `"claude-haiku"` | The route asked which facts are duplicates. Its calls are metered to the tenant and manifest. |
+| `after_facts` | int ≥ 10 | `50` | Only a pool holding more than this many eligible facts is considered. |
+| `max_facts` | int 1–500 | `200` | The newest facts shown per pass. |
+
+The Worker's `consolidate_memory` cron (every 15 minutes) shows the model the newest `max_facts`
+active facts of the pool and asks which state the same thing. A pool here is
+`(tenant, manifest, principal)`: an agent's own rows, or the rows one agent wrote into one person's
+pool, so a merge never crosses people. What it is allowed to do is narrow
+on purpose:
+
+- **It only merges duplicates.** Facts that merely relate, or that disagree, are left as they are.
+- **The model returns groups of ids, never text.** The store keeps the **oldest** fact of each group
+  — the model's ordering is ignored — and supersedes the rest, which stay stored and auditable.
+  No memory text is ever written by consolidation.
+- **Only agent-written facts.** Facts an operator wrote through `/memory` are never shown and never
+  retired. Facts of a different `kind`, or a different `topic_key` (absent counts), are never merged.
+- **Every group is checked first** — ids from the batch shown, none in two groups — and is applied
+  whole or not at all; a malformed answer changes nothing.
+- **A pool that has not changed is not asked again**, and at most 50 pools are consolidated per
+  tick. The skip is remembered per worker process, so a restart costs one call per pool.
+
+Facts reach the model fenced as untrusted data, since capture extracts them from turns that can
+include tool output.
+
+`capture`:
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `model` | string | `"claude-haiku"` |
+| `max_facts` | int, 1–20 | `5` |
+| `min_chars` | int ≥ 0 | `80` |
+| `verify` | bool | `false` |
+
+`verify` adds a second pass that hands the proposed facts back to `model` along with the excerpt and
+keeps only what the excerpt actually supports. It doubles the extraction calls, which is why it is
+off by default — turn it on where stored memory is acted on rather than merely recalled.
+
+The pass can only **remove**. Its verdict selects from the proposals; it never supplies a memory of
+its own, and it cannot alter a kept memory's `kind`, `topic_key` or `importance`. That matters
+because the excerpt it reads is untrusted transcript. A captured `topic_key` cannot retire anything
+— only an operator retires a memory by its key, and a captured value is stored beside the one it
+contradicts — but a verdict that could set a key could still make its own memory the one the
+prelude shows as current.
+
+It fails open on anything it cannot read, on the grounds that a broken verifier is not evidence the
+facts were wrong:
+
+| Verdict | Result |
+|---|---|
+| A subset of the proposals | Just that subset is stored |
+| `[]` — a well-formed empty array | Nothing is stored. The one unambiguous way to reject everything |
+| The call errors | The unverified set is kept |
+| Unparseable, or every item unusable | The unverified set is kept |
+| Valid items that match no proposal | The unverified set is kept — the verifier rewrote rather than chose |
+
+Content is matched case- and whitespace-insensitively but not punctuation-insensitively, so a
+verifier that echoes an item back with a trailing full stop counts as having rewritten it.
+
+Capture does not store what the pool already holds. A topic the agent stored with `remember`
+earlier in the same request is skipped, for that pool only. The extractor is shown up to
+50 of the pool's current topic-keyed values, fenced as data, and asked not to restate them and to
+reuse their keys; a proposal repeating a known value under the same key (compared after
+normalising) is dropped in code whether or not it listens. A changed value under a known key is still stored. The `verify` pass is not shown
+the known values.
+
+Extraction runs on `model`, not on the turn's model — it is a small, mechanical job on every
+completed turn, and billing it to a frontier model roughly doubles the cost of having memory at
+all. If that model cannot be built, extraction falls back to the turn's model rather than dropping
+the fact.
+
+Facts land in `memory_vectors` (pgvector, HNSW) with one of four kinds: `fact`, `event`,
+`instruction`, `task`. The extractor asks the model to classify each fact, and **anything outside
+that set is silently rewritten to `fact`** rather than rejected — so a prompt that invents a kind
+degrades quietly instead of failing.
+
+Stored facts reach the model two ways. The **prelude** — the active facts, which the ReAct loop
+renders as a message directly after the system prompt on each run — is built whenever `store` is
+`pgvector` or `memory`; it is escaped but bypasses the governance stack. `recall`:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `tools` | bool | `false` | Bind `remember`, `recall`, `forget` and `list_memories`. They are bound before the governance stack, so recalled text passes through content screening, policies and approvals like any tool output. Not bound when `store: none`. |
+| `limit` | int, 1–50 | `5` | Default number of hits `recall` returns. |
+
+Recall is hybrid: full text, topic keys, and a vector channel when `FELIX_MEMORY_EMBEDDER` resolves
+to an embedder. The default, `auto`, uses the local model when `felix-harness[embeddings]` is
+installed and skips the vector channel otherwise — see [Embeddings](/guide/deploy/#embeddings).
+
+Procedural memory is a separate subsystem under `spec.procedural_memory`, not a kind in this table.
+
+## `spec.session`
+
+```yaml
+spec:
+  session:
+    strategy: compacting
+    reserve_tokens: 16384
+    keep_recent_tokens: 20000
+    context_window_tokens: 128000   # optional: omit to use the model's window
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `strategy` | string | `"full_replay"` | `full_replay`, `windowed:N`, `summarizing:N`, `semantic:N` (needs `embeddings`), `compacting`. |
+| `compaction_enabled` | bool | `true` | |
+| `reserve_tokens` | int ≥ 0 | `16384` | Headroom kept for the reply. |
+| `keep_recent_tokens` | int ≥ 0 | `20000` | Never compacted. |
+| `context_window_tokens` | int ≥ 1024 \| null | `null` | The window to compact against. Unset: the model's own, from the catalog through its route (1M on a 1M-context model). Set it to compact earlier on purpose — a smaller window is a cheaper turn. |
+| `steering_mode` | `all` \| `one-at-a-time` | `all` | |
+| `follow_up_mode` | `all` \| `one-at-a-time` | `all` | How queued follow-ups are answered once the run has an answer: `all` gives every one waiting to a single further turn; `one-at-a-time` gives each its own. A follow-up's turn is an ordinary step — tools run, it streams — and counts against `recursion_limit`; a run with no step left, or that stopped on a budget, truncation or abort, keeps them for the thread's next run. |
+| `branch_summary` | bool | `true` | Summarize an abandoned branch on rewind. |
+| `compact_after_turn` | bool | `false` | |
+| `clear_tool_results` | `{keep_turns, min_chars}` \| null | `null` (off) | Stub stale tool results in what the model is sent. See below. |
+
+The session log is append-only and lives *outside* the context window; the strategy decides what the
+model actually sees. See [Persistence](/internals/persistence/).
+
+### Clearing stale tool results
+
+A long run piles up tool results — file reads, search hits, command output, screenshots — that the
+agent needed once and never reads again, and every later model call pays for them.
+`clear_tool_results` replaces each old one with a one-line stub in what the model is sent:
+
+```yaml
+spec:
+  session:
+    clear_tool_results:
+      keep_turns: 10    # 1–1000
+      min_chars: 1000   # text results this size or smaller are kept, unless they carry an image
+```
+
+- **Which results.** A tool result is stubbed when it sits behind the newest `keep_turns` user
+  messages and is longer than `min_chars` or carries an image. The cut-off advances `keep_turns`
+  user messages at a time, so between `keep_turns` and `2 × keep_turns − 1` of the newest are always
+  whole. A steer or a compaction summary counts as a user message, which only ever keeps more.
+- **Only the request changes.** The session log keeps every result, so a rewind, fork, export or
+  compaction summary still has them.
+- **The call stays paired.** Only the result's content and images are replaced; the assistant's
+  tool call and the result's id are kept, so every provider still sees a result for every call.
+- **A spilled result keeps its handle.** A result that [`spec.artifacts`](#specartifacts) spilled
+  names its artifact id in the stub, so `read_artifact` still reaches the full output.
+- **Skill instructions are never stubbed.** An `activate_skill` result is instructions the model
+  follows for the rest of the conversation; see [Concepts → Skill](/guide/concepts/#skill).
+- **The stub asks the model to re-run only a tool that reads**, never to repeat an action to see
+  what it returned. A result content screening replaced with a `[quarantined]` notice is never
+  stubbed.
+- **What the caller sent is left alone.** A client that re-sends the whole conversation (the
+  OpenAI-compatible `/v1` surface) has its messages passed through as written.
+- **Prompt caching.** For `full_replay` and `compacting`, the cached prefix changes once every
+  `keep_turns` user messages rather than on every call. `windowed:N`, `summarizing:N` and
+  `semantic:N` change their prefix every turn anyway.
+- Clearing runs before replay image screening, so a stubbed screenshot is not screened again.
+  `POST /chat/ask` reads the thread the same way its next turn would. A router's setting also
+  applies to the children it hands the thread to.
+
+The `compacting` strategy measures the window before results are stubbed, so it can still compact
+when clearing alone would have made room.
+
+## `spec.skill_suggestion`
+
+Ranks the skill catalogue with [`spec.decider`](/guide/manifest-reference/agents/#specdecider), reranks a shortlist against each
+skill's body (an imported skill's listed description only, never its body; see
+[Skill import](/guide/skill-import/#imported-text-in-front-of-the-model)), and — only when the request asks for a task and a skill fits it — adds a one-line hint
+naming that skill. The model still decides whether to `activate_skill`. The hint rides the turn's
+first model call as a transient message: after the prompt-cache breakpoint, never in the session log.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Needs `spec.decider.id`; `react` and `deep` only. |
+| `shortlist` | int 1–10 | `3` | Skills carried into the rerank; a catalogue no larger skips the ranking. |
+| `min_gate` | float 0–1 | `0.3` | Probability the request asks for a task at all. |
+| `min_fit` | float 0–1 | `0.3` | Probability the best skill does what was asked. |
+
+## `spec.artifacts`
+
+Spills oversized tool output to the object store, shows the model a preview, and gives it a tool to
+read the rest.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Spill, and bind `read_artifact` |
+| `threshold_chars` | int ≥ 1 | `8000` | A tool result longer than this is spilled |
+| `preview_chars` | int ≥ 1 | `200` | How much of it stays in the transcript |
+| `default_window_chars` | int ≥ 1 | `4000` | `read_artifact` window when the model gives no `length` |
+| `max_window_chars` | int ≥ 1 | `16000` | Largest window one `read_artifact` call returns |
+
+Output over the threshold is written to `artifacts/{tenant}/{manifest}/{uuid}.txt` and replaced with
+the preview plus a marker (an `activate_skill` result never is: a skill's instructions reach the
+model whole), which is always the last thing in the output:
+
+```
+…[artifact:<id> key=artifacts/<tenant>/<manifest>/<id>.txt chars=<N> spilled_at=<unix>]
+```
+
+**The model reads it back with `read_artifact`**, bound automatically whenever `enabled` is true and
+an object store is configured:
+
+| Argument | Type | Default |
+|---|---|---|
+| `artifact_id` | string | — the id from the marker |
+| `offset` | int ≥ 0 | `0` |
+| `length` | int ≥ 1 | `default_window_chars`, capped at `max_window_chars` |
+
+Each window comes back headed `[artifact-window:<id> chars <start>-<end> of <total>; continue at
+offset=<end>]`, or `; end]` on the last one, so the model pages by the offset it was given.
+
+- **It reads only what its own conversation spilled** — the thread, or the request when there is no
+  thread. The tenant and manifest prefix is shared by every caller of a manifest, so an id alone
+  would otherwise reach another caller's run. Another conversation's id is refused exactly as a
+  missing one is.
+- **It is governed like any tool.** It is bound before the governance stack, so policies, limits,
+  screening and audit apply to a read as to the call that produced the artifact.
+- **It is never itself spilled**, although a window can be larger than `threshold_chars`.
+- **Spill expires.** The Worker's retention sweep deletes spills older than
+  `FELIX_ARTIFACT_RETENTION_DAYS` (30 by default, `0` keeps forever); after that `read_artifact`
+  reports the id as missing.
+
+Clients read artifacts through [`GET /artifacts`](/guide/management-api/#artifacts) instead, which
+needs `artifacts:read` and is not held to a conversation. The manifests that read files or fetch
+pages — `cowork`, `deep` and `support`, and the self-build `contributor` and `triage` — enable
+artifacts.
+
+## `spec.procedural_memory`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | bool | `false` |
+| `top_k` | int ≥ 1 | `3` |
+| `embedding_model` | string | `"bge-base-en-v1.5"` |
+
+Adds a `remember_procedure` tool and recalls stored how-tos as `procedural` memory rows.

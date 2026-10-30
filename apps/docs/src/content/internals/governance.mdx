@@ -158,8 +158,8 @@ Unattended runs (scheduler, eval replay) refuse approval-gated tools unless `all
 A permission mode may waive an approval (`waives_approval`), except a rule in
 `permission_mode.UNWAIVABLE_RULE_IDS` — `plan-approval`, which is how plan mode ends, and
 `scheduling.schedule_task` and `notify.notify`, the rules
-[`spec.scheduling`](/guide/manifest-reference/#specscheduling) and
-[`spec.notify`](/guide/manifest-reference/#specnotify) add — or any approval on a tool in
+[`spec.scheduling`](/guide/manifest-reference/running/#specscheduling) and
+[`spec.notify`](/guide/manifest-reference/running/#specnotify) add — or any approval on a tool in
 `permission_mode.UNWAIVABLE_TOOLS` (`schedule_task`, `notify`, `save_workflow`), whichever rule selected it, a
 manifest's own rule or glob included. `post` is unwaivable the same way, but only in a manifest
 whose `spec.destinations` bound it (`bound_unwaivable_tools`; see
@@ -256,7 +256,7 @@ transcript tail reads the session log instead of forwarding display events.
 
 ## Heartbeats
 
-A heartbeat ([`spec.heartbeat`](/guide/manifest-reference/#specheartbeat),
+A heartbeat ([`spec.heartbeat`](/guide/manifest-reference/running/#specheartbeat),
 [`/heartbeats`](/guide/management-api/#heartbeats)) is a job a person enrols in and an operator
 writes. The split of who decides what is the control:
 
@@ -420,7 +420,7 @@ never what they say.
 
 ## A job's own state
 
-[`spec.state`](/guide/manifest-reference/#specstate) gives a scheduled job's runs a small store of
+[`spec.state`](/guide/manifest-reference/running/#specstate) gives a scheduled job's runs a small store of
 their own (`jobs/state.py`, `jobs/state_tools.py`, migration `0053_job_state`) through `state_get`,
 `state_set`, `state_list` and `state_delete`. It replaces keeping a bookmark in the job thread's
 workspace by convention, or in per-person memory, which the agent can also write and a firing
@@ -497,7 +497,7 @@ statement's parameters, the value among them.
 
 ## Shared destinations
 
-`post` ([`spec.destinations`](/guide/manifest-reference/#specdestinations),
+`post` ([`spec.destinations`](/guide/manifest-reference/running/#specdestinations),
 `destinations/tool.py`) carries text a model wrote, often unattended, to a shared place under the
 deployment's name. `notify` reaches one person; a post reaches everyone reading a channel. So the
 places are the operator's and the manifest only picks among them.
@@ -664,7 +664,7 @@ reads the instructions rather than the model's summary of them.
 
 ### Skill scripts
 
-[`spec.skill_scripts`](/guide/manifest-reference/#specskill_scripts) lets a skill's `scripts/`
+[`spec.skill_scripts`](/guide/manifest-reference/memory/#specskill_scripts) lets a skill's `scripts/`
 run, which turns the authorship of a skill into the authorship of code. The boot, write, compile and
 per-call isolation refusals of `spec.shell_tools` all apply, as does the refusal of anonymous callers
 off a development box. The hosted workspace backend's sandbox is refused at write and compile, since
@@ -915,7 +915,7 @@ API-key writer those scopes are cut at each firing to what the key holds now; fo
 signed in through Felix (GitHub, Google, GitHub Actions) they are cut to what that sign-in grants
 now. If nothing is left, the run is refused. A writer whose token another issuer signed keeps
 the grant recorded at the write (`scheduler.rechecks_at_firing` is false for it). A job written
-that way has no end, but a [scheduled task](/guide/manifest-reference/#specscheduling) and a
+that way has no end, but a [scheduled task](/guide/manifest-reference/running/#specscheduling) and a
 [heartbeat](#heartbeats) enrolled with such a token record its `exp` and are refused, and disabled,
 from then on. Tasks and heartbeats are jobs, so the same rules apply to them, and a policied tool in
 their firing passes when the writer still holds its scope.
