@@ -16,11 +16,15 @@ Every model is Pydantic v2 with `extra="forbid"`, so an unknown key is a hard pa
 warning. Where a field has a default, the default is what you get if you omit it.
 
 The fields are on seven pages, grouped by what they decide: the model, tools and tool
-families, other agents, memory, how runs happen and reach people, and governance. The index
-below links to every field; this page holds the top-level shape, `metadata`, secret references
-and complete examples.
+families, other agents, memory, how runs happen and reach people, and governance. The field
+index below links to every one of them; after it, this page holds the top-level shape,
+`metadata`, secret references and complete examples.
 
 <MovedAnchors hub="manifest-reference" />
+
+## Field index
+
+<FieldIndex />
 
 ## Top-level shape
 
@@ -59,8 +63,6 @@ metadata:
     - title: Find TODOs
       prompt: Search the workspace for TODO and summarize the matches by file.
 ```
-
-<FieldIndex />
 
 ## Secret references
 

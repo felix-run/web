@@ -127,7 +127,7 @@ export default defineConfig({
               label: 'Manifest reference',
               collapsed: true,
               items: [
-                { label: 'Overview and index', slug: 'guide/manifest-reference' },
+                { label: 'Field index', slug: 'guide/manifest-reference' },
                 { label: 'Model and prompts', slug: 'guide/manifest-reference/model' },
                 { label: 'Tools', slug: 'guide/manifest-reference/tools' },
                 { label: 'Tool families', slug: 'guide/manifest-reference/tool-families' },
