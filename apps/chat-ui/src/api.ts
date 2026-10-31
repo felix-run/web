@@ -40,8 +40,10 @@ import type {
   EvalDatasetItem,
   EvalRun,
   EvalRunSummary,
+  JobPreferences,
   JobRecord,
   JobRun,
+  JobStateEntry,
   ManifestPointer,
   ManifestSummary,
   ManifestVersionPage,
@@ -991,8 +993,17 @@ export async function upsertJob(job: {
   workflow_revision?: string;
   payload?: Record<string, unknown>;
   enabled?: boolean;
+  /** The zone a cron schedule is read in. Left out, the job runs on UTC — a re-save must carry it. */
+  timezone?: string | null;
+  /** Skip a firing that has no reader's preferences. Left out, it is turned off. */
+  preferences_required?: boolean;
 }): Promise<JobRecord> {
   const { name, schedule = '', manifest_id = '', payload = {}, enabled = true } = job;
+  // Sent only when set, as the workflow keys are: a harness older than 0.19 forbids them.
+  const extras = {
+    ...(job.timezone ? { timezone: job.timezone } : {}),
+    ...(job.preferences_required ? { preferences_required: true } : {}),
+  };
   // The workflow keys only when set: `JobUpsert` forbids extra fields, so a harness older
   // than workflow jobs would refuse every write that carried them, even empty.
   const workflow = job.workflow_id
@@ -1004,7 +1015,7 @@ export async function upsertJob(job: {
   return jobsFetch<JobRecord>(`/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ schedule, manifest_id, ...workflow, payload, enabled }),
+    body: JSON.stringify({ schedule, manifest_id, ...workflow, payload, enabled, ...extras }),
   });
 }
 
@@ -1023,6 +1034,55 @@ export async function listJobRuns(name: string, limit = 20): Promise<JobRun[]> {
  */
 export async function runJobNow(name: string): Promise<JobRun> {
   return jobsFetch<JobRun>(`/${encodeURIComponent(name)}/run`, { method: 'POST' });
+}
+
+/**
+ * GET /jobs/{name}/preferences → what every firing reads, in full. The job's writer or an
+ * operator only (403 otherwise), since the text may be personal; a workflow job is a 422.
+ */
+export async function getJobPreferences(name: string): Promise<JobPreferences> {
+  return jobsFetch<JobPreferences>(`/${encodeURIComponent(name)}/preferences`);
+}
+
+/** PUT /jobs/{name}/preferences → write them; 422 `preferences_too_long` past 8 KiB. */
+export async function putJobPreferences(
+  name: string,
+  preferences: string,
+): Promise<JobPreferences> {
+  return jobsFetch<JobPreferences>(`/${encodeURIComponent(name)}/preferences`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ preferences }),
+  });
+}
+
+/** DELETE /jobs/{name}/preferences → clear them; a job that requires them then skips. */
+export async function deleteJobPreferences(name: string): Promise<JobPreferences> {
+  return jobsFetch<JobPreferences>(`/${encodeURIComponent(name)}/preferences`, {
+    method: 'DELETE',
+  });
+}
+
+/** GET /jobs/{name}/state → every key the job's runs keep. Writer or operator only. */
+export async function getJobState(name: string): Promise<JobStateEntry[]> {
+  const body = await jobsFetch<{ items?: JobStateEntry[] }>(`/${encodeURIComponent(name)}/state`);
+  return body.items ?? [];
+}
+
+/** DELETE /jobs/{name}/state → clear every key, so the next firing starts from nothing. */
+export async function clearJobState(name: string): Promise<number> {
+  const body = await jobsFetch<{ deleted: number }>(`/${encodeURIComponent(name)}/state`, {
+    method: 'DELETE',
+  });
+  return body.deleted;
+}
+
+/** DELETE /jobs/{name}/state/{key} → remove one key; 404 when the job holds none by that name. */
+export async function deleteJobStateKey(name: string, key: string): Promise<void> {
+  await jobsFetch<{ deleted: number }>(
+    `/${encodeURIComponent(name)}/state/${encodeURIComponent(key)}`,
+    { method: 'DELETE' },
+  );
 }
 
 /** DELETE /jobs/{name} → remove a job from the registry. */

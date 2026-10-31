@@ -33,6 +33,7 @@ import {
   withAge,
 } from '@/components/inspector/primitives';
 import { JobCreateForm } from '@/components/jobs/job-create-form';
+import { JobPreferencesSection, JobStateSection } from '@/components/jobs/job-details';
 import { useRecentAudit, useWeekFailures } from '@/hooks/use-recent-audit';
 import { useSharedPoll } from '@/hooks/useSharedPoll';
 import {
@@ -103,6 +104,32 @@ function heldToOldRevision(j: JobRecord): boolean {
   return Boolean(j.workflow_id) && /changed since this job was written/.test(j.last_error ?? '');
 }
 
+/**
+ * What a re-save must carry beyond the record's own keys: `PUT /jobs/{name}` replaces the whole
+ * job, so a pause that left these out put a zoned job back on UTC and stopped requiring its
+ * preferences.
+ */
+function keptOnResave(j: JobRecord) {
+  return { timezone: j.timezone ?? null, preferences_required: j.preferences_required === true };
+}
+
+/** The open incidents the harness's health watch recorded, newest kind first. */
+function incidents(j: JobRecord): { kind: 'overdue' | 'failing'; since?: number; cls?: string }[] {
+  const out: { kind: 'overdue' | 'failing'; since?: number; cls?: string }[] = [];
+  for (const kind of ['overdue', 'failing'] as const) {
+    const held = j.health?.[kind];
+    if (held && typeof held === 'object' && Object.keys(held).length > 0) {
+      out.push({ kind, since: held.since, cls: held.error_class });
+    }
+  }
+  return out;
+}
+
+/** An agent job that requires preferences and has none: every firing is skipped. */
+function awaitingPreferences(j: JobRecord): boolean {
+  return j.preferences_required === true && j.preferences_set === false && !j.workflow_id;
+}
+
 /** `412 workflow_changed` on a save that named the revision it was holding. */
 function isWorkflowChanged(err: unknown): boolean {
   return (
@@ -134,7 +161,9 @@ export function JobsSheet({
   // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
   // Failing first: someone coming back wants the exception before the list.
   // Stable otherwise, so the harness's own order holds among the healthy ones.
-  const jobs = [...(data ?? [])].sort((a, b) => Number(failing(b)) - Number(failing(a)));
+  // An open incident ranks with a failure: an overdue job has no failed run to show for it.
+  const needsLook = (j: JobRecord) => failing(j) || incidents(j).length > 0;
+  const jobs = [...(data ?? [])].sort((a, b) => Number(needsLook(b)) - Number(needsLook(a)));
   const failingCount = jobs.filter(failing).length;
 
   const [actionError, setActionError] = useState<unknown>(null);
@@ -304,6 +333,7 @@ export function JobsSheet({
           : {}),
         payload: j.payload ?? {},
         enabled,
+        ...keptOnResave(j),
       });
       setAnnounce(`${j.name} ${enabled ? 'resumed' : 'paused'}.`);
       refresh();
@@ -330,6 +360,7 @@ export function JobsSheet({
         workflow_id: j.workflow_id,
         payload: j.payload ?? {},
         enabled: j.enabled !== false,
+        ...keptOnResave(j),
       });
       setAnnounce(`${j.name} now runs the current revision of ${j.workflow_id}.`);
       refresh();
@@ -541,10 +572,14 @@ export function JobsSheet({
                     // The badge is what the harness will do; the stored text is in the title
                     // when the two differ (an empty schedule).
                     title={
-                      j.schedule ? `Schedule: ${j.schedule}` : 'No schedule: runs only by hand'
+                      j.schedule
+                        ? `Schedule: ${j.schedule}${j.timezone ? ` in ${j.timezone}` : ' (UTC)'}`
+                        : 'No schedule: runs only by hand'
                     }
                   >
                     {scheduleLabel(j.schedule ?? '')}
+                    {/* Said only off UTC, which the harness assumes. */}
+                    {j.timezone && j.schedule ? ` · ${j.timezone}` : ''}
                   </Badge>
                   {/* Mono: the harness named it (the Provenance Rule). */}
                   {j.workflow_id ? (
@@ -566,6 +601,12 @@ export function JobsSheet({
                   {invalid && (
                     // It never fires — the scheduler refuses it — though its next time stays.
                     <span className="text-xs font-medium text-state-failed">invalid schedule</span>
+                  )}
+                  {awaitingPreferences(j) && j.enabled !== false && (
+                    // Amber: it waits on a person writing them, under Runs.
+                    <span className="text-xs font-medium text-state-blocked">
+                      Runs skipped until preferences are written
+                    </span>
                   )}
                   {waitingOn(j.name) && (
                     <span className="text-xs font-medium text-state-blocked">
@@ -670,6 +711,24 @@ export function JobsSheet({
                       last <StatusDot status={j.last_status} />
                     </span>
                   ) : null}
+                  {/* The harness's own health watch: a job overdue after the scheduler had its
+                      chance, or failing a streak. Said with since when; the class, never the
+                      error's text, is all the incident keeps. */}
+                  {incidents(j).map((inc) => (
+                    <span
+                      key={inc.kind}
+                      data-slot="job-incident"
+                      className="font-medium text-state-failed"
+                      title={
+                        inc.kind === 'overdue'
+                          ? 'Due and not fired, after a scheduler sweep had its chance'
+                          : `Its last runs all failed${inc.cls ? ` (${inc.cls})` : ''}`
+                      }
+                    >
+                      {inc.kind}
+                      {inc.since ? ` since ${relativeTime(inc.since)}` : ''}
+                    </span>
+                  ))}
                   {/* The week behind the last run, which `last` alone hides: a job
                       that failed four days ago and has run cleanly since read
                       `last ● OK` beside the Activity page leading with it. Links to
@@ -757,7 +816,7 @@ export function JobsSheet({
                       size="xs"
                       variant="outline"
                       disabled={busy}
-                      question={`${j.name} will run ${j.workflow_id} as it is now, on your scopes.`}
+                      question={`${j.name} will run ${j.workflow_id} as it is now, on your scopes.${j.preferences_set ? ' If it runs for someone else, their preferences are cleared.' : ''}`}
                       confirmLabel="Run the current revision"
                       onConfirm={() => repin(j)}
                     >
@@ -835,6 +894,18 @@ export function JobsSheet({
                         The latest {RUNS_SHOWN} runs.
                       </p>
                     )}
+                    {/* Read only now the job is open: both are its writer's, and may be personal.
+                        A workflow job has no prompt to carry preferences. */}
+                    {!j.workflow_id && (
+                      <div className="mt-2">
+                        <h4 className="mb-1 text-xs font-medium">Preferences</h4>
+                        <JobPreferencesSection jobName={j.name} onChanged={refresh} />
+                      </div>
+                    )}
+                    <div className="mt-2">
+                      <h4 className="mb-1 text-xs font-medium">Saved state</h4>
+                      <JobStateSection jobName={j.name} />
+                    </div>
                   </div>
                 )}
               </div>

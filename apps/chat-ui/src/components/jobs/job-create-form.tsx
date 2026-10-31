@@ -106,6 +106,8 @@ export function JobCreateForm({
   // A new job fires at the next sweep whatever its schedule; started paused, it waits until
   // someone resumes it — the one way to set a job up without it running first.
   const [startPaused, setStartPaused] = useState(false);
+  // A firing with no reader's preferences then runs nothing (`skipped`, `preferences_missing`).
+  const [preferencesRequired, setPreferencesRequired] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -192,6 +194,7 @@ export function JobCreateForm({
             }
           : { manifest_id: manifestId }),
         payload,
+        ...(target === 'agent' && preferencesRequired ? { preferences_required: true } : {}),
         // Replacing keeps the job's own state unless the form says to pause it.
         enabled: startPaused ? false : (existing?.enabled ?? true),
       });
@@ -237,6 +240,10 @@ export function JobCreateForm({
               <span className="font-mono">{existing.name}</span> exists. Replace changes its
               schedule and what it runs; its run history stays
               {existing.enabled === false ? ', and it stays paused' : ''}.
+              {/* The form writes a UTC schedule, and a PUT without a zone is one. */}
+              {existing.timezone
+                ? ` It runs in ${existing.timezone} now; Replace puts it on UTC.`
+                : ''}
             </p>
           )}
         </div>
@@ -411,6 +418,28 @@ export function JobCreateForm({
             {'error' in parsedInputs
               ? parsedInputs.error
               : 'The workflow’s inputs for every run, as a JSON object. The harness checks them against the workflow when the job is saved.'}
+          </p>
+        </div>
+      )}
+      {target === 'agent' && (
+        <div>
+          <label htmlFor="job-preferences-required" className="flex items-center gap-2 text-sm">
+            <input
+              id="job-preferences-required"
+              type="checkbox"
+              checked={preferencesRequired}
+              onChange={(e) => setPreferencesRequired(e.target.checked)}
+              aria-describedby="job-preferences-required-help"
+              className="size-3.5 shrink-0 accent-primary"
+            />
+            Skip runs until preferences are written
+          </label>
+          <p
+            id="job-preferences-required-help"
+            className="mt-1 ml-5.5 max-w-[56ch] text-xs text-muted-foreground"
+          >
+            Preferences are what the reader wants from each run — what to cover, tone, length — and
+            are written on the job once it exists. Until then every run is skipped.
           </p>
         </div>
       )}

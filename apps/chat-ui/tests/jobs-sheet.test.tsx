@@ -42,8 +42,27 @@ async function sheet(
     workflows?: unknown[];
     /** The address the page opens on, for its `?job=` link. */
     at?: string;
+    /** `GET /jobs/{name}/preferences`, or the error it throws. */
+    preferences?: unknown;
+    /** `GET /jobs/{name}/state`, or the error it throws. */
+    state?: unknown;
   } = {},
 ) {
+  const answer = (v: unknown) => () =>
+    v instanceof Error ? Promise.reject(v) : Promise.resolve(v);
+  const prefs = {
+    name: 'nightly-digest',
+    preferences: null,
+    updated_at: null,
+    updated_by: null,
+    required: false,
+  };
+  const putJobPreferences = vi.fn((_n: string, text: string) =>
+    Promise.resolve({ ...prefs, preferences: text, updated_at: 1, updated_by: 'blake' }),
+  );
+  const deleteJobPreferences = vi.fn().mockResolvedValue(prefs);
+  const clearJobState = vi.fn().mockResolvedValue(1);
+  const deleteJobStateKey = vi.fn().mockResolvedValue(undefined);
   const upsertJob = vi.fn().mockResolvedValue(job());
   const runJobNow = vi.fn(opts.runJobNow ?? (() => Promise.resolve({})));
   vi.doMock('../src/api', () => ({
@@ -57,6 +76,12 @@ async function sheet(
     // The audit read the sidebar's Activity glance polls; a job's thread outcome rides it.
     listAudit: vi.fn().mockResolvedValue(opts.audit ?? []),
     listWorkflows: vi.fn().mockResolvedValue(opts.workflows ?? []),
+    getJobPreferences: vi.fn(answer(opts.preferences ?? prefs)),
+    putJobPreferences,
+    deleteJobPreferences,
+    getJobState: vi.fn(answer(opts.state ?? [])),
+    clearJobState,
+    deleteJobStateKey,
   }));
   const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
   render(
@@ -64,7 +89,14 @@ async function sheet(
       <JobsSheet manifest="quick" manifestOptions={['quick']} />
     </MemoryRouter>,
   );
-  return { upsertJob, runJobNow };
+  return {
+    upsertJob,
+    runJobNow,
+    putJobPreferences,
+    deleteJobPreferences,
+    clearJobState,
+    deleteJobStateKey,
+  };
 }
 
 /** The form is behind a disclosure now; open it the way an operator would. */
@@ -339,6 +371,8 @@ describe('pausing', () => {
       manifest_id: 'quick',
       payload: { prompt: 'Digest.' },
       enabled: false,
+      timezone: null,
+      preferences_required: false,
     });
   });
 
@@ -560,6 +594,8 @@ describe('a job that runs a workflow', () => {
       workflow_revision: 'r1',
       payload: { inputs: { repo: 'felix' } },
       enabled: false,
+      timezone: null,
+      preferences_required: false,
     });
   });
 
@@ -653,5 +689,129 @@ describe('a job that runs a workflow', () => {
       payload: { inputs: { repo: 'felix' } },
     });
     expect(sent.manifest_id).toBeUndefined();
+  });
+});
+
+/**
+ * What 0.19 added to a job (`felix-run/felix`): the zone its cron is read in, the health watch's
+ * incidents, and two parts only its writer or an operator may read — the reader's preferences and
+ * the state its runs keep. `PUT /jobs/{name}` replaces the whole job, so a pause that left the
+ * zone out put the job back on UTC; that is pinned at the call.
+ */
+describe('a job’s zone, health, preferences and saved state', () => {
+  it('keeps the zone and the preferences requirement through a pause', async () => {
+    const { upsertJob } = await sheet([
+      job({ timezone: 'America/New_York', preferences_required: true, preferences_set: true }),
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toMatchObject({
+      timezone: 'America/New_York',
+      preferences_required: true,
+    });
+  });
+
+  it('names a zone off UTC on the schedule badge', async () => {
+    await sheet([job({ timezone: 'Europe/Berlin' })]);
+    await waitFor(() => expect(screen.getByText(/· Europe\/Berlin/)).toBeTruthy());
+  });
+
+  it('says an open incident on the row and ranks the job first', async () => {
+    await sheet([
+      job({ name: 'quiet' }),
+      job({ name: 'stalled', health: { overdue: { since: Date.now() - 3_600_000 } } }),
+    ]);
+    const incident = await screen.findByText(/^overdue since/);
+    expect(incident.closest('[data-job]')?.getAttribute('data-job')).toBe('stalled');
+    const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(names.indexOf('stalled')).toBeLessThan(names.indexOf('quiet'));
+  });
+
+  it('says nothing for a healthy job, whose health is {}', async () => {
+    await sheet([job({ health: {} })]);
+    await screen.findByText('nightly-digest');
+    expect(document.querySelector('[data-slot="job-incident"]')).toBeNull();
+  });
+
+  it('says runs are skipped while required preferences are missing', async () => {
+    await sheet([job({ preferences_required: true, preferences_set: false })]);
+    expect(await screen.findByText('Runs skipped until preferences are written')).toBeTruthy();
+  });
+
+  it('writes preferences from the opened job, and refreshes the row', async () => {
+    const { putJobPreferences } = await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    const field = await screen.findByLabelText('Preferences for nightly-digest');
+    const save = screen.getByRole('button', { name: 'Save preferences' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(field, { target: { value: 'Skip weekends.' } });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(putJobPreferences).toHaveBeenCalledWith('nightly-digest', 'Skip weekends.'),
+    );
+    expect(await screen.findByText(/saved .* by blake/)).toBeTruthy();
+  });
+
+  it('refuses preferences over the harness’s 8 KiB before sending', async () => {
+    await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    const field = await screen.findByLabelText('Preferences for nightly-digest');
+    fireEvent.change(field, { target: { value: 'x'.repeat(8 * 1024 + 1) } });
+    expect(
+      (screen.getByRole('button', { name: 'Save preferences' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('says who may see them when the harness refuses a non-writer', async () => {
+    await sheet([job()], {
+      preferences: new Error('jobs /nightly-digest/preferences: 403 {"detail":"missing_scopes"}'),
+      state: new Error('jobs /nightly-digest/state: 403 {"detail":"missing_scopes"}'),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    expect(await screen.findByText(/can see its preferences/)).toBeTruthy();
+    expect(await screen.findByText(/can see its saved state/)).toBeTruthy();
+  });
+
+  it('offers no preferences for a workflow job, whose runs have no prompt', async () => {
+    await sheet([job({ manifest_id: '', workflow_id: 'flow' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    await screen.findByText(/Its runs have saved nothing/);
+    expect(screen.queryByLabelText('Preferences for nightly-digest')).toBeNull();
+  });
+
+  it('removes one saved key, and clears them all', async () => {
+    const { deleteJobStateKey, clearJobState } = await sheet([job()], {
+      state: [
+        { key: 'cursor', value: '2026-10-29', bytes: 10, updated_at: 1 },
+        { key: 'seen', value: '[1,2]', bytes: 5, updated_at: 1 },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove cursor' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }));
+    await waitFor(() => expect(deleteJobStateKey).toHaveBeenCalledWith('nightly-digest', 'cursor'));
+    await waitFor(() => expect(screen.queryByText('2026-10-29')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+    expect(screen.getByText(/Clear all 1 key\?/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved state' }));
+    await waitFor(() => expect(clearJobState).toHaveBeenCalledWith('nightly-digest'));
+    expect(await screen.findByText(/Its runs have saved nothing/)).toBeTruthy();
+  });
+
+  it('can create a job that waits for preferences', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'brief' } });
+    fireEvent.click(screen.getByLabelText('Skip runs until preferences are written'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].preferences_required).toBe(true);
+  });
+
+  it('says Replace puts a zoned job on UTC, since the form writes a UTC schedule', async () => {
+    await sheet([job({ timezone: 'Asia/Tokyo' })]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'nightly-digest' } });
+    expect(screen.getByText(/runs in Asia\/Tokyo now; Replace puts it on UTC/)).toBeTruthy();
   });
 });

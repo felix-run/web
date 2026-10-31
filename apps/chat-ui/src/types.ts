@@ -362,6 +362,50 @@ export interface JobRecord {
   last_error: string;
   created_at: number;
   payload: Record<string, unknown>;
+  /**
+   * The IANA zone a cron `schedule` is read in; null is UTC. A PUT that leaves it out puts the
+   * job back on UTC, so every re-save carries it (`felix-run/felix` 0.19).
+   */
+  timezone?: string | null;
+  /** When set, a firing with no reader's preferences runs nothing and is recorded `skipped`. */
+  preferences_required?: boolean;
+  /** Whether the job holds preferences; their text is `GET /jobs/{name}/preferences`. */
+  preferences_set?: boolean;
+  /** The job's open incidents (`felix/jobs/watch.py`); `{}` when it is healthy. */
+  health?: JobHealth;
+}
+
+/** One open incident: since when, and the last error's class — never its text. */
+export interface JobIncident {
+  since?: number;
+  opened_at?: number;
+  error_class?: string;
+}
+
+export interface JobHealth {
+  /** Due and not fired after the scheduler had its chance. */
+  overdue?: JobIncident;
+  /** The last few runs that ran were all errors. */
+  failing?: JobIncident;
+}
+
+/** GET|PUT|DELETE /jobs/{name}/preferences — its writer or an operator only. */
+export interface JobPreferences {
+  name: string;
+  preferences: string | null;
+  updated_at: number | null;
+  updated_by: string | null;
+  required: boolean;
+}
+
+/** One key a job's runs keep for themselves (`spec.state`); the agent writes these. */
+export interface JobStateEntry {
+  key: string;
+  value: string;
+  bytes: number;
+  updated_at: number;
+  /** The thread of the firing that last wrote it, or "". */
+  updated_by_thread?: string;
 }
 
 /** One row from GET /jobs/{name}/runs. */
