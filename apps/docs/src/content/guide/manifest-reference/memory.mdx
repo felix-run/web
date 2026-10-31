@@ -437,7 +437,7 @@ when clearing alone would have made room.
 
 Ranks the skill catalogue with [`spec.decider`](/guide/manifest-reference/agents/#specdecider), reranks a shortlist against each
 skill's body (an imported skill's listed description only, never its body; see
-[Skill import](/guide/skill-import/#imported-text-in-front-of-the-model)), and — only when the request asks for a task and a skill fits it — adds a one-line hint
+[Import skills from GitHub](/guide/skill-import/#imported-text-in-front-of-the-model)), and — only when the request asks for a task and a skill fits it — adds a one-line hint
 naming that skill. The model still decides whether to `activate_skill`. The hint rides the turn's
 first model call as a transient message: after the prompt-cache breakpoint, never in the session log.
 

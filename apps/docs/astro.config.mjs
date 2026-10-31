@@ -108,8 +108,16 @@ export default defineConfig({
           // Using what an agent is made of, and the clients that drive it.
           label: 'Guides',
           items: [
-            { label: 'Skills', slug: 'guide/skills' },
-            { label: 'Skill import', slug: 'guide/skill-import' },
+            {
+              // One section for skills: what they are and how they run, then
+              // bringing them in from GitHub.
+              label: 'Skills',
+              collapsed: true,
+              items: [
+                { label: 'Overview', slug: 'guide/skills' },
+                { label: 'Import from GitHub', slug: 'guide/skill-import' },
+              ],
+            },
             { label: 'Chat UI', slug: 'guide/chat-ui' },
             { label: 'Terminal client', slug: 'guide/terminal' },
             { label: 'Phones and iPads', slug: 'guide/phones-and-tablets' },
