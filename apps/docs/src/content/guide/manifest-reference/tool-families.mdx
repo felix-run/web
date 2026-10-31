@@ -306,7 +306,7 @@ Compiling a manifest that binds a fetch tool without `spec.content_screening.ena
 
 ### Answering a prompt instead of returning the page
 
-Set `extract_model` to a [model route](/guide/deploy/#model-routes) and the tool takes a `prompt`
+Set `extract_model` to a [model route](/guide/deploy/models/#model-routes) and the tool takes a `prompt`
 beside the `url`. Felix fetches the page as above, hands its text and the prompt to that model,
 and returns the response header lines followed by the model's answer — not the page. An 80 KB
 page costs the agent a paragraph of context instead of the whole document.

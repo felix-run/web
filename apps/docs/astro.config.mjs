@@ -90,18 +90,17 @@ export default defineConfig({
       ],
       // Explicit sidebar (Starlight autogenerate expects src/content/docs/).
       // Grouped by what the reader is doing, not by where the page lives: the
-      // path to a first run, then guides to skills and the clients, then the
-      // pages you look things up in, then how it works. Starlight's prev/next
-      // follows this order, so Start reads as a sequence. Slugs are unchanged —
-      // chat-ui links into these pages and `apps/chat-ui/tests/docs-links.test.ts`
-      // checks every one.
+      // path to a first run, then guides to skills and the clients, then running
+      // a deployment, then the pages you look things up in, then how it works.
+      // Starlight's prev/next follows this order, so Start reads as a sequence.
+      // Slugs are unchanged — chat-ui links into these pages and
+      // `apps/chat-ui/tests/docs-links.test.ts` checks every one.
       sidebar: [
         {
           label: 'Start',
           items: [
             { label: 'Getting started', slug: 'guide/getting-started' },
             { label: 'Concepts', slug: 'guide/concepts' },
-            { label: 'Deploy', slug: 'guide/deploy' },
           ],
         },
         {
@@ -113,6 +112,21 @@ export default defineConfig({
             { label: 'Chat UI', slug: 'guide/chat-ui' },
             { label: 'Terminal client', slug: 'guide/terminal' },
             { label: 'Phones and iPads', slug: 'guide/phones-and-tablets' },
+          ],
+        },
+        {
+          // Running a deployment: bring it up, then configure what runs on it.
+          // Collapsed like Internals: seven pages most readers need only once.
+          label: 'Operate',
+          collapsed: true,
+          items: [
+            { label: 'Deploy', slug: 'guide/deploy' },
+            { label: 'Sign-in and sessions', slug: 'guide/deploy/auth' },
+            { label: 'Scheduling and runs', slug: 'guide/deploy/scheduling' },
+            { label: 'Notifications', slug: 'guide/deploy/notifications' },
+            { label: 'Integrations', slug: 'guide/deploy/integrations' },
+            { label: 'Models and embeddings', slug: 'guide/deploy/models' },
+            { label: 'Workspaces and the skill library', slug: 'guide/deploy/workspaces' },
           ],
         },
         {

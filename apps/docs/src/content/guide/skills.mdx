@@ -198,6 +198,9 @@ never active, so its scripts never run; and the hosted workspace backend's sandb
 | Tenant library | the live version of each skill in the tenant's library, under `skill-library/` | `library` | an agent, an operator, an import from GitHub, or a promotion from a personal library, through review |
 | Personal library | the live version of each skill in the caller's own library, under `skill-library/{tenant}/~{digest}/` | `library` | the caller, or an agent under `spec.personal_skills: write` |
 
+What a deployment sets for these — the host directory, uploads, script runners, imports and
+background jobs — is on [Workspaces and the skill library](/guide/deploy/workspaces/).
+
 A host directory follows the agentskills.io layout: only `<dir>/SKILL.md` packages are skills, and a
 loose `*.md` at the directory's root is not one. A skill directory is a leaf, so a `SKILL.md` kept
 under its `references/` belongs to that skill; the root of the skills directory is the exception and
