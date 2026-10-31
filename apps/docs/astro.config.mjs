@@ -116,7 +116,9 @@ export default defineConfig({
         },
         {
           // Running a deployment: bring it up, then configure what runs on it.
+          // Collapsed like Internals: seven pages most readers need only once.
           label: 'Operate',
+          collapsed: true,
           items: [
             { label: 'Deploy', slug: 'guide/deploy' },
             { label: 'Sign-in and sessions', slug: 'guide/deploy/auth' },
@@ -124,7 +126,7 @@ export default defineConfig({
             { label: 'Notifications', slug: 'guide/deploy/notifications' },
             { label: 'Integrations', slug: 'guide/deploy/integrations' },
             { label: 'Models and embeddings', slug: 'guide/deploy/models' },
-            { label: 'Workspaces and skills', slug: 'guide/deploy/workspaces' },
+            { label: 'Workspaces and the skill library', slug: 'guide/deploy/workspaces' },
           ],
         },
         {
