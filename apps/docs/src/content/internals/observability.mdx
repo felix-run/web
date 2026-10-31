@@ -129,6 +129,9 @@ deployment is an uptime monitor outside it, polling the public
 [`GET /health/scheduler`](/guide/deploy/#the-scheduler-heartbeat), which answers `503` once the
 last completed sweep is older than `FELIX_SCHEDULER_STALE_SECONDS` (300). Do not wire that route to
 a liveness or readiness probe: a stopped scheduler is not the API pod's fault.
+[`GET /health/worker`](/guide/deploy/#the-worker-heartbeat) is its counterpart for `felix-worker`:
+`503` once no Worker has beaten within `FELIX_WORKER_STALE_SECONDS` (60), with the beating Worker's
+version, which is what an upgrade waits on.
 
 ## Spans
 

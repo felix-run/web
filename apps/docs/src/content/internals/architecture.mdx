@@ -58,7 +58,7 @@ Order on every request, outermost first:
 1. **Request id** — every response carries `x-request-id`, including one rejected downstream.
 2. **Security headers** — on every response, a 413 and a 401 included.
 3. **Body limit** — reject oversized payloads before any other work.
-4. **Rate limit** — keyed by tenant; skips only the probes (`/health`, `/live`, `/ready`), the scheduler heartbeat `/health/scheduler`, and `/.well-known/*`.
+4. **Rate limit** — keyed by tenant; skips only the probes (`/health`, `/live`, `/ready`), the scheduler and worker heartbeats `/health/scheduler` and `/health/worker`, and `/.well-known/*`.
 5. **Auth** — `none` / `api_key` / `jwt` (see [auth](/internals/auth/)); installs `RequestContext` (tenant, scopes, `LimitState`).
 
 **Rate limit is outside auth, and that is the point.** Registered the other way round, a 401

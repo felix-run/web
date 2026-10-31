@@ -18,7 +18,8 @@ Inbound authentication, tenant derivation, and isolation defenses. Source: `feli
 | `jwt` | Bearer JWT verified via `FELIX_JWT_VERIFIERS` + JWKS (`FELIX_JWKS_PUBLIC` for self-issued) |
 
 Unauthenticated in every mode: the probes `/health`, `/live`, `/ready`, the scheduler heartbeat
-`/health/scheduler` (one age and one threshold, no tenant data), and everything under
+`/health/scheduler` (one age and one threshold, no tenant data), the worker heartbeat
+`/health/worker` (the same, plus the version `/health` publishes and a per-start random id), and everything under
 `/.well-known/*`. That set is deliberately short.
 
 - **`/metrics` is not in it.** Its label values carry tenant-supplied manifest ids and remote MCP

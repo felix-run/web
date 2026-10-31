@@ -638,6 +638,29 @@ through Redis, so set `FELIX_REDIS_URL` on both; an API without one sees only it
 runs no sweep, and answers `never`. The route is public and rate-limit exempt like `/ready`, and
 carries one age and one threshold — no tenant, job or host.
 
+### The worker heartbeat
+
+`/health` and `/ready` are answered by the API alone, so a Worker that dies at startup leaves both
+green. Once a Worker's startup has passed every check that can refuse it, it stamps the time and
+its version in Redis every 15 seconds, and `GET /health/worker` answers from the newest stamp:
+
+```bash
+curl -s "$BASE_URL/health/worker"
+# {"status":"ok","last_beat_age_s":7,"stale_after_s":60,"version":"0.20.0","boot":"9f2c41d07ab35e18"}
+```
+
+`status` is `ok` (`200`) while the newest beat is no older than `FELIX_WORKER_STALE_SECONDS`, and
+`stale`, `never` or `unknown` (`503`) otherwise, as for the scheduler. `boot` is a random id the
+Worker draws once each time it starts. After an upgrade, wait for the new `version` from a Worker
+alive after the restart — a new `boot`, or the same one still beating, since `docker compose up -d`
+leaves a Worker whose config did not change running. The version alone is not enough: the old
+Worker's last beat still reads `ok` for up to a minute after it is gone, and on a re-roll of the
+same version it carries that version too. `deploy/gcp/roll.sh` does that wait and stops if no such
+beat arrives within two minutes. The beat says a Worker is up, not that the queue drains — a stale scheduler heartbeat says
+that — and with several Workers the freshest beat is reported, so one dead replica among live ones
+does not show. Public and rate-limit exempt like `/ready`; it carries an age, a threshold, the
+version `/health` already publishes and the boot id, never a start time. Not a probe: a dead Worker is not the API pod's fault.
+
 **Point an uptime monitor at it, from outside the deployment — not a probe.** A stopped scheduler
 is not the API pod's fault: restarting it or taking it out of rotation fixes nothing, so the Helm
 chart deliberately does not wire it to a probe. `felix doctor` reads the same heartbeat and prints
@@ -700,6 +723,7 @@ manifest in those tenants may post to the ops channel.
 | Setting | Default | |
 |---|---|---|
 | `FELIX_SCHEDULER_STALE_SECONDS` | `300` | At least `120`. Past this, `GET /health/scheduler` answers `stale`. |
+| `FELIX_WORKER_STALE_SECONDS` | `60` | At least `30`. Past this, `GET /health/worker` answers `stale`. |
 | `FELIX_JOB_OVERDUE_GRACE_SECONDS` | `900` | At least `60`. How long past its due time a job may sit before it can be overdue. |
 | `FELIX_JOB_FAILURE_THRESHOLD` | `3` | `1`–`100`. Consecutive errored runs that make a job failing. One above a non-zero `FELIX_JOB_RUNS_KEEP` fails the boot: the streak would be trimmed before it could be read. |
 | `FELIX_JOB_ALERT_DESTINATION` | empty | A `FELIX_DESTINATIONS` id each new incident is posted to; empty posts nowhere. An id that is not in `FELIX_DESTINATIONS` fails the boot. The watch runs in the Worker, so set both there. |
