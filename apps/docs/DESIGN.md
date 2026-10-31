@@ -407,11 +407,16 @@ you are" the loudest object on the page.
 
 ### Where next (`.where-next`, home)
 
-The sidebar's three groups, abridged — every Start and Reference page including the explorer (all
-of them since 2026-10-22; it had dropped Skill import, Phones and iPads and MCP), and four of the
-internals — as plain lists under small faint labels, hairline-separated. It is also
-the home page's only navigation on a phone, where the splash layout has no menu. The 404 page
-(`src/content/404.mdx`) uses the same component for its ways back in, and has no hero, so the
+One row per top-level sidebar group (`src/components/WhereNext.astro`, 2026-10-31): the group's
+name in ink and 600, linking to its first page, beside one sentence in body text on what the group
+is for; hairline rows in one column, the sentence dropping under the name below 32rem. The groups
+are read from the sidebar Starlight builds for the page (`Astro.locals.starlightRoute.sidebar`),
+so a group added or reordered there appears here, and a group with no sentence in the component's
+`PURPOSE` table fails the build. It replaced a hand-kept copy of the sidebar's pages, which every
+restructure left behind and which, once generated in full, was 32 links and ~1.4 screens on a
+phone: the sidebar is the one full list, and this is a choice of where to start. It is also the
+home page's only navigation on a phone, where the splash layout has no menu. The 404 page
+(`src/content/404.mdx`) uses the same styles for its own, shorter, hand-picked ways back in, and has no hero, so the
 home page's RunTrace cannot appear there. Its group labels are `h2` there (the home page's are
 `h3`, under "Where next"), so neither page skips a heading level.
 
