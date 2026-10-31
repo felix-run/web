@@ -1,0 +1,42 @@
+---
+// The home page's Where next, read from the sidebar Starlight already built for
+// this route, so a page added, moved or renamed there shows up here too. It was a
+// hand-kept copy, and each restructure left it behind.
+//
+// Each top-level sidebar group is a column. A nested group (Manifest reference,
+// the Internals sections) is one link, named for the group, to its first page:
+// the column names where to go, and the sidebar lists everything inside.
+import type { StarlightRouteData } from '@astrojs/starlight/route-data';
+
+type Entry = StarlightRouteData['sidebar'][number];
+
+const firstHref = (entry: Entry): string | undefined =>
+  entry.type === 'link' ? entry.href : entry.entries.map(firstHref).find(Boolean);
+
+// biome-ignore lint/correctness/noUnusedVariables: rendered below
+const columns = Astro.locals.starlightRoute.sidebar
+  .filter((entry) => entry.type === 'group')
+  .map((group) => ({
+    label: group.label,
+    links: group.entries
+      .map((entry) => ({ label: entry.label, href: firstHref(entry) }))
+      .filter((link): link is { label: string; href: string } => Boolean(link.href)),
+  }));
+---
+
+<nav class="where-next not-content" aria-label="Documentation">
+  {
+    columns.map((column) => (
+      <div>
+        <h3>{column.label}</h3>
+        <ul>
+          {column.links.map((link) => (
+            <li>
+              <a href={link.href}>{link.label}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+</nav>

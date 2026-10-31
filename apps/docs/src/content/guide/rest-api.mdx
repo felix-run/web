@@ -79,7 +79,7 @@ Omit it and the turn is stateless.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Liveness — `{"status":"ok","env":…,"version":…,"multi_region":false,"federation":null}` |
+| `GET` | `/health` | Liveness: answers `ok` with the environment and the harness version. `{"status":"ok","env":…,"version":…,"multi_region":false,"federation":null}` |
 | `GET` | `/live` | Liveness, named for what it is — the same static body as `/health`, no I/O |
 | `GET` | `/ready` | Readiness. Probes the dependencies and answers **503** when one is down, so a pod with a dead database leaves rotation instead of being restarted |
 | `GET` | `/health/scheduler` | Is `felix-scheduler` sweeping? `{"status","last_tick_age_s","stale_after_s"}`: `200` with `ok`, **503** with `stale`, `never` or `unknown` (Redis unreadable). For an external uptime monitor, not a probe — see [Deploy](/guide/deploy/#the-scheduler-heartbeat) |
@@ -637,7 +637,7 @@ dot do not change it.
   <dd>Right after `tool_end`</dd>
   <dd class="event-data">`{"name":str,"id":str,"status":"complete"}`</dd>
   <dt id="event-tool_request" data-state="blocked">[`tool_request`](#event-tool_request)</dt>
-  <dd>**The client must run this tool**</dd>
+  <dd>The client must run this tool and post its result</dd>
   <dd class="event-data">`{"id","name","args","thread_id","transport":"client"}`</dd>
   <dt id="event-approval_required" data-state="blocked">[`approval_required`](#event-approval_required)</dt>
   <dd>A gated tool is waiting on a human</dd>
