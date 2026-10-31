@@ -465,7 +465,7 @@ The same registry carries imported skills' update events: `FELIX_SKILL_UPDATE_WE
 tenant to endpoint ids here, and those deliveries count under `kind="skill_update"`. The `kind`
 label is new with them; a query that ignores it now counts both, so filter `{kind="run"}` for runs
 alone. A receiver shared by both dispatches on the body's `type`. See
-[Skill import → Update notifications](/guide/skill-import/#update-notifications).
+[Import skills from GitHub → Update notifications](/guide/skill-import/#update-notifications).
 
 
 ## Shared destinations
@@ -908,7 +908,7 @@ writes. See [Governance → Skill scripts](/internals/governance/#skill-scripts)
 
 Browsing and importing skills from GitHub (`GET /skill-library/-/browse`,
 `POST /skill-library/-/import`) runs on the API; every call goes to `api.github.com` through the
-egress guard. The settings are read at boot. See [Skill import](/guide/skill-import/).
+egress guard. The settings are read at boot. See [Import skills from GitHub](/guide/skill-import/).
 
 | Setting | Default | |
 |---|---|---|

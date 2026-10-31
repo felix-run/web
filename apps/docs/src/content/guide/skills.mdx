@@ -5,10 +5,15 @@ description: "Agent Skills in Felix — how a skill reaches the model, running o
 
 import { Steps } from '@astrojs/starlight/components';
 
-An [Agent Skill](https://agentskills.io): a `SKILL.md` with YAML frontmatter (`name`,
-`description`, and optionally `license`, `compatibility`, `metadata`, `allowed-tools`,
-`disable-model-invocation`, `user-invocable`, `argument-hint`, and `context`, `agent`, `model` for a
-[forked skill](#running-a-skill-in-a-subagent)) and a Markdown body, plus optional bundle files under `references/`, `scripts/`, `assets/` and `evals/`.
+A skill is a set of instructions an agent reads only when a task calls for it. The model sees every
+skill's name and description, and loads the instructions of the one it needs. Felix uses the
+[Agent Skills](https://agentskills.io) format.
+
+On disk a skill is a `SKILL.md` — YAML frontmatter and a Markdown body — plus optional bundle files
+under `references/`, `scripts/`, `assets/` and `evals/`. The frontmatter needs `name` and
+`description`. The optional fields are `license`, `compatibility`, `metadata`, `allowed-tools`,
+`disable-model-invocation`, `user-invocable` and `argument-hint`, and `context`, `agent` and `model`
+for a [forked skill](#running-a-skill-in-a-subagent).
 
 ## How a skill reaches the model
 
@@ -309,7 +314,7 @@ carry `lineage_import` until an operator adopts a version, the publish gate bloc
 `advisory` scan whatever the policy says, the catalog and `list_skills` mark it `untrusted`, and
 what the skill tools relay of it is content-screened — at least by the injection markers even where
 the manifest turns screening off. A deployment allowlists the repositories each tenant may name, and
-can hold back files Felix first saw too recently. [Skill import](/guide/skill-import/) has the whole
+can hold back files Felix first saw too recently. [Import skills from GitHub](/guide/skill-import/) has the whole
 surface.
 
 ## Evaluations and feedback
