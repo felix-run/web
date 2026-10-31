@@ -1,42 +1,44 @@
 ---
-// The home page's Where next, read from the sidebar Starlight already built for
-// this route, so a page added, moved or renamed there shows up here too. It was a
-// hand-kept copy, and each restructure left it behind.
-//
-// Each top-level sidebar group is a column. A nested group (Manifest reference,
-// the Internals sections) is one link, named for the group, to its first page:
-// the column names where to go, and the sidebar lists everything inside.
+// The home page's Where next: one row per top-level sidebar group, linking to
+// the group's first page, with what the group is for. The groups come from the
+// sidebar Starlight built for this route, so a group added or reordered there
+// shows up here; the sidebar stays the one full list of pages. Listing every
+// page made this a 32-link sitemap, the phone's whole navigation, ~1.4 screens.
 import type { StarlightRouteData } from '@astrojs/starlight/route-data';
 
 type Entry = StarlightRouteData['sidebar'][number];
+
+/** What each group is for. A group missing here fails the build, so a new one is described. */
+const PURPOSE: Record<string, string> = {
+  Start: 'Run the harness locally and learn the model it builds an agent from.',
+  Guides: 'Skills, and the browser, terminal and phone clients that drive an agent.',
+  Operate: 'Deploy it, then set up sign-in, schedules, notifications, integrations and models.',
+  Reference: 'Every route, manifest field and API, for looking one up.',
+  Internals: 'How the harness is built, for changing or extending it.',
+};
 
 const firstHref = (entry: Entry): string | undefined =>
   entry.type === 'link' ? entry.href : entry.entries.map(firstHref).find(Boolean);
 
 // biome-ignore lint/correctness/noUnusedVariables: rendered below
-const columns = Astro.locals.starlightRoute.sidebar
-  .filter((entry) => entry.type === 'group')
-  .map((group) => ({
-    label: group.label,
-    links: group.entries
-      .map((entry) => ({ label: entry.label, href: firstHref(entry) }))
-      .filter((link): link is { label: string; href: string } => Boolean(link.href)),
-  }));
+const rows = Astro.locals.starlightRoute.sidebar.flatMap((entry) => {
+  if (entry.type !== 'group') return [];
+  const purpose = PURPOSE[entry.label];
+  if (!purpose) throw new Error(`WhereNext: no purpose for sidebar group "${entry.label}"`);
+  const href = firstHref(entry);
+  return href ? [{ label: entry.label, href, purpose }] : [];
+});
 ---
 
-<nav class="where-next not-content" aria-label="Documentation">
-  {
-    columns.map((column) => (
-      <div>
-        <h3>{column.label}</h3>
-        <ul>
-          {column.links.map((link) => (
-            <li>
-              <a href={link.href}>{link.label}</a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    ))
-  }
+<nav class="where-next where-next--groups not-content" aria-label="Documentation">
+  <ul>
+    {
+      rows.map((row) => (
+        <li>
+          <a href={row.href}>{row.label}</a>
+          <span>{row.purpose}</span>
+        </li>
+      ))
+    }
+  </ul>
 </nav>
