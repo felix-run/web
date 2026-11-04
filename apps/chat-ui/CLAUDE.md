@@ -516,6 +516,16 @@ This was previously a second app (`apps/float`, removed 2026-08-23) that served 
 lower density. What it actually contributed was the constraint above — assume no one is looking —
 which is now a mode of chat-ui rather than a separate surface. See `PRODUCT.md`.
 
+## Running a skill from the composer
+
+`felix.commands` lists an agent's prompts and never its skills, so the composer's `/` menu is
+`runnableCommands`: those, then what `GET /skills/{manifest}` marks `user_invocable`, read once per
+selected agent. A prompt keeps a shared name, because the harness expands prompts first. That read
+needs `skills:read`, which a sign-in may lack, so when it fails `agentCommandsPartial` sends an
+unknown `/name` as typed instead of refusing it: the harness reads a non-skill as plain text, and
+refusing would put every skill out of reach. `activate_skill` arrives as an ordinary tool call with
+an `invoke_` id (measured on :8080, 2026-11-04).
+
 ## Rendering
 
 **A streaming reply is drawn once per frame, not once per delta** (`src/lib/frame-store.ts`).

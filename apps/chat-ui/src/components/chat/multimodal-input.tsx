@@ -234,11 +234,17 @@ export type MultimodalInputProps = {
   /** Names of slash commands that won't toast as "not implemented". Default: every name in slashCommands. */
   enabledSlashCommands?: ReadonlySet<string>;
   /**
-   * The selected agent's own commands (`felix.commands`). Offered in the slash menu after this
-   * client's, and sent to the harness as typed, which expands them; without it a `/name` this
-   * client does not know is refused here.
+   * What the selected agent runs as `/name`: its prompts and its skills. Offered in the slash
+   * menu after this client's, and sent to the harness as typed; without it a `/name` this client
+   * does not know is refused here.
    */
   agentCommands?: readonly ManifestCommand[];
+  /**
+   * `agentCommands` may be missing some: the agent's skills could not be read, which a sign-in
+   * without `skills:read` cannot do. A `/name` this client does not know is then sent as typed
+   * rather than refused, since it may be a skill. The harness reads a non-skill as plain text.
+   */
+  agentCommandsPartial?: boolean;
   /**
    * Answer `/ask <question>` beside the transcript (`POST /chat/ask`). Throw to keep the
    * question in the composer. Without it `/ask` is refused.
@@ -320,6 +326,7 @@ function MultimodalInputInner({
   onSlashCommand,
   enabledSlashCommands,
   agentCommands,
+  agentCommandsPartial = false,
   onAsk,
   models,
   modelId,
@@ -571,7 +578,7 @@ function MultimodalInputInner({
           // wired up; throw so the provider leaves the text to be edited.
           if (!handleSlashSelect(cmd)) throw new Error(`/${cmd.name} is not implemented yet`);
           return;
-        } else {
+        } else if (!agentCommandsPartial) {
           refuseSubmit(`Unknown command: /${name}. Your message is still in the composer.`);
         }
       }
@@ -600,6 +607,7 @@ function MultimodalInputInner({
       controller,
       handleSlashSelect,
       agentMenu,
+      agentCommandsPartial,
       onAsk,
     ],
   );
@@ -1580,6 +1588,7 @@ export const MultimodalInput = memo(PureMultimodalInput, (prev, next) => {
   if (prev.defaultOutputStyle !== next.defaultOutputStyle) return false;
   // Switching agent changes which commands the menu offers and which `/name` is sent.
   if (prev.agentCommands !== next.agentCommands) return false;
+  if (prev.agentCommandsPartial !== next.agentCommandsPartial) return false;
   if (prev.context?.used !== next.context?.used) return false;
   if (prev.context?.window !== next.context?.window) return false;
   // Changes with the items and with the thread, which also re-binds `onSteerQueued`.

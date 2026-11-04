@@ -1,4 +1,4 @@
-import type { ManifestCommand } from '@felix/client';
+import type { AgentSkill, ManifestCommand } from '@felix/client';
 import {
   Brain,
   Bug,
@@ -38,6 +38,28 @@ export const AGENT_COMMAND = 'agent';
  * choosing it from the menu fills the composer rather than running.
  */
 export const ASK_COMMAND = 'ask';
+
+/**
+ * What a person can run as `/name` on an agent: its prompts, then its skills. `felix.commands`
+ * lists prompts only. A prompt takes the name when both have it, because the harness expands
+ * prompts first, so the skill never sees the text.
+ */
+export function runnableCommands(
+  commands: readonly ManifestCommand[] | undefined,
+  skills: readonly AgentSkill[] | undefined,
+): ManifestCommand[] {
+  const prompts = commands ?? [];
+  const taken = new Set(prompts.map((c) => c.name));
+  const runnable = (skills ?? []).filter((s) => s.user_invocable && !taken.has(s.name));
+  return [
+    ...prompts,
+    ...runnable.map((s) => ({
+      name: s.name,
+      ...(s.description ? { description: s.description } : {}),
+      ...(s.argument_hint ? { argumentHint: s.argument_hint } : {}),
+    })),
+  ];
+}
 
 /**
  * The agent's commands as menu entries, after this client's own: a name this client already

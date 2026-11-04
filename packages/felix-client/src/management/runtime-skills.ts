@@ -26,6 +26,10 @@ export interface AgentSkill {
   has_body: boolean;
   /** False is a skill in the catalog the model is never offered (`disable_model_invocation`). */
   model_invocable: boolean;
+  /** A person may run it as `/name` in a chat turn. Absent on a harness older than 0.19. */
+  user_invocable?: boolean;
+  /** How its arguments read after the name, e.g. `<file> [focus]`. */
+  argument_hint?: string | null;
   /** False is reachable because it is on the host, not because the manifest named it. */
   declared: boolean;
   source: AgentSkillSource;
