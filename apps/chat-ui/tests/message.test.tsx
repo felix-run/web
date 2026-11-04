@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, fireEvent, render as rtlRender, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Message } from '../src/components/chat/message';
 import type { Turn } from '../src/types';
@@ -347,5 +348,46 @@ describe('a message with other versions', () => {
     expect((getByRole('button', { name: 'Next version' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+});
+
+/** A scheduled task's answer, come back to the conversation it was scheduled from. */
+describe('a task report', () => {
+  const report = (over: Partial<NonNullable<NonNullable<Turn['note']>['taskReport']>>): Turn => ({
+    id: 'r1',
+    role: 'note',
+    content: '[Scheduled task: Morning digest]\n\nThree **new** issues.',
+    note: {
+      role: 'assistant',
+      inContext: true,
+      taskReport: {
+        title: 'Morning digest',
+        body: 'Three **new** issues.',
+        failed: false,
+        ...over,
+      },
+    },
+  });
+  const draw = (turn: Turn) =>
+    render(
+      <MemoryRouter>
+        <Message turn={turn} />
+      </MemoryRouter>,
+    );
+
+  it('says where it came from, without the harness prefix or the context claim', () => {
+    const { container } = draw(report({ task: 'digest' }));
+    expect(container.textContent).toContain('Scheduled task');
+    expect(container.textContent).toContain('Morning digest');
+    expect(container.textContent).not.toContain('[Scheduled task:');
+    // Only a task's newest report stays in context, so no row may claim to be read.
+    expect(container.textContent).not.toContain('in the model’s context');
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('/harness/jobs?job=digest');
+  });
+
+  it('says a firing did not finish', () => {
+    const { container } = draw(report({ failed: true, body: 'no model' }));
+    expect(container.textContent).toContain('did not finish');
+    expect(container.textContent).toContain('no model');
   });
 });

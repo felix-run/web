@@ -79,3 +79,29 @@ describe('scheduleLabel', () => {
     expect(scheduleLabel('@daily')).toBe('@daily');
   });
 });
+
+describe('a one-shot', () => {
+  const at = 'at:2026-10-21T09:00:00Z';
+
+  it('reads as the moment it names, which an agent scheduling a task stores', () => {
+    expect(parseSchedule(at)).toEqual({ kind: 'once', at: Date.UTC(2026, 9, 21, 9) });
+    expect(parseSchedule('at:2026-10-21T05:00:00-04:00')).toEqual({
+      kind: 'once',
+      at: Date.UTC(2026, 9, 21, 9),
+    });
+  });
+
+  it('refuses a moment with no offset, as the harness does', () => {
+    expect(() => parseSchedule('at:2026-10-21T09:00:00')).toThrow(ScheduleError);
+  });
+
+  it('fires once: nothing comes after its moment', () => {
+    const once = parseSchedule(at);
+    expect(nextAfter(once, Date.UTC(2026, 9, 21, 8))).toBe(Date.UTC(2026, 9, 21, 9));
+    expect(nextAfter(once, Date.UTC(2026, 9, 21, 10))).toBeNull();
+  });
+
+  it('is labelled as one rather than quoted', () => {
+    expect(scheduleLabel(at)).toMatch(/^once · /);
+  });
+});

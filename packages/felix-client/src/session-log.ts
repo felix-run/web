@@ -14,7 +14,14 @@ import {
   type SessionSnapshot,
   type TokenUsage,
 } from '@felix/protocol';
-import { type Notice, type ReasoningBlock, type ToolCall, type Turn, toolImages } from './turns';
+import {
+  type Notice,
+  type ReasoningBlock,
+  type TaskReport,
+  type ToolCall,
+  type Turn,
+  toolImages,
+} from './turns';
 import { workspaceEditOf } from './workspace-edits';
 
 /**
@@ -274,6 +281,36 @@ function noticeTitle(raw: unknown): string | null {
   return title && [...title].length <= MAX_NOTICE_TITLE ? title : null;
 }
 
+const REPORT_HEAD = /^\[Scheduled task: ([^\n]*)\]\n\n/;
+const REPORT_FAILED = 'The task did not finish: ';
+
+/**
+ * A task's report read off a custom entry (`metadata.type: "task_report"`), or null for any other.
+ * The harness writes the content as `[Scheduled task: {title}]\n\n{text}`. The title comes off the
+ * content when the metadata lacks it, since a `session_event` frame passes `type` and not `title`,
+ * and failure likewise, from the sentence the harness leads a failed report with.
+ */
+export function taskReportOf(
+  metadata: unknown,
+  content: string | null | undefined,
+): TaskReport | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const md = metadata as Record<string, unknown>;
+  if (md.type !== 'task_report') return null;
+  const text = content ?? '';
+  const head = REPORT_HEAD.exec(text);
+  const title = typeof md.title === 'string' && md.title.trim() ? md.title.trim() : head?.[1];
+  if (!title) return null;
+  const rest = head ? text.slice(head[0].length) : text;
+  const failed = md.failed === true || rest.startsWith(REPORT_FAILED);
+  return {
+    title,
+    body: rest.startsWith(REPORT_FAILED) ? rest.slice(REPORT_FAILED.length) : rest,
+    failed,
+    ...(typeof md.task === 'string' && md.task ? { task: md.task } : {}),
+  };
+}
+
 /**
  * A notice read off a custom entry (`metadata.type: "notice"`), or null for any
  * other entry. The harness writes the content as `"{title}\n\n{message}"` and the
@@ -348,6 +385,8 @@ export function eventsToTurns(
       const workspaceEdit = workspaceEditOf(ev.metadata, { requireType: true });
       // A notice an agent sent the person, left here for them to read (`notify`).
       const notice = noticeOf(ev.metadata, ev.content);
+      // A scheduled task's answer, come back to the conversation it was scheduled from.
+      const taskReport = taskReportOf(ev.metadata, ev.content);
       turns.push({
         id: ev.id ?? newId(),
         role: 'note',
@@ -357,6 +396,7 @@ export function eventsToTurns(
           inContext: ev.metadata?.in_context === true,
           ...(workspaceEdit ? { workspaceEdit } : {}),
           ...(notice ? { notice } : {}),
+          ...(taskReport ? { taskReport } : {}),
         },
         eventId: ev.id,
       });

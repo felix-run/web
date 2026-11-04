@@ -11,11 +11,13 @@
 
 /** What the harness says when a schedule is outside its grammar. */
 export const SCHEDULE_GRAMMAR =
-  'expected seconds, every:<n><s|m|h>, @hourly/@daily/@weekly/@monthly/@yearly, or a five-field cron expression';
+  'expected seconds, every:<n><s|m|h>, @hourly/@daily/@weekly/@monthly/@yearly, at:<timestamp with offset>, or a five-field cron expression';
 
 export class ScheduleError extends Error {}
 
 const INTERVAL = /^@?every[:\s]+(\d+)\s*([smh])$/;
+const AT_PREFIX = 'at:';
+const HAS_OFFSET = /T.*(Z|[+-]\d{2}(:?\d{2})?)$/;
 const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000 } as const;
 const MACROS: Record<string, string> = {
   '@hourly': '0 * * * *',
@@ -53,6 +55,7 @@ interface Cron {
 export type Schedule =
   | { kind: 'manual' }
   | { kind: 'interval'; ms: number }
+  | { kind: 'once'; at: number }
   | { kind: 'cron'; cron: Cron };
 
 function dayMatches(c: Cron, d: Date): boolean {
@@ -142,10 +145,22 @@ function parseCron(text: string): Cron {
   return cron;
 }
 
+/**
+ * A one-shot's moment. It needs its offset, as the harness does: without one it names no instant.
+ * A moment already past is not refused here, because a stored one-shot that has fired is one.
+ */
+function parseAt(text: string): number {
+  const stamp = text.trim().toUpperCase();
+  const at = HAS_OFFSET.test(stamp) ? Date.parse(stamp) : Number.NaN;
+  if (Number.isNaN(at)) throw new ScheduleError(`Expected a timestamp with an offset: ${text}`);
+  return at;
+}
+
 /** Parse as the harness does; throws `ScheduleError` for anything it would refuse. */
 export function parseSchedule(schedule: string): Schedule {
   const s = (schedule ?? '').trim().toLowerCase();
   if (!s) return { kind: 'manual' };
+  if (s.startsWith(AT_PREFIX)) return { kind: 'once', at: parseAt(s.slice(AT_PREFIX.length)) };
   if (/^\d+$/.test(s)) return { kind: 'interval', ms: Math.max(Number(s), 1) * 1_000 };
   const m = INTERVAL.exec(s);
   if (m) {
@@ -161,6 +176,7 @@ export function parseSchedule(schedule: string): Schedule {
 export function nextAfter(schedule: Schedule, fromMs: number): number | null {
   if (schedule.kind === 'manual') return null;
   if (schedule.kind === 'interval') return fromMs + schedule.ms;
+  if (schedule.kind === 'once') return schedule.at > fromMs ? schedule.at : null;
   // Unreachable for a cron that passed `parseCron`, which refuses one that never fires.
   return cronNextAfter(schedule.cron, fromMs) ?? Number.NaN;
 }
@@ -182,6 +198,7 @@ export function scheduleLabel(schedule: string): string {
     const parsed = parseSchedule(schedule);
     if (parsed.kind === 'manual') return 'manual';
     if (parsed.kind === 'interval') return `every ${intervalText(parsed.ms)}`;
+    if (parsed.kind === 'once') return `once · ${new Date(parsed.at).toLocaleString()}`;
   } catch {
     // Fall through: quote what is stored.
   }

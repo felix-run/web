@@ -407,6 +407,14 @@ re-checked the canary on every render while the page was open. `tests/startup-re
 
 ## Unattended runs
 
+**A job may be someone's, not an operator's.** `jobOrigin` (`src/lib/job-origin.ts`) reads
+`payload.scheduled_by` as the harness does: it counts only while it names the job's own manifest.
+Such a job says so on the Jobs page, and its Pause asks first, because `enabled` can only be set by
+a re-save and a re-save from anyone but the writer takes the job over: it runs as them, loses its
+preferences and state, and stops being a task or heartbeat. A task's answer comes back as a
+`task_report` entry (`taskReportOf`), which must not claim the model reads it: only a task's newest
+report stays in context. `at:` is a one-shot, valid after it fires with `next_run_at` null.
+
 A background run (`POST /chat` → `202 + resume_token`) has no stream to carry an approval frame, so
 `src/lib/presence.ts` and the `/approvals` poll in `src/app-shell.tsx` exist to make an unwatched
 tab honest: the poll surfaces an approval the durable run cannot deliver, and presence puts *working* /
