@@ -246,6 +246,94 @@ describe('refusing a submission', () => {
     await waitFor(() => expect(box.value).toBe(''));
   });
 
+  /** A harness whose agent has one skill a person may run, or whose skills read `skillsStatus`. */
+  function stubSkills(skillsStatus: number) {
+    const streamed: string[] = [];
+    const reads = { skills: 0 };
+    localStorage.setItem('felix.manifest', 'cowork');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/v1/models')) {
+          const data = [{ id: 'cowork', felix: { commands: [] } }];
+          return new Response(JSON.stringify({ object: 'list', data }), { status: 200 });
+        }
+        if (url.includes('/skills/cowork')) {
+          reads.skills += 1;
+          const items = [
+            { name: 'release-notes', description: 'Draft them', user_invocable: true },
+            { name: 'model-only', description: 'Not for people', user_invocable: false },
+          ];
+          return new Response(JSON.stringify({ manifest: 'cowork', items }), {
+            status: skillsStatus,
+          });
+        }
+        if (url.includes('/chat/stream')) {
+          streamed.push(String(init?.body ?? ''));
+          return new Response('data: [DONE]\n\n', {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        }
+        if (url.includes('/chat/sessions')) {
+          return new Response(JSON.stringify({ sessions: [], items: [] }), { status: 200 });
+        }
+        if (url.includes('/approvals')) {
+          return new Response(JSON.stringify({ requests: [] }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    return { streamed, reads };
+  }
+
+  async function send(box: HTMLTextAreaElement, text: string) {
+    await act(async () => {
+      await userEvent.type(box, text, { delay: null });
+    });
+    await act(async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+  }
+
+  it('sends a skill a person may run as typed, for the harness to activate', async () => {
+    // `felix.commands` lists prompts only (felix-run/felix#708): the skill comes from `/skills`.
+    const { streamed, reads } = stubSkills(200);
+    const box = await mount();
+    await waitFor(() => expect(reads.skills).toBeGreaterThan(0));
+
+    await send(box, '/release-notes v2');
+
+    await waitFor(() => expect(streamed.length).toBe(1));
+    expect(JSON.parse(streamed[0] ?? '{}').messages.at(-1).content).toBe('/release-notes v2');
+  });
+
+  it('still refuses a skill no person may run, once the list has been read', async () => {
+    const { streamed, reads } = stubSkills(200);
+    const box = await mount();
+    await waitFor(() => expect(reads.skills).toBeGreaterThan(0));
+
+    await send(box, '/model-only');
+
+    expect(box.value).toBe('/model-only');
+    expect(streamed).toEqual([]);
+  });
+
+  it('sends an unknown command as typed when the skills could not be read', async () => {
+    // A sign-in without `skills:read`: refusing here would make every skill unreachable.
+    const { streamed, reads } = stubSkills(403);
+    const box = await mount();
+    await waitFor(() => expect(reads.skills).toBeGreaterThan(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await send(box, '/release-notes v2');
+
+    await waitFor(() => expect(streamed.length).toBe(1));
+  });
+
   /** Pasted, not typed: 32k keystrokes is not what this measures. */
   const OVERLONG = 'x'.repeat(32_001);
 

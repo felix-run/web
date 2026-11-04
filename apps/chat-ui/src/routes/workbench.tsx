@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetTitle } from '@felix/ui/sheet';
 import { LogOutIcon, UnplugIcon } from 'lucide-react';
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInRouterContext, useSearchParams } from 'react-router';
+import { listAgentSkills } from '@/api';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
@@ -15,6 +16,7 @@ import { MultimodalInput } from '@/components/chat/multimodal-input';
 import { PushHint } from '@/components/chat/push-hint';
 import { ReplyChangesLine } from '@/components/chat/reply-changes-line';
 import { SideAnswerCard } from '@/components/chat/side-answer';
+import { runnableCommands } from '@/components/chat/slash-commands';
 import { TurnCheckpoint } from '@/components/chat/turn-checkpoint';
 import { UiPromptBanner } from '@/components/chat/ui-prompt-banner';
 import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-banner';
@@ -23,6 +25,7 @@ import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { usePoll } from '@/hooks/usePoll';
 import { changesByReply, landedPaths } from '@/lib/changes';
 import { DEFAULT_MANIFEST } from '@/lib/manifests';
 import { openInPane, usePaneState } from '@/lib/side-pane';
@@ -164,10 +167,15 @@ export function Workbench() {
     () => contextFill(turns, manifestEntries.find((m) => m.id === manifest)?.contextWindow),
     [turns, manifestEntries, manifest],
   );
-  // The selected agent's own `/name` commands, expanded by the harness.
+  // What the selected agent runs as `/name`: its prompts, and the skills a person may run. Read
+  // once per agent, since a skill published mid-session only waits for the next agent switch.
+  const fetchSkills = useCallback(() => listAgentSkills(manifest), [manifest]);
+  const skills = usePoll(fetchSkills, { enabled: !!manifest, intervalMs: null, key: manifest });
+  // Only this agent's answer: the last agent's stays in `data` until the new read lands.
+  const agentSkills = skills.data?.manifest === manifest ? skills.data.items : undefined;
   const agentCommands = useMemo(
-    () => manifestEntries.find((m) => m.id === manifest)?.commands,
-    [manifestEntries, manifest],
+    () => runnableCommands(manifestEntries.find((m) => m.id === manifest)?.commands, agentSkills),
+    [manifestEntries, manifest, agentSkills],
   );
   // The meter is harness view's — except a window nearly full, which is about to
   // change what the agent can see, and so is the everyday user's to know too.
@@ -385,6 +393,7 @@ export function Workbench() {
               onStop={stopRun}
               onSlashCommand={onSlashCommand}
               agentCommands={agentCommands}
+              agentCommandsPartial={!agentSkills && skills.error != null}
               onAsk={askAboutThread}
               models={modelOptions}
               modelId={manifest}

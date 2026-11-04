@@ -56,6 +56,8 @@ hooks and the audit. The call and its result are logged as an assistant turn, as
 made it. The person's turn is sent as written (`/triage ACME 900`); the body reaches the model as a
 screened tool result, never with the authority of the person's own words.
 
+In the chat app, the skills a person may run are in the composer's `/` menu, after the agent's prompts.
+
 - **Which turns.** Only a turn a chat route marks as the person's: `POST /chat`, `/chat/stream`,
   `/v1/chat/completions` and a durable `/chat` run. Only the last message, and only a text-only one.
   `/name` in a `task` prompt, a plan step, an A2A message, a scheduled job's prompt or a workflow
