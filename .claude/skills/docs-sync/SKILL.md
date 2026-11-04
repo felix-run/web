@@ -53,7 +53,7 @@ API, deploy, and internals. The harness itself is a separate repo
    |---|---|
    | `apps/*/worker/index.ts`, wrangler config | `guide/deploy.mdx` |
    | `src/api.ts`, `src/types.ts` (protocol) | `guide/rest-api.mdx`, `internals/architecture.mdx` |
-   | Auth, the sign-in gate | `internals/auth.mdx`, `guide/deploy.mdx` |
+   | Auth, the sign-in gate | `internals/auth.mdx`, `guide/deploy/auth.mdx` |
    | Manifest fields | `guide/manifest-reference/*.mdx` (one page per band; a new page goes in `PAGES` in `FieldIndex.astro`), `internals/manifest-pipeline.mdx` |
    | Audit/metrics surfaces | `internals/observability.mdx` |
    | `packages/design/src/tokens.ts` | `pnpm sync:theme` to regenerate `src/styles/theme.css` |

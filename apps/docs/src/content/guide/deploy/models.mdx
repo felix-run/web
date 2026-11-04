@@ -1,0 +1,103 @@
+---
+title: "Models and embeddings"
+head:
+  - tag: title
+    content: "Models and embeddings · Deploy | Felix"
+description: "Model routes and the embedding model for a self-hosted Felix."
+---
+
+Part of [Deploy](/guide/deploy/), which brings the stack up and lists every page for running it.
+
+Which models a deployment offers its agents, and the model that embeds memory and documents. [Model client](/internals/model-client/) has how a call is routed.
+
+## Model routes
+
+`FELIX_DEFAULT_MODEL_ID` (default `claude-sonnet`) picks the model a manifest gets when it does not
+name one. `FELIX_MODEL_ROUTES` is a JSON object that overrides or extends the logical-id table, so
+manifests stay portable across deployments:
+
+```bash
+FELIX_DEFAULT_MODEL_ID=claude-sonnet
+FELIX_MODEL_ROUTES='{
+  "claude-sonnet": {"provider": "anthropic", "model": "claude-sonnet-5-5"},
+  "house-fast":    {"provider": "workers_ai", "model": "@cf/zai-org/glm-5.3-flash"}
+}'
+```
+
+Providers are `anthropic`, `openai`, `workers_ai` (Cloudflare Workers AI), `groq`,
+`together`, `deepseek`, `cerebras`, `fireworks`, `openrouter`, `xai`, `mistral` and `google`, plus any
+registered by a plugin. Point `FELIX_LITELLM_BASE_URL` at a local gateway to keep traffic in your own
+network. Everything past the first two is configured through
+`FELIX_MODEL_PROVIDER_OPTIONS`:
+
+```bash
+FELIX_MODEL_PROVIDER_OPTIONS='{"workers_ai":{"api_key":"...","account_id":"...","gateway_id":"default"}}'
+```
+
+That one entry is all the built-in Workers AI routes need: `glm-5.3-cf` (GLM-5.3, 1M window),
+`glm-5.3-flash-cf` (GLM-5.3 Flash, 1M window, vision), `deepseek-v4-pro-cf` and
+`deepseek-v4-flash-cf` (DeepSeek V4, 1M window), `qwen3.8-27b-cf` (Qwen 3.8 27B, 262K window, vision),
+`kimi-k2.7-code-cf` (Kimi K2.7 Code, 262K window, vision), `kimi-k2-cf` (Kimi K2.6, 262K window),
+`gpt-oss-120b-cf`, `gpt-oss-20b-cf` and `glm-flash-cf`. The legacy `llama-3-pro` and `llama-3-fast`
+ids, which used to route to a local Ollama, now point at GLM-5.3 and GLM-5.3 Flash. All of them call
+tools and are priced, so `limits.max_cost_usd` is enforced on them; GLM-5.3, DeepSeek V4 and Kimi
+K2.7 Code need the Workers Paid plan or AI Gateway credits. To run on open weights wherever a manifest names no model,
+and move the memory embedder there as well:
+
+```bash
+FELIX_DEFAULT_MODEL_ID=glm-5.3-cf
+FELIX_MEMORY_EMBEDDER=workers_ai
+```
+
+`gpt-oss` and GLM Flash are text-only. A default that points at one should name a route that can
+see for turns that carry an image — Kimi is the Workers AI one — or every such turn is refused with a
+422 naming the route:
+
+```bash
+FELIX_DEFAULT_MODEL_ID=gpt-oss-120b-cf
+FELIX_DEFAULT_VISION_MODEL_ID=kimi-k2-cf
+```
+
+A route of your own declares `"modalities": ["text", "image"]` when the model behind it can see. See
+[Images and text-only routes](/internals/model-client/#images-and-text-only-routes).
+
+Provider names in `FELIX_MODEL_ROUTES` are resolved against the registry at startup, so a typo fails
+immediately rather than on the first request that happens to take that route. A manifest referring to
+`house-fast` works everywhere the route is defined. See [Model client](/internals/model-client/).
+
+## Embeddings
+
+One embedder per deployment serves the vector channel of memory recall and of the
+[documents corpus](/guide/management-api/#documents). Without one, both still retrieve by full text
+(and memory by topic key); hits report `lexical` only.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `FELIX_MEMORY_EMBEDDER` | `auto` | `auto` embeds locally with `sentence_transformers` when `felix-harness[embeddings]` is installed, and otherwise runs no vector channel. `none` turns it off. `sentence_transformers` requires the extra. Any registered provider that serves `/embeddings` (`openai`, `workers_ai`, `google`) is also accepted, resolved through the same descriptor as its model client. An unregistered name fails startup validation. |
+| `FELIX_MEMORY_EMBEDDING_MODEL` | `bge-base-en-v1.5` | The local model. For a provider embedder, only an explicitly set value is sent; unset, the provider's own default embedding model is used. |
+| `FELIX_MEMORY_EMBEDDING_DIM` | `768` | Declares the width of the `memory_vectors.embedding` column, which is `vector(768)` from the baseline migration. Changing it means re-embedding every row, not flipping a setting. |
+
+`auto` is local only. It never picks a hosted embedder: that would send every stored memory to
+whichever provider has a key configured, and the column is sized for the local model. Choosing a
+provider is always an explicit setting. The local weights are fetched on first use, so the first
+embed after a start is slow and needs outbound access to the model hub.
+
+The default image is built lean, without the `embeddings` extra, so `auto` there means no vector
+channel. Build with `--build-arg FELIX_EXTRAS=embeddings` to turn it on. On an image that has the
+extra, set `FELIX_MEMORY_EMBEDDER=none` to keep full-text-only recall.
+
+A memory stored while no embedder was configured, or while it was down, is stored without a
+vector. The Worker's `consolidate_memory` cron (every 15 minutes) embeds those: up to 100 active
+memories a tick, newest first, in one embedder call, across tenants. Turning an embedder on
+therefore covers memories stored before it, a batch at a time. It never overwrites a vector capture
+wrote meanwhile, and it does not spend on an embedder of the wrong width: one whose declared
+dimension disagrees with the column is never called, and one whose first batch comes back the wrong
+width is skipped until the Worker restarts, with a warning naming the model. Those rows stay
+vectorless and still recall by full text.
+
+Under Compose, `FELIX_MEMORY_EMBEDDER`, `FELIX_MEMORY_EMBEDDING_MODEL`, `FELIX_MEMORY_EMBEDDING_DIM`
+and `FELIX_MEMORY_TASK_RETENTION_DAYS` in `.env` reach every container; before Felix 0.16.1 the
+base file did not pass them, and setting them there had no effect. Compose sends
+`FELIX_MEMORY_EMBEDDING_MODEL` empty unless you set it, so a hosted embedder uses its provider's
+default model: for `workers_ai` that is `@cf/baai/bge-base-en-v1.5`, 768 wide, which fits the
+column.
