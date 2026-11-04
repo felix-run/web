@@ -44,6 +44,7 @@ import {
   threadOutcomes,
 } from '@/lib/harness-glances';
 import { isTransientFailure } from '@/lib/harness-health';
+import { jobOrigin, missingSources, reportProblem, takeoverQuestion } from '@/lib/job-origin';
 import { parseSchedule, scheduleLabel } from '@/lib/job-schedule';
 import { useOptionalShell } from '@/shell-context';
 import type { JobRecord, JobRun } from '@/types';
@@ -534,8 +535,11 @@ export function JobsSheet({
           {jobs.map((j) => {
             let invalid = false;
             let manual = false;
+            let once = false;
             try {
-              manual = parseSchedule(j.schedule ?? '').kind === 'manual';
+              const { kind } = parseSchedule(j.schedule ?? '');
+              manual = kind === 'manual';
+              once = kind === 'once';
             } catch {
               invalid = true;
             }
@@ -550,6 +554,18 @@ export function JobsSheet({
             // its thread, one per failed run for a job that starts a fresh one.
             const threadFailures = failedThreadsOf(j.name);
             const freshThreads = j.payload?.fresh_thread === true;
+            const origin = jobOrigin(j);
+            const pauseVerb = j.enabled === false ? 'Resume' : 'Pause';
+            const pauseLabel =
+              j.enabled === false ? (
+                <>
+                  <StepForwardIcon className="size-3" /> Resume
+                </>
+              ) : (
+                <>
+                  <PauseIcon className="size-3" /> Pause
+                </>
+              );
             return (
               <div
                 key={j.name}
@@ -598,6 +614,12 @@ export function JobsSheet({
                       no agent — runs are skipped
                     </span>
                   )}
+                  {origin && (
+                    <span className="text-xs text-muted-foreground">
+                      {origin.kind === 'task' ? 'Scheduled by an agent' : 'Heartbeat'}
+                      {origin.title ? ` · ${origin.title}` : ''}
+                    </span>
+                  )}
                   {invalid && (
                     // It never fires — the scheduler refuses it — though its next time stays.
                     <span className="text-xs font-medium text-state-failed">invalid schedule</span>
@@ -642,24 +664,33 @@ export function JobsSheet({
                       </>
                     )}
                   </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="coarse:h-9 coarse:px-3"
-                    disabled={busy}
-                    aria-label={`${j.enabled === false ? 'Resume' : 'Pause'} ${j.name}`}
-                    onClick={() => setEnabled(j, j.enabled === false)}
-                  >
-                    {j.enabled === false ? (
-                      <>
-                        <StepForwardIcon className="size-3" /> Resume
-                      </>
-                    ) : (
-                      <>
-                        <PauseIcon className="size-3" /> Pause
-                      </>
-                    )}
-                  </Button>
+                  {/* `enabled` is only settable by a re-save, and a re-save by anyone but the
+                    writer makes a person's task or heartbeat an ordinary job of the presser's. */}
+                  {origin ? (
+                    <ConfirmButton
+                      size="xs"
+                      variant="ghost"
+                      className="coarse:h-9 coarse:px-3"
+                      disabled={busy}
+                      aria-label={`${pauseVerb} ${j.name}`}
+                      question={takeoverQuestion(j, origin, pauseVerb)}
+                      confirmLabel={pauseVerb}
+                      onConfirm={() => setEnabled(j, j.enabled === false)}
+                    >
+                      {pauseLabel}
+                    </ConfirmButton>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="coarse:h-9 coarse:px-3"
+                      disabled={busy}
+                      aria-label={`${pauseVerb} ${j.name}`}
+                      onClick={() => setEnabled(j, j.enabled === false)}
+                    >
+                      {pauseLabel}
+                    </Button>
+                  )}
                   <Button
                     size="xs"
                     variant="ghost"
@@ -677,7 +708,11 @@ export function JobsSheet({
                     className="text-muted-foreground hover:text-state-failed coarse:h-9 coarse:px-3"
                     disabled={busy}
                     destructive
-                    question={`Delete ${j.name}? Its run history goes with it.`}
+                    question={
+                      origin?.kind === 'heartbeat'
+                        ? `Delete ${j.name}? This turns off ${j.created_by ?? 'its person'}'s heartbeat, and its run history goes with it.`
+                        : `Delete ${j.name}? Its run history goes with it.`
+                    }
                     confirmLabel="Delete job"
                     onConfirm={() => remove(j.name)}
                   >
@@ -762,9 +797,20 @@ export function JobsSheet({
                   {/* Null is a job the scheduler has not claimed yet — it fires at the next
                     sweep; a time already past is due, not "next just now". A manual job has
                     no next time at all: its badge already says so. */}
+                  {origin?.threadSuffix && (
+                    <Link
+                      to={`/t/${encodeURIComponent(origin.threadSuffix)}`}
+                      className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                      title="The conversation it reports to"
+                    >
+                      its conversation
+                    </Link>
+                  )}
+                  {/* A one-shot with no next time has fired, and never will again. */}
                   {j.enabled !== false &&
                     !invalid &&
                     !manual &&
+                    !(once && j.next_run_at == null) &&
                     (j.next_run_at == null ? (
                       <span>first run at the next sweep</span>
                     ) : j.next_run_at <= now + 1000 ? (
@@ -857,6 +903,17 @@ export function JobsSheet({
                             <span className="flex min-w-0 gap-2">
                               {/* Said only when it was not the schedule: the default is cron. */}
                               {r.result?.trigger === 'manual' && <span>run by hand</span>}
+                              {/* Ahead of the answer: an `ok` run missing a source is the one
+                                  that reads as a quiet day (`felix-run/felix#732`). */}
+                              {missingSources(r).length > 0 && (
+                                <span className="shrink-0 text-state-failed">
+                                  could not reach {missingSources(r).join(', ')}
+                                </span>
+                              )}
+                              {reportProblem(r) && (
+                                <span className="shrink-0">{reportProblem(r)}</span>
+                              )}
+                              {r.result?.quiet === true && <span>quiet</span>}
                               {r.error || r.result?.error ? (
                                 <span className="text-state-failed">
                                   {r.error || r.result?.error}

@@ -431,6 +431,12 @@ export interface JobRun {
     /** A workflow job's firing: the run it started, for `/harness/workflows`. */
     workflow_id?: string;
     workflow_run_id?: string;
+    /** Tool sources the run could not reach, by the manifest that named each. Absent when all answered. */
+    unavailable_sources?: Record<string, string[]>;
+    /** What became of a task's report: `appended`, `queued`, `screened`, `failed`, `missing`, … */
+    report?: string;
+    /** A heartbeat that sent no notice. */
+    quiet?: boolean;
   };
 }
 

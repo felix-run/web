@@ -142,6 +142,20 @@ export interface WorkspaceEdit {
 }
 
 /**
+ * A scheduled task's answer, left in the conversation it was scheduled from: a custom entry with
+ * `metadata.type: "task_report"` and the assistant role (felix `jobs/agent_tools.py`).
+ */
+export interface TaskReport {
+  title: string;
+  /** The answer, or the run's error when `failed`. */
+  body: string;
+  /** The firing failed, and this is the harness saying so. */
+  failed: boolean;
+  /** The job's name, when the entry carries it. */
+  task?: string;
+}
+
+/**
  * A notice an agent sent the person (`notify`) and the harness also left in the
  * conversation it links to: a custom entry with `metadata.type: "notice"`, for
  * the person and never the model (felix `push/agent_tool.py:notice_entry`).
@@ -166,7 +180,13 @@ export interface Turn {
    * model — so a note keeps its role here for the renderer to say, and
    * `inContext` for the renderer to say whether the model read it.
    */
-  note?: { role: Role; inContext: boolean; workspaceEdit?: WorkspaceEdit; notice?: Notice };
+  note?: {
+    role: Role;
+    inContext: boolean;
+    workspaceEdit?: WorkspaceEdit;
+    notice?: Notice;
+    taskReport?: TaskReport;
+  };
   content: string;
   tools?: ToolCall[];
   /** Reasoning the model streamed, if the harness is new enough to name it. */

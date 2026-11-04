@@ -7,6 +7,7 @@ import {
   noticeOf,
   snapshotToEvents,
   type ThreadMeta,
+  taskReportOf,
   threadSuffix,
   titleFromText,
   UNTITLED_THREAD_TITLE,
@@ -689,5 +690,37 @@ describe('branchPoints', () => {
   it('finds nothing on a snapshot whose events carry no links', () => {
     const flat = { ...snapshot, transcript: snapshot.transcript.map(({ metadata: _, ...e }) => e) };
     expect(branchPoints(flat as never).size).toBe(0);
+  });
+});
+
+describe("a scheduled task's report", () => {
+  const content = '[Scheduled task: Morning digest]\n\nThree **new** issues.';
+
+  it('takes the title off the content and keeps the job', () => {
+    expect(
+      taskReportOf({ type: 'task_report', task: 'digest', title: 'Morning digest' }, content),
+    ).toEqual({
+      title: 'Morning digest',
+      body: 'Three **new** issues.',
+      failed: false,
+      task: 'digest',
+    });
+  });
+
+  it('reads the title from the content when a frame dropped it', () => {
+    expect(taskReportOf({ type: 'task_report' }, content)?.title).toBe('Morning digest');
+  });
+
+  it('says a failed firing failed, from the flag or the harness sentence', () => {
+    const text = '[Scheduled task: T]\n\nThe task did not finish: no model';
+    expect(taskReportOf({ type: 'task_report', failed: true }, text)).toMatchObject({
+      failed: true,
+      body: 'no model',
+    });
+    expect(taskReportOf({ type: 'task_report' }, text)?.failed).toBe(true);
+  });
+
+  it('leaves any other entry alone', () => {
+    expect(taskReportOf({ type: 'notice' }, content)).toBeNull();
   });
 });

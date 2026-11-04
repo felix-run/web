@@ -815,3 +815,92 @@ describe('a job’s zone, health, preferences and saved state', () => {
     expect(screen.getByText(/runs in Asia\/Tokyo now; Replace puts it on UTC/)).toBeTruthy();
   });
 });
+
+/**
+ * What wrote a job. `payload.scheduled_by` is what marks a person's task or heartbeat, and a
+ * re-save from anyone else makes it an ordinary job of theirs, so Pause has to ask.
+ */
+describe('a job no operator wrote', () => {
+  const task = job({
+    name: 'task-a1',
+    schedule: 'at:2099-01-01T09:00:00Z',
+    created_by: 'github:42',
+    next_run_at: 4070941200000,
+    payload: {
+      prompt: 'Check the build.',
+      title: 'Build check',
+      scheduled_by: { tool: 'schedule_task', manifest: 'quick', thread_id: 'default:thread-a' },
+    },
+  });
+
+  it('says an agent scheduled it, links its conversation, and reads a one-shot as valid', async () => {
+    await sheet([task]);
+    expect(await screen.findByText(/Scheduled by an agent · Build check/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'its conversation' }).getAttribute('href')).toBe(
+      '/t/thread-a',
+    );
+    expect(screen.queryByText('invalid schedule')).toBeNull();
+    expect(screen.getByText(/^once · /)).toBeTruthy();
+  });
+
+  it('says nothing once a one-shot has fired, rather than promising the next sweep', async () => {
+    await sheet([{ ...task, next_run_at: null, last_run_at: 1 }]);
+    await screen.findByText(/Scheduled by an agent/);
+    expect(screen.queryByText('first run at the next sweep')).toBeNull();
+  });
+
+  it('asks before Pause, naming whose it stays', async () => {
+    const { upsertJob } = await sheet([task]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause task-a1' }));
+    expect(screen.getByText(/Unless you are github:42, this takes it over/)).toBeTruthy();
+    expect(upsertJob).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+  });
+
+  it('pauses an ordinary job at once', async () => {
+    const { upsertJob } = await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+  });
+
+  it('reads a mark naming another manifest as an ordinary job, as the harness does', async () => {
+    const moved = { ...task, manifest_id: 'other' };
+    await sheet([moved]);
+    await screen.findByText('task-a1');
+    expect(screen.queryByText(/Scheduled by an agent/)).toBeNull();
+  });
+
+  it('names a heartbeat, and what deleting it does', async () => {
+    const heartbeat = job({
+      name: 'hb-quick-abc',
+      created_by: 'github:42',
+      payload: { scheduled_by: { tool: 'heartbeat', manifest: 'quick', thread_id: 't-hb' } },
+    });
+    await sheet([heartbeat]);
+    expect(await screen.findByText('Heartbeat')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Delete hb-quick-abc/ }));
+    expect(screen.getByText(/turns off github:42's heartbeat/)).toBeTruthy();
+  });
+
+  it('shows a source a run could not reach, and a report that has not landed', async () => {
+    await sheet([job()], {
+      at: '/harness/jobs?job=nightly-digest',
+      runs: [
+        {
+          run_id: 'r1',
+          status: 'ok',
+          started_at: 1,
+          finished_at: 2,
+          result: {
+            answer: 'Nothing new.',
+            report: 'queued',
+            unavailable_sources: { quick: ['github'], child: ['github', 'linear'] },
+          },
+        },
+      ],
+    });
+    expect(await screen.findByText('could not reach github, linear')).toBeTruthy();
+    expect(screen.getByText('report waiting for the run in its conversation')).toBeTruthy();
+  });
+});

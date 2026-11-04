@@ -3,6 +3,7 @@ import {
   interleaveTurn,
   type Notice,
   plansInTurn,
+  type TaskReport,
   type WorkspaceEdit,
 } from '@felix/client';
 import {
@@ -17,6 +18,7 @@ import { ButtonGroup, ButtonGroupText } from '@felix/ui/button-group';
 import { Marker, MarkerContent, MarkerIcon } from '@felix/ui/marker';
 import {
   BellIcon,
+  CalendarClockIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   FilePenLineIcon,
@@ -24,6 +26,7 @@ import {
   OctagonPauseIcon,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { MIN_RUN } from '@/lib/tool-run';
 import { cn } from '@/lib/utils';
@@ -111,6 +114,18 @@ export function Message({
       <WorkspaceEditNote
         edit={turn.note.workspaceEdit}
         debug={debug}
+        text={turn.content}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    );
+  }
+
+  if (turn.role === 'note' && turn.note?.taskReport) {
+    return (
+      <TaskReportNote
+        report={turn.note.taskReport}
         text={turn.content}
         onRewind={onRewind}
         {...(label === undefined ? {} : { label })}
@@ -687,6 +702,63 @@ function WorkspaceEditNote({
           {text}
         </p>
       )}
+      <MessageActions
+        content={text}
+        onRewind={onRewind}
+        {...(label === undefined ? {} : { label })}
+        {...(onLabel ? { onLabel } : {})}
+      />
+    </div>
+  );
+}
+
+/**
+ * A scheduled task's answer, which the harness left in the conversation it was scheduled from.
+ * It is the agent's words, so its markdown is drawn as a reply's is, but no one asked here, so
+ * it says where it came from. It does not say the model reads it: only a task's newest report
+ * stays in context, and a thread may hold many.
+ */
+function TaskReportNote({
+  report,
+  text,
+  onRewind,
+  label,
+  onLabel,
+}: {
+  report: TaskReport;
+  text: string;
+  onRewind?: () => void;
+  label?: string;
+  onLabel?: (next: string | null) => void;
+}) {
+  return (
+    <div className="group flex w-full flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <CalendarClockIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="font-medium">Scheduled task</span>
+        {report.failed && <span className="font-medium text-state-failed">did not finish</span>}
+        {report.task && (
+          <Link
+            to={`/harness/jobs?job=${encodeURIComponent(report.task)}`}
+            className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+          >
+            its runs
+          </Link>
+        )}
+        {label && <LabelChip label={label} />}
+      </div>
+      <div className="ml-5.5 border-l-2 border-border py-0.5 pl-3">
+        <div className="wrap-anywhere text-sm font-medium text-foreground">{report.title}</div>
+        {report.failed ? (
+          <div className="mt-0.5 whitespace-pre-wrap wrap-anywhere text-sm text-foreground">
+            {report.body}
+          </div>
+        ) : (
+          <div className="mt-0.5 max-w-none text-sm text-foreground">
+            <Response>{report.body}</Response>
+          </div>
+        )}
+      </div>
       <MessageActions
         content={text}
         onRewind={onRewind}

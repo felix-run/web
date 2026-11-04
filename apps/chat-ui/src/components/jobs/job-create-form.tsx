@@ -344,7 +344,10 @@ export function JobCreateForm({
                               ).toLocaleString()} agent turns a day`
                             : ''
                         }`
-                      : `next ${localAndUtc(nextAfter(parsedSchedule.schedule, now) ?? Number.NaN)}`
+                      : parsedSchedule.schedule.kind === 'once' &&
+                          nextAfter(parsedSchedule.schedule, now) === null
+                        ? 'already past, so the harness will refuse it'
+                        : `next ${localAndUtc(nextAfter(parsedSchedule.schedule, now) ?? Number.NaN)}`
                   }.`
               : null}
         </p>
