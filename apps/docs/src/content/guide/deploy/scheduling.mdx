@@ -137,6 +137,11 @@ through Redis, so set `FELIX_REDIS_URL` on both; an API without one sees only it
 runs no sweep, and answers `never`. The route is public and rate-limit exempt like `/ready`, and
 carries one age and one threshold — no tenant, job or host.
 
+**Point an uptime monitor at it, from outside the deployment — not a probe.** A stopped scheduler
+is not the API pod's fault: restarting it or taking it out of rotation fixes nothing, so the Helm
+chart deliberately does not wire it to a probe. `felix doctor` reads the same heartbeat and prints
+a note, not a failure, when it is not `ok`, since it is often run before the scheduler starts.
+
 ### The worker heartbeat
 
 `/health` and `/ready` are answered by the API alone, so a Worker that dies at startup leaves both
@@ -159,11 +164,6 @@ beat arrives within two minutes. The beat says a Worker is up, not that the queu
 that — and with several Workers the freshest beat is reported, so one dead replica among live ones
 does not show. Public and rate-limit exempt like `/ready`; it carries an age, a threshold, the
 version `/health` already publishes and the boot id, never a start time. Not a probe: a dead Worker is not the API pod's fault.
-
-**Point an uptime monitor at it, from outside the deployment — not a probe.** A stopped scheduler
-is not the API pod's fault: restarting it or taking it out of rotation fixes nothing, so the Helm
-chart deliberately does not wire it to a probe. `felix doctor` reads the same heartbeat and prints
-a note, not a failure, when it is not `ok`, since it is often run before the scheduler starts.
 
 ### Overdue and failing jobs
 
