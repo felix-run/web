@@ -800,7 +800,7 @@ origin_committed_at, lineage_import, adopted_from, promoted_from}`. `status` is 
 `promoted`. The
 `origin_*` fields name where an import came from and are `null` on every other version;
 `lineage_import` marks an import and every version built on one, which the gate judges as an import
-(see [Skill import](/guide/skill-import/#review-and-publish)); `adopted_from` names the import-lineage
+(see [Import skills from GitHub](/guide/skill-import/#review-and-publish)); `adopted_from` names the import-lineage
 version an operator adopted into this one, and `promoted_from` the version of the promoter's (`author`'s)
 personal library a `promoted` draft was copied from; both are `null` on every other version. The
 review queue's items carry them all. `GET /{name}/versions/{version}` adds
@@ -878,7 +878,7 @@ import`, pinned to that commit. An import is never published in the same request
 through a stricter gate. A re-import whose files are unchanged saves nothing and answers `200` with
 `unchanged: true`; `dropped_files` lists what the import left out, and `relocated_files` what it
 moved under `references/` or `assets/`. Sources, refs, the allowlist,
-the cooldown and the call budgets are in [Skill import](/guide/skill-import/).
+the cooldown and the call budgets are in [Import skills from GitHub](/guide/skill-import/).
 
 An imported skill can be checked against its origin: `GET /{name}/-/upstream` re-resolves its stored
 ref (`skills:read`; naming another with `?ref=` needs `skills:write`) and
@@ -887,7 +887,7 @@ diff against the live version; `POST /{name}/-/update` re-imports it as a new dr
 `GET /-/upstream` lists every imported skill's state, 25 a page, checked now or as last recorded
 (`refresh=false`). `GET /{name}` carries the last recorded check as `upstream` for an imported skill,
 `null` otherwise. A check or update of a skill whose newest version was not imported is
-`409 not_imported`. See [Skill import → Update checks](/guide/skill-import/#update-checks).
+`409 not_imported`. See [Import skills from GitHub → Update checks](/guide/skill-import/#update-checks).
 
 `POST /{name}/versions/{version}/adopt` with `{reason}` (1–2000 characters, required) makes an
 import-lineage version the operator's own: its files saved byte for byte as a new operator draft
@@ -897,7 +897,7 @@ It is refused for a version with no imported text (`409 not_imported`), an agent
 has decided (`409 agent_draft`), a rejected draft (`409 parent_rejected`), anything but the skill's
 newest non-rejected version (`409 parent_changed`, naming who wrote the newer one), and a
 whitespace-only reason (`422 reason_required`). Audited as `skill_adopted`. See
-[Skill import → Adopting an import](/guide/skill-import/#adopting-an-import).
+[Import skills from GitHub → Adopting an import](/guide/skill-import/#adopting-an-import).
 
 ### Feedback
 
@@ -1082,7 +1082,7 @@ Browse and import add their own codes — `invalid_source`, `ambiguous_ref`, `co
 `source_too_large`, `publish_not_allowed` (`422`); `source_not_allowed`, `too_recent` (`403`);
 `source_not_found` (`404`); `origin_mismatch`, `not_imported` (`409`); `rate_limited` (`429`);
 `upstream_rate_limited`, `upstream_error`, `egress_blocked` (`502`) — each explained in
-[Skill import → Errors](/guide/skill-import/#errors).
+[Import skills from GitHub → Errors](/guide/skill-import/#errors).
 
 A `429` drains as drafts, feedback and jobs are decided or run, so a retry later can succeed. A
 request body that fails schema validation is FastAPI's `422 {"detail": […]}`, not this shape. A
