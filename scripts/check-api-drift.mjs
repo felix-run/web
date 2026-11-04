@@ -88,6 +88,7 @@ export const NOT_A_CLIENT_CALL = {
   'GET /live': 'probe',
   'GET /ready': 'probe',
   'GET /health/scheduler': 'probe (scheduler tick freshness, no credential)',
+  'GET /health/worker': 'probe (worker heartbeat age, no credential)',
   'GET /metrics': 'Prometheus scrape',
   'GET /.well-known/jwks.json': 'token verifiers',
   'POST /mcp': 'MCP protocol endpoint',

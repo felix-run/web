@@ -436,6 +436,30 @@ export class WorkspaceChangedError extends Error {
 
 export type FelixClient = ReturnType<typeof createFelixClient>;
 
+/** What a forced compaction came to (`POST /chat/compact`, `felix-run/felix#696`). */
+export type CompactOutcome =
+  | 'compacted'
+  | 'nothing_to_compact'
+  | 'cancelled'
+  | 'empty_summary'
+  | (string & {});
+
+/** The outcome as a sentence, for every client that reports one. */
+export function describeCompaction(outcome: CompactOutcome): string {
+  switch (outcome) {
+    case 'compacted':
+      return 'Context compacted';
+    case 'nothing_to_compact':
+      return 'Nothing to compact: no context is old enough to summarise yet';
+    case 'cancelled':
+      return "This agent's hook cancelled the compaction, so the thread is unchanged";
+    case 'empty_summary':
+      return 'The summariser wrote nothing, so the thread is unchanged';
+    default:
+      return `The thread was not compacted (${outcome})`;
+  }
+}
+
 export function createFelixClient(opts: FelixClientOptions) {
   // One wrapper for both halves of the surface. Destructured under their own
   // names because `scripts/check-api-drift.mjs` matches the helper *name* at the
@@ -1373,7 +1397,7 @@ export function createFelixClient(opts: FelixClientOptions) {
      * trigger. It needs a manifest because the compaction strategy and the model
      * that writes the summary both come from one.
      */
-    async compactSession(threadId: string, manifest: string): Promise<void> {
+    async compactSession(threadId: string, manifest: string): Promise<CompactOutcome> {
       const res = await chatFetch('/chat/compact', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...leaseHeader(threadId) },
@@ -1381,6 +1405,10 @@ export function createFelixClient(opts: FelixClientOptions) {
       });
       await refuseIfLease(res, 'chat/compact', threadId);
       if (!res.ok) throw new Error(`chat/compact: ${res.status} ${await detailOf(res)}`);
+      // A 200 is not a compaction: three of these left the thread as it was. A harness older
+      // than `felix-run/felix#696` sends no outcome, and only ever answered 200 for a real one.
+      const body = (await res.json().catch(() => ({}))) as { outcome?: CompactOutcome };
+      return body.outcome ?? 'compacted';
     },
 
     /**

@@ -113,12 +113,16 @@ const REFUSALS: Record<string, string> = {
     'this deployment requires someone other than whoever started the run to decide it.',
   not_job_writer:
     'only whoever last saved this job, or an operator, may run it by hand. Saving it again makes it yours.',
+  job_running: 'a run of this job is still going. Try again once it has finished.',
+  job_changed_hands:
+    'someone else saved this job just now, which clears its preferences, so these were not kept.',
+  compaction_failed: 'the summariser failed, so the thread was left as it was.',
 };
 
 /** The harness's refusal code in a thrown error's text, when it is one of `REFUSALS`. */
 function refusalCode(text: string): string | null {
   const m =
-    /\b(approval_already_decided|approval_expired|self_approval_forbidden|not_job_writer)\b/.exec(
+    /\b(approval_already_decided|approval_expired|self_approval_forbidden|not_job_writer|job_running|job_changed_hands|compaction_failed)\b/.exec(
       text,
     );
   return m ? (m[1] as string) : null;

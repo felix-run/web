@@ -8,6 +8,7 @@
  *   apps/chat-ui/harness-openapi.json  — every route, for check-api-drift
  *   scripts/harness-events.json        — every SSE event, for check-protocol-parity
  *   scripts/harness-payloads.json      — every response row shape, for check-payload-shapes
+ *   scripts/harness-tool-results.json  — every failed-result prefix, for tool-results.test.ts
  *
  * The old instructions said to `curl $FELIX_ORIGIN/openapi.json`. That records
  * the *deployment*, not the contract, and the two diverge exactly when it
@@ -35,6 +36,7 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OPENAPI_OUT = join(REPO, 'apps/chat-ui/harness-openapi.json');
 const EVENTS_OUT = join(REPO, 'scripts/harness-events.json');
 const PAYLOADS_OUT = join(REPO, 'scripts/harness-payloads.json');
+const TOOL_RESULTS_OUT = join(REPO, 'scripts/harness-tool-results.json');
 
 /**
  * Names that reach a browser as an SSE envelope `{event, …}` but are not worth
@@ -362,4 +364,35 @@ writeFileSync(
   )}\n`,
 );
 console.log(`  ${Object.keys(payloads).length} row shapes → ${PAYLOADS_OUT.replace(REPO, '.')}`);
+
+// --- tool failure spellings ---
+const typesPy = readFileSync(join(checkout, 'packages/harness/src/felix/tools/types.py'), 'utf8');
+const tuple = /FAILURE_CONTENT_PREFIXES[^=]*=\s*\(([\s\S]*?)\n\)/.exec(typesPy)?.[1];
+const failurePrefixes = [...(tuple ?? '').replace(/^\s*#.*$/gm, '').matchAll(/"([^"]+)"/g)].map(
+  (m) => m[1],
+);
+if (failurePrefixes.length === 0) {
+  console.error('! found no FAILURE_CONTENT_PREFIXES in felix/tools/types.py');
+  exit(1);
+}
+writeFileSync(
+  TOOL_RESULTS_OUT,
+  `${JSON.stringify(
+    {
+      $comment:
+        'Every prefix the harness counts as a failed tool result, recorded from a checkout by ' +
+        'scripts/sync-harness-contract.mjs. tool-results.test.ts fails on one it has no sample ' +
+        'for: an unread prefix draws a green `done` on a call that failed, and no other check ' +
+        'reads tool output. Do not hand-edit: re-run the sync.',
+      harnessCommit: head,
+      harnessVersion: spec.info.version,
+      failurePrefixes,
+    },
+    null,
+    2,
+  )}\n`,
+);
+console.log(
+  `  ${failurePrefixes.length} failure prefixes → ${TOOL_RESULTS_OUT.replace(REPO, '.')}`,
+);
 console.log('\nReview the diff before committing — a surprise in it is the point.');

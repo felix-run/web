@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.19.1"
+    "version": "0.19.2"
   },
   "paths": {
     "/health": {
@@ -15,6 +15,9 @@
       "get": {}
     },
     "/health/scheduler": {
+      "get": {}
+    },
+    "/health/worker": {
       "get": {}
     },
     "/metrics": {
@@ -570,6 +573,12 @@
     },
     "/chat/sessions/{thread_id}/workspace/repo/files": {
       "get": {}
+    },
+    "/connections/icloud": {
+      "post": {}
+    },
+    "/connections/ics": {
+      "post": {}
     }
   }
 }

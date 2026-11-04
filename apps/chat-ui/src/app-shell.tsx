@@ -3,6 +3,7 @@ import {
   branchPoints,
   type ChatEngine,
   createChatEngine,
+  describeCompaction,
   describeError,
   eventsToTurns,
   isClosedApproval,
@@ -1363,7 +1364,11 @@ export function AppShell() {
       // string, so it goes through the same reporter as every other error.
       const pending = toast.loading('Compacting…');
       void compactSession(id, target?.manifest || manifest)
-        .then(() => toast.success('Context compacted', { id: pending }))
+        .then((outcome) => {
+          const said = describeCompaction(outcome);
+          if (outcome === 'compacted') toast.success(said, { id: pending });
+          else toast.message(said, { id: pending });
+        })
         .catch((err) => {
           toast.dismiss(pending);
           // No retry: a compact that failed part-way may still have written a

@@ -283,7 +283,9 @@ export function parseApprovalOutcome(output: unknown): ApprovalOutcome | null {
   if (typeof output !== 'string') return null;
   const m = /^\[approval ([^\]]+)\] tool=(\S+)(?: rule=(\S+))?/.exec(output);
   if (!m?.[1] || !m[2]) return null;
-  return { note: m[1], toolName: m[2], ...(m[3] ? { ruleId: m[3] } : {}) };
+  // Two spellings run on after the rule (`rule=r: this run is unattended…`).
+  const ruleId = m[3]?.replace(/:$/, '');
+  return { note: m[1], toolName: m[2], ...(ruleId ? { ruleId } : {}) };
 }
 
 /**
@@ -308,6 +310,16 @@ export function describeRefusal(outcome: ApprovalOutcome): string | null {
       return `The run was stopped while ${what} waited for approval, so it did not run.`;
     case 'denied':
       return `Denied, so ${what} did not run.`;
+    // The four below are the harness's own, and nobody wrote them: read as a note, they put
+    // words in the mouth of a person who was never asked.
+    case 'unavailable':
+      return `This run is unattended, so nobody could approve it and ${what} did not run.`;
+    case 'already used':
+      return `That approval allowed one call and it was already used, so ${what} did not run.`;
+    case 'preview failed':
+      return `The harness could not build the approval's preview, so nobody was asked and ${what} did not run.`;
+    case 'invalid':
+      return `The harness could not read the decision, so it denied it and ${what} did not run.`;
     default:
       return `Denied, so ${what} did not run. Their note: ${outcome.note}`;
   }

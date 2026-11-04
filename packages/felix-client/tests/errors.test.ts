@@ -81,3 +81,22 @@ describe('a refusal the harness names', () => {
     expect(isClosedApproval(new Error('decide: 500'))).toBe(false);
   });
 });
+
+describe('refusals a 409 or a 502 would misread', () => {
+  it('says a job is still running, not that something changed it', () => {
+    const err = new Error('jobs /digest/run: 409 {"detail":{"error":"job_running"}}');
+    expect(describeError(err, 'run digest').message).toBe(
+      'Could not run digest: a run of this job is still going. Try again once it has finished.',
+    );
+  });
+
+  it('says a preferences save lost to a re-save', () => {
+    const err = new Error('jobs /digest/preferences: 409 {"detail":{"error":"job_changed_hands"}}');
+    expect(describeError(err, 'save preferences').message).toContain('were not kept');
+  });
+
+  it('says a failed compaction left the thread alone', () => {
+    const err = new Error('chat/compact: 502 {"detail":"compaction_failed"}');
+    expect(describeError(err, 'compact this thread').message).toContain('left as it was');
+  });
+});

@@ -34,7 +34,8 @@ export interface ToolResultIssue {
   /**
    * For `denied`: the approval outcome's note as the harness wrote it: `denied`
    * (someone said no without a word), `timeout` (nobody answered), `aborted` (the
-   * run was stopped while it waited), or the refuser's own note.
+   * run was stopped while it waited), `unavailable` (an unattended run, so nobody
+   * could be asked), or the refuser's own note.
    */
   note?: string;
 }
@@ -54,10 +55,14 @@ const REFUSAL_PREFIXES: ReadonlyArray<readonly [prefix: string, control: string]
   ['[screening ', 'screening'],
   ['[command ', 'command screening'],
   ['[judge ', 'judge'],
+  ['[plan mode]', 'plan mode'],
+  ['[hook denied]', 'hook'],
 ];
 
 const TOOL_ERROR = /^\[tool error\/([a-z_]+)\]\s*/;
 const RUNNER_ERROR = /^\[(error|fatal)\/[^\]]*\]\s*/;
+/** A remote MCP tool's error result, or a call that failed on the way there (`mcp/client.py`). */
+const MCP_ERROR = /^\[mcp_error\]\s*/;
 /**
  * The harness's refusal of arguments that fail the tool's schema, written by `define_tool`. It
  * starts with `[`, so the harness adds no `[tool error/...]` in front, and a card read it as done.
@@ -124,6 +129,11 @@ export function classifyToolResult(toolName: string, output: unknown): ToolResul
       label: 'failed',
       message: output.slice(runnerError[0].length) || output,
     };
+  }
+
+  const mcpError = MCP_ERROR.exec(output);
+  if (mcpError) {
+    return { kind: 'failed', label: 'failed', message: output.slice(mcpError[0].length) || output };
   }
 
   for (const [prefix, control] of REFUSAL_PREFIXES) {
