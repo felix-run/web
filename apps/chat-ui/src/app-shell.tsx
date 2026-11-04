@@ -2331,19 +2331,20 @@ export function AppShell() {
     files: number;
     answer: (answer: RewindFilesAnswer) => void;
   } | null>(null);
-  const askAboutFiles = useCallback(
-    (abandoned: readonly Turn[]): Promise<RewindFilesAnswer> => {
-      const agent = threads.find((t) => t.id === threadId)?.manifest?.trim() || manifest;
-      const workspace = manifestEntries.find((m) => m.id === agent)?.workspace;
-      const recorded =
-        workspace?.scope === 'thread' &&
-        (workspace.tools === 'server' || workspace.tools === 'both');
-      const files = recorded ? recordedFileChanges(abandoned) : 0;
-      if (files === 0) return Promise.resolve('keep');
-      return new Promise((resolve) => setFileQuestion({ files, answer: resolve }));
-    },
-    [threads, threadId, manifest, manifestEntries],
-  );
+  // Read through a ref so this never changes: `rewindTo` and `editTurn` take it, and a new
+  // identity for them on each thread refresh lays out every finished turn again mid-stream.
+  const fileContext = useRef({ threads, threadId, manifest, manifestEntries });
+  fileContext.current = { threads, threadId, manifest, manifestEntries };
+  const askAboutFiles = useCallback((abandoned: readonly Turn[]): Promise<RewindFilesAnswer> => {
+    const now = fileContext.current;
+    const agent = now.threads.find((t) => t.id === now.threadId)?.manifest?.trim() || now.manifest;
+    const workspace = now.manifestEntries.find((m) => m.id === agent)?.workspace;
+    const recorded =
+      workspace?.scope === 'thread' && (workspace.tools === 'server' || workspace.tools === 'both');
+    const files = recorded ? recordedFileChanges(abandoned) : 0;
+    if (files === 0) return Promise.resolve('keep');
+    return new Promise((resolve) => setFileQuestion({ files, answer: resolve }));
+  }, []);
 
   const rewindingRef = useRef(false);
   const rewindTo = useCallback(
