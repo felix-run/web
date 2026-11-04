@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Felix",
-    "version": "0.18.0"
+    "version": "0.19.1"
   },
   "paths": {
     "/health": {
@@ -12,6 +12,9 @@
       "get": {}
     },
     "/ready": {
+      "get": {}
+    },
+    "/health/scheduler": {
       "get": {}
     },
     "/metrics": {
@@ -209,6 +212,18 @@
     },
     "/jobs/{name}/runs": {
       "get": {}
+    },
+    "/jobs/{name}/preferences": {
+      "get": {},
+      "put": {},
+      "delete": {}
+    },
+    "/jobs/{name}/state": {
+      "get": {},
+      "delete": {}
+    },
+    "/jobs/{name}/state/{key}": {
+      "delete": {}
     },
     "/heartbeats": {
       "get": {}
@@ -516,6 +531,27 @@
       "get": {}
     },
     "/github/connections/{github_user_id}": {
+      "delete": {}
+    },
+    "/connections/google/start": {
+      "post": {}
+    },
+    "/connections/google/callback": {
+      "get": {}
+    },
+    "/connections/google/finish": {
+      "post": {}
+    },
+    "/connections": {
+      "get": {}
+    },
+    "/connections/tenant": {
+      "get": {}
+    },
+    "/connections/tenant/revoke": {
+      "post": {}
+    },
+    "/connections/{provider}/{account}": {
       "delete": {}
     },
     "/github/repos": {

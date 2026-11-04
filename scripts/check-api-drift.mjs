@@ -87,6 +87,7 @@ export const NOT_A_CLIENT_CALL = {
   'GET /health': 'probe (legacy name of /live)',
   'GET /live': 'probe',
   'GET /ready': 'probe',
+  'GET /health/scheduler': 'probe (scheduler tick freshness, no credential)',
   'GET /metrics': 'Prometheus scrape',
   'GET /.well-known/jwks.json': 'token verifiers',
   'POST /mcp': 'MCP protocol endpoint',
@@ -98,6 +99,7 @@ export const NOT_A_CLIENT_CALL = {
   'POST /auth/github/actions': 'GitHub Actions OIDC exchange',
   'GET /auth/github/callback': "GitHub's OAuth return",
   'GET /auth/google/callback': "Google's OAuth return",
+  'GET /connections/google/callback': "Google's OAuth return for a connection",
   'GET /auth/github/authorize':
     'reached by navigation (githubAuthorizeUrl), which no fetch extractor sees',
   'GET /auth/google/authorize': 'reached by navigation, which no fetch extractor sees',
