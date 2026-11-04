@@ -156,3 +156,27 @@ describe('the management surface against a real origin', () => {
     });
   });
 });
+
+describe('a memory pool on the wire', () => {
+  it("tells every pool, the agents' own and one person apart", async () => {
+    const s = stub({ items: [] });
+    const c = client(s.fetch);
+
+    await c.listMemories();
+    await c.listMemories({ principal: '' });
+    await c.listMemories({ principal: 'github:42' });
+
+    const asked = s.calls.map((call) => new URL(call.url).searchParams.get('principal'));
+    expect(asked).toEqual([null, '', 'github:42']);
+  });
+
+  it('carries it on a search and an as-of read', async () => {
+    const s = stub({ items: [] });
+    const c = client(s.fetch);
+
+    await c.searchMemories('tabs', { principal: 'github:42' });
+    await c.memoriesAsOf(4, { principal: 'github:42', threadId: 't' });
+
+    expect(s.calls.every((call) => call.url.includes('principal=github%3A42'))).toBe(true);
+  });
+});

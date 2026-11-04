@@ -23,6 +23,11 @@ export interface MemoryRecord {
   kind: string;
   content: string;
   manifest_id?: string;
+  /**
+   * Whose pool holds it (`felix-run/felix#677`): a person key, or `''` for the agent's own pool.
+   * Absent on a harness older than 0.17, which has no pools.
+   */
+  principal?: string;
   topic_key?: string;
   importance?: number;
   /** `active`, or `forgotten` once DELETE has been called — the delete is soft. */
@@ -79,6 +84,8 @@ export interface MemoryHit {
   topic_key?: string;
   importance?: number;
   manifest_id?: string;
+  /** Whose pool holds it, as on `MemoryRecord`. */
+  principal?: string;
   /** `{tenant}:{suffix}`, or `''` for a memory written outside any thread. */
   thread_id?: string;
   origin_seq?: number | null;
@@ -115,12 +122,15 @@ export function createMemoryClient(http: FelixHttp) {
       limit?: number;
       threadId?: string;
       status?: 'active' | 'forgotten';
+      /** One pool: a person key, or `''` for the agent's own. Left out, every pool. */
+      principal?: string;
     } = {},
   ): Promise<MemoryRecord[]> {
     const q = new URLSearchParams();
     if (opts.manifestId) q.set('manifest_id', opts.manifestId);
     if (opts.kind) q.set('kind', opts.kind);
     if (opts.threadId !== undefined) q.set('thread_id', opts.threadId);
+    if (opts.principal !== undefined) q.set('principal', opts.principal);
     if (opts.status && opts.status !== 'active') q.set('status', opts.status);
     q.set('limit', String(opts.limit ?? 50));
     const res = await chatFetch(`/memory?${q}`);
@@ -145,10 +155,11 @@ export function createMemoryClient(http: FelixHttp) {
    */
   async function searchMemories(
     query: string,
-    opts: { manifestId?: string; kind?: string; limit?: number } = {},
+    opts: { manifestId?: string; kind?: string; limit?: number; principal?: string } = {},
   ): Promise<MemoryHit[]> {
     const q = new URLSearchParams({ q: query });
     if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+    if (opts.principal !== undefined) q.set('principal', opts.principal);
     if (opts.kind) q.set('kind', opts.kind);
     q.set('limit', String(opts.limit ?? 8));
     const res = await chatFetch(`/memory/search?${q}`);
@@ -173,10 +184,17 @@ export function createMemoryClient(http: FelixHttp) {
    */
   async function memoriesAsOf(
     turnSeq: number,
-    opts: { manifestId?: string; kind?: string; limit?: number; threadId?: string } = {},
+    opts: {
+      manifestId?: string;
+      kind?: string;
+      limit?: number;
+      threadId?: string;
+      principal?: string;
+    } = {},
   ): Promise<MemoryRecord[]> {
     const q = new URLSearchParams();
     if (opts.manifestId) q.set('manifest_id', opts.manifestId);
+    if (opts.principal !== undefined) q.set('principal', opts.principal);
     if (opts.kind) q.set('kind', opts.kind);
     if (opts.threadId !== undefined) q.set('thread_id', opts.threadId);
     q.set('limit', String(opts.limit ?? 200));
@@ -241,6 +259,8 @@ export function createMemoryClient(http: FelixHttp) {
     manifestId: string;
     topicKey?: string;
     importance?: number;
+    /** A person's pool. Left out, it goes in the agent's own. */
+    principal?: string;
   }): Promise<{ id: string; status: string }> {
     const res = await chatFetch('/memory', {
       method: 'POST',
@@ -251,6 +271,8 @@ export function createMemoryClient(http: FelixHttp) {
         manifest_id: input.manifestId,
         topic_key: input.topicKey ?? '',
         importance: input.importance ?? 0.5,
+        // Only when named: the request forbids extra keys on a harness older than 0.17.
+        ...(input.principal ? { principal: input.principal } : {}),
       }),
     });
     if (!res.ok) {

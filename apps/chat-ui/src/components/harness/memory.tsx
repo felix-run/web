@@ -121,6 +121,29 @@ const PROSE = 'max-w-[30rem]';
  * told it apart from the text around it by nothing. The negative margin gives it a
  * 24px target without making the line taller.
  */
+/**
+ * `?pool=`, which this page owns: absent is every pool, empty is the agents' own, a value is one
+ * person, the same three states the harness's `principal` has. `keepAgent` rebuilds the address
+ * from nothing but the agent, so this carries the pool across as well.
+ */
+function keepScope(
+  current: URLSearchParams,
+  next: URLSearchParams | Record<string, string>,
+): URLSearchParams {
+  const out = keepAgent(current, next);
+  const pool = current.get('pool');
+  if (pool !== null) out.set('pool', pool);
+  return out;
+}
+
+/** A person key as a reader wants it: `issuer|subject` is unique, the subject is who it is. */
+function personLabel(key: string): string {
+  return key.slice(key.lastIndexOf('|') + 1);
+}
+
+/** The harness's own cap on a person key (`auth/persons.py:MAX_PERSON_KEY_CHARS`). */
+const MEMORY_PERSON_MAX = 512;
+
 const META_LINK =
   '-my-1 py-1 underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground hover:decoration-current focus-visible:rounded-sm focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
 
@@ -146,6 +169,7 @@ export function MemorySection({
   // to the chat's agent, but a store filtered to it by default would hide every
   // other agent's memories from the page that exists to find them.
   const agent = params.get('agent') ?? '';
+  const pool = params.get('pool') ?? undefined;
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState(() => params.get('q') ?? '');
   // The conversation and turn are read from the address and written straight to
@@ -173,7 +197,7 @@ export function MemorySection({
   // should step through, and each keystroke would otherwise be one.
   // Built on top of `?agent=`, which this page does not own and must not drop.
   useEffect(() => {
-    const next = keepAgent(params, {});
+    const next = keepScope(params, {});
     if (mode === 'search') {
       next.set('view', 'search');
       if (committedQuery) next.set('q', committedQuery);
@@ -211,7 +235,7 @@ export function MemorySection({
     // The notice survives a view change: Undo after a forget is the one way back,
     // and it used to vanish the moment the operator looked anywhere else.
     setParams(
-      keepAgent(
+      keepScope(
         params,
         next === 'search'
           ? { view: 'search' }
@@ -232,6 +256,13 @@ export function MemorySection({
     setParams(out, { replace: true });
   };
 
+  const setPool = (next: string | undefined) => {
+    const out = new URLSearchParams(params);
+    if (next === undefined) out.delete('pool');
+    else out.set('pool', next);
+    setParams(out, { replace: true });
+  };
+
   const seq = Number.parseInt(asOfSeq, 10);
   const asOfReady = mode === 'asOf' && asOfThread !== '' && Number.isFinite(seq) && seq >= 0;
   const searchReady = mode === 'search' && committedQuery.length > 0;
@@ -240,24 +271,26 @@ export function MemorySection({
   // Memory changes when an agent stores or someone forgets, so the lists read every 30s.
   // A search and an as-of view are read once per question: they repeated every 3s, and a
   // changed question showed the last one's answer until the next tick read the new one.
-  const recent = usePoll(() => listMemories({ limit, manifestId }), {
+  const scope = { manifestId, ...(pool === undefined ? {} : { principal: pool }) };
+  const scopeKey = `${manifestId}|${pool}`;
+  const recent = usePoll(() => listMemories({ limit, ...scope }), {
     enabled: enabled && mode === 'recent',
     intervalMs: 30_000,
-    key: `${limit}|${manifestId}`,
+    key: `${limit}|${scopeKey}`,
   });
-  const found = usePoll(() => searchMemories(committedQuery, { limit: SEARCH_LIMIT, manifestId }), {
+  const found = usePoll(() => searchMemories(committedQuery, { limit: SEARCH_LIMIT, ...scope }), {
     enabled: enabled && searchReady,
     intervalMs: null,
-    key: `${committedQuery}|${manifestId}`,
+    key: `${committedQuery}|${scopeKey}`,
   });
   const past = usePoll(
-    () => memoriesAsOf(seq, { limit: AS_OF_LIMIT, manifestId, threadId: asOfThread }),
-    { enabled: enabled && asOfReady, intervalMs: null, key: `${seq}|${manifestId}|${asOfThread}` },
+    () => memoriesAsOf(seq, { limit: AS_OF_LIMIT, ...scope, threadId: asOfThread }),
+    { enabled: enabled && asOfReady, intervalMs: null, key: `${seq}|${scopeKey}|${asOfThread}` },
   );
-  const gone = usePoll(() => listMemories({ limit, manifestId, status: 'forgotten' }), {
+  const gone = usePoll(() => listMemories({ limit, ...scope, status: 'forgotten' }), {
     enabled: enabled && mode === 'forgotten',
     intervalMs: 30_000,
-    key: `${limit}|${manifestId}`,
+    key: `${limit}|${scopeKey}`,
   });
 
   const active =
@@ -340,12 +373,23 @@ export function MemorySection({
         </>
       }
     >
+      {pool !== undefined && (
+        <p className="mb-2 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+          <span title={pool || undefined}>
+            {pool ? `Only ${personLabel(pool)}’s memories.` : 'Only the agents’ own memories.'}
+          </span>
+          <Button size="xs" variant="ghost" onClick={() => setPool(undefined)}>
+            Show everyone’s
+          </Button>
+        </p>
+      )}
       {adding ? (
         <div id="memory-add" className={CREATE_FORM}>
           {/* Titled for what it makes, not for the button that opened it. */}
           <PageSection title="New memory">
             <AddMemoryForm
               defaultAgent={agent || manifest}
+              defaultPerson={pool ?? ''}
               chatAgent={manifest}
               agents={manifestOptions}
               onCancel={() => setAdding(false)}
@@ -468,6 +512,7 @@ export function MemorySection({
                     row={m}
                     titleOf={titleOf}
                     showAgent={!agent}
+                    {...(pool === undefined ? { onPool: setPool } : {})}
                     // As of already names its conversation and turn; each row repeating
                     // them was a link back to the view it was in.
                     hereThread={mode === 'asOf' ? asOfThread : undefined}
@@ -565,12 +610,15 @@ function Provenance({
   row,
   titleOf,
   showAgent,
+  onPool,
   forgottenAt,
   hereThread,
 }: {
   row: MemoryRecord | MemoryHit;
   titleOf: (suffix: string) => string | undefined;
   showAgent: boolean;
+  /** Narrow the page to this row's pool. Absent once it is narrowed: the view says whose. */
+  onPool?: (principal: string) => void;
   forgottenAt?: number;
   /** The conversation the view is already about, whose name and turn the row skips. */
   hereThread?: string;
@@ -639,6 +687,22 @@ function Provenance({
       <span key="agent" className="font-mono">
         {row.manifest_id}
       </span>,
+    );
+  }
+  // Whose it is, on a harness that says. A person's memory follows them across agents, so the
+  // agent above does not answer it.
+  const principal = row.principal;
+  if (onPool && principal !== undefined) {
+    parts.push(
+      <button
+        key="pool"
+        type="button"
+        className={META_LINK}
+        title={principal ? `Only ${principal}'s memories` : "Only the agents' own memories"}
+        onClick={() => onPool(principal)}
+      >
+        {principal ? `for ${personLabel(principal)}` : 'agent’s own'}
+      </button>,
     );
   }
   const written = ago(row.created_at);
@@ -902,12 +966,15 @@ const MEMORY_TOPIC_MAX = 200;
  */
 function AddMemoryForm({
   defaultAgent,
+  defaultPerson,
   chatAgent,
   agents,
   onAdded,
   onCancel,
 }: {
   defaultAgent: string;
+  /** The person the page is narrowed to, whose memory this most likely is. */
+  defaultPerson: string;
   /** The agent Chat is talking to, so the form can say when the default is that one. */
   chatAgent: string;
   agents: string[];
@@ -918,6 +985,7 @@ function AddMemoryForm({
   const [topicKey, setTopicKey] = useState('');
   const [importance, setImportance] = useState('0.5');
   const [agent, setAgent] = useState(defaultAgent);
+  const [person, setPerson] = useState(defaultPerson);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -953,6 +1021,7 @@ function AddMemoryForm({
         manifestId: agent,
         topicKey: topicKey.trim(),
         importance: weight,
+        ...(person.trim() ? { principal: person.trim() } : {}),
       });
       setContent('');
       setTopicKey('');
@@ -1038,6 +1107,22 @@ function AddMemoryForm({
             0 to 1. Higher is kept first when not everything fits.
           </p>
         </div>
+      </div>
+      <div>
+        <Label htmlFor="memory-person">Person (optional)</Label>
+        <Input
+          id="memory-person"
+          value={person}
+          maxLength={MEMORY_PERSON_MAX}
+          onChange={(e) => setPerson(e.target.value)}
+          aria-describedby="memory-person-help"
+          className="mt-1 font-mono"
+        />
+        <p id="memory-person-help" className="mt-1 text-xs text-muted-foreground">
+          {person.trim()
+            ? 'Stored in this person’s pool, which every agent acting for them reads.'
+            : 'Empty keeps it in this agent’s own pool, for everyone it talks to.'}
+        </p>
       </div>
       {/* A Cancel beside it, as Jobs has: the header toggle was the only way out,
           and it is not where anyone looks when a form is in front of them. */}

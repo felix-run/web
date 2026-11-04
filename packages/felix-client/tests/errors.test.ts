@@ -100,3 +100,15 @@ describe('refusals a 409 or a 502 would misread', () => {
     expect(describeError(err, 'compact this thread').message).toContain('left as it was');
   });
 });
+
+describe('a memory written to a pool', () => {
+  it('says a shared credential names no one', () => {
+    const err = new Error('memory/write: 422 {"detail":"principal_not_a_person"}');
+    expect(describeError(err, 'store this memory').message).toContain('one person');
+  });
+
+  it('says the memory sits elsewhere, not that it was decided', () => {
+    const err = new Error('memory/write: 409 {"detail":"memory_held_by_another_pool"}');
+    expect(describeError(err, 'store this memory').message).toContain('another pool');
+  });
+});
