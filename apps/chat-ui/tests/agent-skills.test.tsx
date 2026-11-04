@@ -21,7 +21,6 @@ const skill = (over: Record<string, unknown>) => ({
   name: 'changelog',
   description: 'Write the changelog entry for a PR.',
   version: '2',
-  active: false,
   has_body: true,
   model_invocable: true,
   declared: true,
@@ -35,12 +34,11 @@ async function mount(api: Record<string, unknown> = {}) {
       manifest: 'cowork',
       declared_only: false,
       items: [
-        skill({ name: 'changelog', active: true }),
+        skill({ name: 'changelog' }),
         skill({ name: 'pdf', declared: false, source: 'bundled' }),
         skill({ name: 'secret-sauce', model_invocable: false }),
         skill({ name: 'ghost', has_body: false, description: '' }),
       ],
-      active: ['changelog'],
     }),
     getAgentSkill: vi.fn().mockResolvedValue({
       ...skill({}),
@@ -100,15 +98,15 @@ const row = (name: string) => {
 };
 
 describe('an agent’s skills, from the harness', () => {
-  it('asks for the agent on the page, and counts what is active', async () => {
+  it('asks for the agent on the page, and claims nothing about what is active', async () => {
     const { listAgentSkills } = await mount();
     expect(listAgentSkills).toHaveBeenCalledWith('cowork');
-    expect(screen.getByText(/4 skills, 1 active\./)).toBeTruthy();
+    // Active is per conversation since `felix-run/felix#706`, and the route no longer says.
+    expect(screen.queryByText(/\bactive\b/)).toBeNull();
   });
 
   it('says what a transcript cannot: host-supplied, never offered, and no body', async () => {
     await mount();
-    expect(within(row('changelog')).getByText('active')).toBeTruthy();
     expect(within(row('pdf')).getByText('from the host')).toBeTruthy();
     expect(within(row('secret-sauce')).getByText('never offered to the model')).toBeTruthy();
     expect(within(row('ghost')).getByText(/no body/)).toBeTruthy();

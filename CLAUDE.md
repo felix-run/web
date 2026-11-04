@@ -41,7 +41,7 @@ pnpm check-protocol-parity  # SSE events: every arm handled, every emitted event
 pnpm check-tailwind-sources # every @source-covered tree still reaches the compiled CSS
 pnpm check-payload-shapes   # every required client field is one the harness actually sends
 pnpm check-bundle-budget    # chat-ui's first load (entry + preloads + CSS, gzipped) is within budget; run after build
-pnpm sync:harness [path]    # re-record all three contract files from a harness checkout
+pnpm sync:harness [path]    # re-record all four contract files from a harness checkout
 pnpm sync:diagrams [path]   # re-render the harness's docs/diagrams/*.mmd into apps/docs/src/diagrams (docs theme)
 pnpm sync:brand             # re-render favicons, touch/PWA icons, docs logo + social card (needs rsvg-convert, magick)
 pnpm --filter @felix/chat-ui <script>   # scope to one package
@@ -169,7 +169,13 @@ That rule is also why a new area is guarded harness-first: `/documents` returned
 built its wire dict inline in each route, so nothing could be recorded and nothing could be guarded
 until the shape moved into the store (`felix-run/felix#213`).
 
-All three are **excluded from Biome** in `biome.json`. `pnpm format` reformats JSON, and these are
+A fourth record covers what no route or field shows: how a tool result says it failed.
+`scripts/harness-tool-results.json` holds the harness's `FAILURE_CONTENT_PREFIXES`, and
+`tool-results.test.ts` fails on a prefix it has no sample for, because `classifyToolResult` reads
+anything it does not recognise as a success: `[mcp_error]`, `[plan mode]` and `[hook denied]` all
+drew a green `done` until this existed.
+
+All four are **excluded from Biome** in `biome.json`. `pnpm format` reformats JSON, and these are
 generated files whose own `$comment` says not to hand-edit them — so formatting them produced a diff
 the next sync silently reverted, twice in one session before anyone noticed. A reformatted record is
 one nobody re-reads. `.impeccable/design.json` is excluded for the same reason and was invisible
@@ -177,7 +183,7 @@ until it wasn't: Biome runs with `vcs.useIgnoreFile`, so that file only came int
 `.impeccable/` stopped being ignored. Anything generated that leaves the ignore file needs the
 exclusion in the same commit.
 
-**All three records are regenerated together, from a harness checkout, by
+**All four records are regenerated together, from a harness checkout, by
 `node scripts/sync-harness-contract.mjs [path]`** — never by curling a running harness. That records
 the deployment, not the contract; on 2026-08-24 the local container was two features behind and the
 snapshot silently omitted `/memory/*` and `GET /chat/stream/{thread_id}`. FastAPI builds the spec

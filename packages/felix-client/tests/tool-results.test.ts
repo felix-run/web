@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
+import record from '../../../scripts/harness-tool-results.json';
 import { classifyToolResult } from '../src/tool-results';
+
+/** One real spelling per prefix the harness counts as a failure. A new prefix needs a row here. */
+const SAMPLES: Record<string, string> = {
+  '[error/': '[error/timeout] the run gave up',
+  '[fatal/': '[fatal/oom] the run died',
+  '[tool error/': '[tool error/timeout] no answer',
+  '[invalid args ': '[invalid args for write_file] path is required',
+  '[policy ': '[policy deny] tool=write_file',
+  '[command ': '[command approval unavailable] tool=shell: this run is unattended',
+  '[screening ': '[screening unavailable] tool output could not be screened',
+  '[limits]': '[limits] max_tool_calls reached',
+  '[guardrails]': '[guardrails] blocked',
+  '[judge ': '[judge low score] refused',
+  '[approval ': '[approval denied] tool=write_file rule=r',
+  '[plan mode]': '[plan mode] write_file can change things',
+  '[hook denied]': '[hook denied] audit-writes\nnot on Fridays',
+  '[mcp_error]': '[mcp_error] upstream answered 502',
+};
+
+describe('the harness failure prefixes', () => {
+  it.each(record.failurePrefixes)('%s does not draw as done', (prefix) => {
+    const sample = SAMPLES[prefix];
+    expect(sample, `no sample for ${prefix}: classify it, then add one`).toBeDefined();
+    expect(classifyToolResult('write_file', sample)).not.toBeNull();
+  });
+});
 
 /**
  * A finished call is not the same as a successful one.
@@ -109,5 +136,44 @@ describe('classifyToolResult', () => {
     expect(classifyToolResult('x', 'the log said [tool error/timeout] once')).toBeNull();
     expect(classifyToolResult('write_file', '{"path": "a.txt", "bytes": 25}')).toBeNull();
     expect(classifyToolResult('x', { ok: true })).toBeNull();
+  });
+
+  it('reads a failed MCP call as failed, with its own message', () => {
+    expect(classifyToolResult('gh__search', '[mcp_error] upstream answered 502')).toEqual({
+      kind: 'failed',
+      label: 'failed',
+      message: 'upstream answered 502',
+    });
+  });
+
+  it('names plan mode and a hook as what refused the call', () => {
+    expect(classifyToolResult('write_file', '[plan mode] read-only')).toMatchObject({
+      kind: 'refused',
+      label: 'refused by plan mode',
+    });
+    expect(classifyToolResult('write_file', '[hook denied] h\nno')).toMatchObject({
+      kind: 'refused',
+      label: 'refused by hook',
+    });
+  });
+
+  it('says an unattended refusal asked nobody, rather than quoting a note', () => {
+    const issue = classifyToolResult(
+      'write_file',
+      '[approval unavailable] tool=write_file rule=r: this run is unattended (no person started it)',
+    );
+    expect(issue).toMatchObject({ kind: 'denied', note: 'unavailable' });
+    expect(issue?.message).toBe(
+      'This run is unattended, so nobody could approve it and write_file (r) did not run.',
+    );
+  });
+
+  it.each([
+    'already used',
+    'preview failed',
+    'invalid',
+  ])('does not read the harness note %s as a person writing one', (note) => {
+    const issue = classifyToolResult('write_file', `[approval ${note}] tool=write_file rule=r`);
+    expect(issue?.message).not.toContain('Their note');
   });
 });

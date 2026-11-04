@@ -4,7 +4,6 @@ import {
   type SkillActivation,
   threadSuffix,
 } from '@felix/client';
-import { Badge } from '@felix/ui/badge';
 import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
@@ -35,7 +34,7 @@ export function AgentSkills({
   onCounts,
 }: {
   agent: string;
-  /** `1 of 4 active`, for the page header, once the list has been read. */
+  /** `4 skills`, for the page header, once the list has been read. */
   onCounts?: (meta: string | undefined) => void;
 }) {
   const fetchSkills = useCallback(() => listAgentSkills(agent), [agent]);
@@ -46,11 +45,10 @@ export function AgentSkills({
   );
   const activations = usePoll(fetchActivations, { intervalMs: POLL_MS });
   const items = skills.data?.items ?? [];
-  const active = items.filter((s) => s.active).length;
   const loaded = skills.data !== undefined;
   useEffect(() => {
-    onCounts?.(loaded ? `${active} of ${plural(items.length, 'skill')} active` : undefined);
-  }, [onCounts, loaded, active, items.length]);
+    onCounts?.(loaded ? plural(items.length, 'skill') : undefined);
+  }, [onCounts, loaded, items.length]);
 
   return (
     <div className="space-y-4">
@@ -65,7 +63,6 @@ export function AgentSkills({
         emptyText={`${agent} can reach no skills.`}
       >
         <p className="mb-2 text-sm text-muted-foreground">
-          {plural(items.length, 'skill')}, {active} active.{' '}
           {skills.data?.declared_only
             ? 'Limited to the skills its manifest names.'
             : 'The manifest names some; the rest are on the host, and the model is offered them too.'}
@@ -127,11 +124,6 @@ function SkillRow({ agent, skill: s }: { agent: string; skill: AgentSkill }) {
           />
           {s.name}
         </button>
-        {s.active && (
-          <Badge variant="secondary" className="py-0 text-xs">
-            active
-          </Badge>
-        )}
         {/* Said only off the default, so the exception is what is read. */}
         {!s.declared && <span className="text-xs text-muted-foreground">from the host</span>}
         {!s.model_invocable && (

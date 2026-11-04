@@ -119,3 +119,15 @@ describe('a refusal', () => {
     expect(refused).toEqual([]);
   });
 });
+
+describe('compactSession', () => {
+  it('reports what the compaction came to, not only that it answered', async () => {
+    const { felix } = client(() => new Response('{"outcome":"nothing_to_compact","ok":true}'));
+    await expect(felix.compactSession('t1', 'm')).resolves.toBe('nothing_to_compact');
+  });
+
+  it('reads an older harness, which sends no outcome, as compacted', async () => {
+    const { felix } = client(() => new Response('{"ok":true}'));
+    await expect(felix.compactSession('t1', 'm')).resolves.toBe('compacted');
+  });
+});

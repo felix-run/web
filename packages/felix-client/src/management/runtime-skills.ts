@@ -2,7 +2,7 @@
  * An agent's skills as the harness resolves them at run time (`/skills/{manifest}`) — the
  * other half from `skills.ts`, which is the tenant's *library*: what is drafted, reviewed and
  * published. This is what a given agent can actually reach right now, whichever source it came
- * from, and which of those are switched on.
+ * from. Which are active is not here: a skill is active per conversation (`felix-run/felix#706`).
  *
  * Read-only. The answers it gives are the ones a transcript cannot: `list_skills` describes the
  * chat's agent as of its last call, while these describe any agent, now — including what the
@@ -20,8 +20,6 @@ export interface AgentSkill {
   name: string;
   description: string;
   version?: string | null;
-  /** Switched on for this agent now. */
-  active: boolean;
   /** False is a ref the loader could not find a body for: activating it hands the model nothing. */
   has_body: boolean;
   /** False is a skill in the catalog the model is never offered (`disable_model_invocation`). */
@@ -36,7 +34,6 @@ export interface AgentSkills {
   /** The manifest limits the agent to the skills it names. */
   declared_only: boolean;
   items: AgentSkill[];
-  active: string[];
 }
 
 /** `GET /skills/{manifest}/{skill}`: one skill with its instructions, secrets redacted. */
@@ -63,7 +60,7 @@ export interface SkillActivation {
 export function createRuntimeSkillsClient(http: FelixHttp) {
   const { chatFetch } = http;
 
-  /** GET /skills/{manifest} → every skill the agent can reach, and which are active. */
+  /** GET /skills/{manifest} → every skill the agent can reach. */
   async function listAgentSkills(manifest: string): Promise<AgentSkills> {
     const res = await chatFetch(`/skills/${encodeURIComponent(manifest)}`);
     if (!res.ok) throw new Error(`skills: ${res.status}`);
@@ -72,7 +69,6 @@ export function createRuntimeSkillsClient(http: FelixHttp) {
       manifest: body.manifest ?? manifest,
       declared_only: body.declared_only ?? false,
       items: body.items ?? [],
-      active: body.active ?? [],
     };
   }
 

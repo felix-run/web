@@ -28,7 +28,7 @@ import type {
   ManifestStarter,
   ThreadMeta,
 } from '@felix/client';
-import { SideQuestionError, threadSuffix } from '@felix/client';
+import { describeCompaction, SideQuestionError, threadSuffix } from '@felix/client';
 import type { ThinkingLevel } from '@felix/protocol';
 import type { Spill } from './artifacts.js';
 import type { Config } from './config.js';
@@ -355,7 +355,7 @@ export function runCommand(ctx: CommandContext, line: string): void {
     case 'compact':
       void client
         .compactSession(threadIdRef.current, manifest)
-        .then(() => setNotice('context compacted'))
+        .then((outcome) => setNotice(describeCompaction(outcome)))
         .catch((err) => engine.setError(explainError(err, 'compact this thread', config)));
       return;
     case 'export': {

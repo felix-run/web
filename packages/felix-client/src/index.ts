@@ -212,7 +212,9 @@ export {
   type SearchHit,
 } from './tool-shapes';
 export {
+  type CompactOutcome,
   createFelixClient,
+  describeCompaction,
   type FelixClient,
   type FelixClientOptions,
   type HarnessWorkspaceTree,
