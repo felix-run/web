@@ -534,6 +534,16 @@ unknown `/name` as typed instead of refusing it: the harness reads a non-skill a
 refusing would put every skill out of reach. `activate_skill` arrives as an ordinary tool call with
 an `invoke_` id (measured on :8080, 2026-11-04).
 
+## Rewinding past a file change
+
+Every rewind settles the branch it leaves: the harness forgets what that branch's file tools did
+whether or not they were undone. So `restore_files` can only be chosen before the rewind, and
+`askAboutFiles` in the shell asks then, for a rewind or an edit, but only on a `scope: thread`
+harness workspace when `recordedFileChanges` finds a landed call among the turns set aside.
+Elsewhere a rewind stays one click. After a restore there is no Undo or Restore original: they move
+the leaf and not the files, and the transcript would claim writes that are gone. What a restore left
+alone stays on screen until dismissed. A branch switch settles too, and does not ask.
+
 ## Rendering
 
 **A streaming reply is drawn once per frame, not once per delta** (`src/lib/frame-store.ts`).

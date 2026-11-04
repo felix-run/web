@@ -1211,6 +1211,9 @@ A few limits apply:
 
 The Python client takes the same flag: `await client.rewind(event_id, restore_files=True)`.
 
+The chat app asks when a rewind or an edit would set aside turns where the agent's file tools changed
+files in the thread's own workspace, and reports what it restored and what it left alone.
+
 The next message appends as a child of the new leaf, so a rewind followed by a send creates a
 branch. `GET /chat/sessions/{id}` still returns **every** event on the session, across all
 branches, and reports the active one only as `leafId`. To render the active branch, start at the

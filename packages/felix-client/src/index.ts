@@ -187,6 +187,11 @@ export {
 } from './plans';
 export { type ReattachOptions, reattachThread } from './reattach';
 export {
+  describeRestoredFiles,
+  type RestoredFiles,
+  recordedFileChanges,
+} from './rewind-files';
+export {
   type BranchPoint,
   branchPoints,
   eventsToTurns,

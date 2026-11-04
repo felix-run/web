@@ -100,3 +100,10 @@ describe('refusals a 409 or a 502 would misread', () => {
     expect(describeError(err, 'compact this thread').message).toContain('left as it was');
   });
 });
+
+describe('a restore someone else owns', () => {
+  it('says the rewind did not happen', () => {
+    const err = new Error('rewind: 403 {"detail":"not_checkout_opener"}');
+    expect(describeError(err, 'rewind this thread').message).toContain('Nothing moved');
+  });
+});

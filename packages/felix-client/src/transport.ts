@@ -14,6 +14,7 @@
  * what `scripts/check-api-drift.mjs` reads: it knows both helper names and the
  * bare paths they take, so a route the harness renames still fails CI here.
  */
+
 import {
   type ChatMessage,
   type DurableRun,
@@ -36,6 +37,7 @@ import {
 } from './errors';
 import { createHttp, type FelixClientOptions } from './http';
 import { createManagementClient } from './management';
+import type { RestoredFiles } from './rewind-files';
 import type { SessionSummary } from './session-log';
 import { isWorkflowStepThread, threadSuffix } from './session-log';
 
@@ -1531,7 +1533,9 @@ export function createFelixClient(opts: FelixClientOptions) {
       eventId: string;
       summarize?: boolean;
       manifest?: string;
-    }): Promise<{ ok: boolean; leaf_id?: string }> {
+      /** Undo what the agent's file tools did on the branch this leaves. It can't be asked later. */
+      restoreFiles?: boolean;
+    }): Promise<{ ok: boolean; leaf_id?: string; files?: RestoredFiles }> {
       const res = await chatFetch('/chat/rewind', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...leaseHeader(args.threadId) },
@@ -1540,11 +1544,14 @@ export function createFelixClient(opts: FelixClientOptions) {
           event_id: args.eventId,
           summarize: args.summarize ?? false,
           ...(args.manifest ? { manifest: args.manifest } : {}),
+          // Only when asked: the request forbids extra keys, and a harness older than 0.14
+          // would refuse every rewind that carried it.
+          ...(args.restoreFiles ? { restore_files: true } : {}),
         }),
       });
       await refuseIfLease(res, 'rewind', args.threadId);
       if (!res.ok) throw new Error(`rewind: ${res.status} ${await detailOf(res)}`);
-      return (await res.json()) as { ok: boolean; leaf_id?: string };
+      return (await res.json()) as { ok: boolean; leaf_id?: string; files?: RestoredFiles };
     },
 
     /** POST /chat/ui — answer a select/confirm/input prompt. */
