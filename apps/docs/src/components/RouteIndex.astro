@@ -449,7 +449,7 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
   const groups = [...document.querySelectorAll<HTMLElement>('[data-route-group]')];
   if (box && input && status) {
     box.hidden = false;
-    input.addEventListener('input', () => {
+    const applyFilter = () => {
       const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
       let shown = 0;
       for (const row of rows) {
@@ -474,6 +474,24 @@ const coveredCount = ops.filter((op) => documented.has(`${op.method} ${shape(op.
           ? 'No route matches.'
           : `${shown} of ${rows.length} routes`
         : '';
+    };
+    // The filter is part of the address (`?q=`), so a filtered view can be linked
+    // and survives a reload; replaceState keeps typing out of the history.
+    const syncAddress = () => {
+      const url = new URL(location.href);
+      const q = input.value.trim();
+      if (q) url.searchParams.set('q', q);
+      else url.searchParams.delete('q');
+      history.replaceState(history.state, '', url);
+    };
+    input.addEventListener('input', () => {
+      applyFilter();
+      syncAddress();
     });
+    const initial = new URLSearchParams(location.search).get('q');
+    if (initial) {
+      input.value = initial;
+      applyFilter();
+    }
   }
 </script>

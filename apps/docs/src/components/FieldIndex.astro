@@ -228,7 +228,7 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
   const groups = [...document.querySelectorAll<HTMLElement>('[data-field-group]')];
   if (box && input && status) {
     box.hidden = false;
-    input.addEventListener('input', () => {
+    const applyFilter = () => {
       const terms = input.value.toLowerCase().split(/\s+/).filter(Boolean);
       let shown = 0;
       for (const field of fields) {
@@ -244,6 +244,19 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
           ? 'No field matches.'
           : `${shown} of ${fields.length} fields · Enter opens the first`
         : '';
+    };
+    // The filter is part of the address (`?q=`), so a filtered view can be linked
+    // and survives a reload; replaceState keeps typing out of the history.
+    const syncAddress = () => {
+      const url = new URL(location.href);
+      const q = input.value.trim();
+      if (q) url.searchParams.set('q', q);
+      else url.searchParams.delete('q');
+      history.replaceState(history.state, '', url);
+    };
+    input.addEventListener('input', () => {
+      applyFilter();
+      syncAddress();
     });
     // The lookup ends at the field: Enter goes to the first match.
     input.addEventListener('keydown', (event) => {
@@ -253,5 +266,10 @@ const short = (name: string) => name.replace(/\bspec\./g, '');
       event.preventDefault();
       location.href = first.href;
     });
+    const initial = new URLSearchParams(location.search).get('q');
+    if (initial) {
+      input.value = initial;
+      applyFilter();
+    }
   }
 </script>
