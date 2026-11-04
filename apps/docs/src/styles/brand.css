@@ -260,6 +260,34 @@
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+/* The home page's version: one row per sidebar group — its name, linking to its
+   first page, beside what it is for. One column, so the rows read as a choice
+   rather than a sitemap; the purpose drops under the name on a phone. */
+.where-next--groups {
+  display: block;
+}
+.where-next--groups li {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.25rem 1.5rem;
+  align-items: baseline;
+  padding-block: 0.6rem;
+}
+.where-next--groups li:last-child {
+  border-bottom: 1px solid var(--sl-color-hairline);
+}
+.where-next--groups a {
+  font-weight: 600;
+  padding-block: 0.125rem;
+}
+.where-next--groups span {
+  color: var(--sl-color-gray-2);
+}
+@media (max-width: 32rem) {
+  .where-next--groups li {
+    grid-template-columns: 1fr;
+  }
+}
 
 /*
  * The stream events, stacked: the event name, what it means, then its `data`
