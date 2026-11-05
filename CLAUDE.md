@@ -771,7 +771,7 @@ Flows worth knowing before editing the app:
   `as-of/4` collected every conversation's fourth turn. The client re-filters by thread, because an
   older harness ignores the parameter. **Add names the agent** ("Recalled by"): an agent recalls
   only rows stored under its own manifest id, and the form used to send `''`, so every memory added
-  here was recalled by nobody. **`DELETE` is soft** — the row becomes `forgotten`, which is why the
+  here was recalled by nobody. **A row is in a pool** (`felix-run/felix#677`): each names one (`for github:42`, `agent’s own`) and pressing it narrows the page through `?pool=`, whose three states are the harness's `principal`: absent is every pool, empty is the agents' own, a value is one person. There is no route listing people, so the rows are how you reach one. **`DELETE` is soft** — the row becomes `forgotten`, which is why the
   UI says "forget" — and the page offers Undo and a Forgotten view with Restore
   (`POST /memory/{id}/restore`, gated on whoever forgot it). A failed forget is said on its row:
   `ConfirmButton` has no `catch`, so a rejecting `onConfirm` used to leave it armed with nothing on

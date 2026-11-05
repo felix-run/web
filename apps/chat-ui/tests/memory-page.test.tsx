@@ -369,3 +369,80 @@ describe('the composition the second critique asked for', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 });
+
+/** Memory is per person (`felix-run/felix#677`), and `GET /memory` answers with every pool. */
+describe('whose memory it is', () => {
+  const person = 'felix-self|github:42';
+
+  it('says whose pool a row is in, without the issuer', async () => {
+    api({
+      listMemories: vi
+        .fn()
+        .mockResolvedValue([
+          row({ id: 'm1', content: 'Prefers tabs.', principal: person }),
+          row({ id: 'm2', content: 'Ship on Fridays.', principal: '' }),
+        ]),
+    });
+    await mount();
+    expect(await screen.findByRole('button', { name: 'for github:42' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'agent’s own' })).toBeTruthy();
+  });
+
+  it('says nothing on a harness with no pools', async () => {
+    api({ listMemories: vi.fn().mockResolvedValue([row({ id: 'm1', content: 'A fact.' })]) });
+    await mount();
+    await screen.findByText('A fact.');
+    expect(screen.queryByRole('button', { name: 'agent’s own' })).toBeNull();
+  });
+
+  it("narrows to the row's pool, in the address and the read, and back", async () => {
+    const fns = api({
+      listMemories: vi
+        .fn()
+        .mockResolvedValue([row({ id: 'm1', content: 'Prefers tabs.', principal: person })]),
+    });
+    await mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'for github:42' }));
+    await waitFor(() =>
+      expect(fns.listMemories).toHaveBeenLastCalledWith(
+        expect.objectContaining({ principal: person }),
+      ),
+    );
+    expect(screen.getByTestId('where').textContent).toContain('pool=');
+    expect(screen.getByText('Only github:42’s memories.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show everyone’s' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).not.toContain('pool='));
+    expect(fns.listMemories.mock.lastCall?.[0]).not.toHaveProperty('principal');
+  });
+
+  it("reads an empty pool as the agents' own, not as every pool", async () => {
+    const fns = api();
+    await mount('/harness/memory?pool=');
+    await waitFor(() =>
+      expect(fns.listMemories).toHaveBeenLastCalledWith(expect.objectContaining({ principal: '' })),
+    );
+    expect(screen.getByText('Only the agents’ own memories.')).toBeTruthy();
+  });
+
+  it('keeps the pool across a change of view', async () => {
+    const fns = api();
+    await mount('/harness/memory?pool=github%3A42');
+    fireEvent.click(await screen.findByRole('button', { name: 'Forgotten' }));
+    await waitFor(() =>
+      expect(fns.listMemories).toHaveBeenLastCalledWith(
+        expect.objectContaining({ principal: 'github:42', status: 'forgotten' }),
+      ),
+    );
+    expect(screen.getByTestId('where').textContent).toContain('pool=github');
+  });
+
+  it('adds to the person the page is narrowed to', async () => {
+    api();
+    await mount('/harness/memory?pool=github%3A42');
+    fireEvent.click(await screen.findByRole('button', { name: /Add memory/ }));
+    const person = screen.getByLabelText('Person (optional)') as HTMLInputElement;
+    expect(person.value).toBe('github:42');
+    expect(screen.getByText(/every agent acting for them reads/)).toBeTruthy();
+  });
+});
