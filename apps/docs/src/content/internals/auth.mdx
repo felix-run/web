@@ -509,7 +509,7 @@ A calendar with no OAuth here -- Outlook, a work account's, a shared one -- can 
 route comes with the `felix-connectors` plugin and its `ics` extra:
 
 `POST /connections/ics` `{label, url}`, as the person. `label` is the name the agent reads the feed
-by ("Work"): one line of at most 64 characters, no slash. `url` must be https on port 443 (a
+by ("Work"): one line of at most 64 characters, no slash, not only dots. `url` must be https on port 443 (a
 `webcal://` link is read as `https://`), with no credentials or fragment, on a host
 `FELIX_ICS_HOSTS` allows. Felix fetches it and keeps it only if it serves an iCalendar calendar, as a
 `secret` connection (provider `ics`, account the label lowercased, so "Work" and "work" are one
