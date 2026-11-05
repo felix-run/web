@@ -1,6 +1,6 @@
 {
   "$comment": "Every prefix the harness counts as a failed tool result, recorded from a checkout by scripts/sync-harness-contract.mjs. tool-results.test.ts fails on one it has no sample for: an unread prefix draws a green `done` on a call that failed, and no other check reads tool output. Do not hand-edit: re-run the sync.",
-  "harnessCommit": "6446723f",
+  "harnessCommit": "0958f1ed",
   "harnessVersion": "0.19.2",
   "failurePrefixes": [
     "[error/",

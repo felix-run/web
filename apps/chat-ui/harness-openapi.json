@@ -29,9 +29,6 @@
     "/v1/chat/completions": {
       "post": {}
     },
-    "/chat/": {
-      "post": {}
-    },
     "/chat": {
       "post": {}
     },
@@ -144,9 +141,6 @@
     "/internal/sessions/{session_id}/events": {
       "post": {}
     },
-    "/audit/": {
-      "get": {}
-    },
     "/audit": {
       "get": {}
     },
@@ -159,18 +153,12 @@
     "/artifacts/{manifest_id}/{artifact_id}": {
       "get": {}
     },
-    "/files/": {
-      "post": {}
-    },
     "/files": {
       "post": {}
     },
     "/files/{file_id}": {
       "get": {},
       "delete": {}
-    },
-    "/approvals/": {
-      "get": {}
     },
     "/approvals": {
       "get": {}
@@ -188,9 +176,6 @@
       "post": {},
       "delete": {}
     },
-    "/plans/": {
-      "get": {}
-    },
     "/plans": {
       "get": {}
     },
@@ -198,9 +183,6 @@
       "get": {},
       "put": {},
       "delete": {}
-    },
-    "/jobs/": {
-      "get": {}
     },
     "/jobs": {
       "get": {}
@@ -274,9 +256,6 @@
     "/triggers/{trigger_id}": {
       "post": {}
     },
-    "/manifests/": {
-      "get": {}
-    },
     "/manifests": {
       "get": {}
     },
@@ -323,10 +302,6 @@
     "/usage/threads": {
       "get": {}
     },
-    "/memory/": {
-      "get": {},
-      "post": {}
-    },
     "/memory": {
       "get": {},
       "post": {}
@@ -341,10 +316,6 @@
       "delete": {}
     },
     "/memory/{memory_id}/restore": {
-      "post": {}
-    },
-    "/documents/": {
-      "get": {},
       "post": {}
     },
     "/documents": {
@@ -478,9 +449,6 @@
     "/skill-library/{name}/evals/{eval_id}": {
       "get": {}
     },
-    "/a2a/": {
-      "post": {}
-    },
     "/a2a": {
       "post": {}
     },
@@ -546,6 +514,9 @@
       "post": {}
     },
     "/connections": {
+      "get": {}
+    },
+    "/connections/providers": {
       "get": {}
     },
     "/connections/tenant": {
