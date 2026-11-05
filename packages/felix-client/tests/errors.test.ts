@@ -112,3 +112,10 @@ describe('a memory written to a pool', () => {
     expect(describeError(err, 'store this memory').message).toContain('another pool');
   });
 });
+
+describe('a restore someone else owns', () => {
+  it('says the rewind did not happen', () => {
+    const err = new Error('rewind: 403 {"detail":"not_checkout_opener"}');
+    expect(describeError(err, 'rewind this thread').message).toContain('Nothing moved');
+  });
+});

@@ -115,6 +115,8 @@ const REFUSALS: Record<string, string> = {
     'that does not name one person. Use a person key, such as github:123, not a shared credential.',
   memory_held_by_another_pool:
     'the same memory already sits in another pool, so it was not stored.',
+  not_checkout_opener:
+    'this thread holds a repository checkout someone else opened, so only they can restore its files. Nothing moved.',
   not_job_writer:
     'only whoever last saved this job, or an operator, may run it by hand. Saving it again makes it yours.',
   job_running: 'a run of this job is still going. Try again once it has finished.',
@@ -126,7 +128,7 @@ const REFUSALS: Record<string, string> = {
 /** The harness's refusal code in a thrown error's text, when it is one of `REFUSALS`. */
 function refusalCode(text: string): string | null {
   const m =
-    /\b(approval_already_decided|approval_expired|self_approval_forbidden|principal_not_a_person|memory_held_by_another_pool|not_job_writer|job_running|job_changed_hands|compaction_failed)\b/.exec(
+    /\b(approval_already_decided|approval_expired|self_approval_forbidden|not_checkout_opener|principal_not_a_person|memory_held_by_another_pool|not_job_writer|job_running|job_changed_hands|compaction_failed)\b/.exec(
       text,
     );
   return m ? (m[1] as string) : null;
