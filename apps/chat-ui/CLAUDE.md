@@ -544,6 +544,16 @@ Elsewhere a rewind stays one click. After a restore there is no Undo or Restore 
 the leaf and not the files, and the transcript would claim writes that are gone. What a restore left
 alone stays on screen until dismissed. A branch switch settles too, and does not ask.
 
+## Connecting a person's accounts
+
+`/harness/connections` is drawn from `GET /connections/providers`, so what it offers is the
+deployment's, and a method it does not know is left out. **Google's return is finished exactly
+once**: the grant waits in a one-load cookie, so `takeConnectReturn` reads and clears the fragment
+in one step, and the effect that calls it has no cleanup guard, since StrictMode's second run finds
+nothing and discarding the first would lose the only answer. **An app password and a feed link are
+credentials**: they live in the form's state, are cleared before they are sent, and reach no address,
+storage or error. Scopes start unticked. Debug off, the page is not in the sidebar.
+
 ## Rendering
 
 **A streaming reply is drawn once per frame, not once per delta** (`src/lib/frame-store.ts`).
