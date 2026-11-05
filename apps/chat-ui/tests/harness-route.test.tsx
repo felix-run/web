@@ -252,7 +252,7 @@ describe('the harness address', () => {
       );
     expect(inGroup(0)).toEqual(['Activity', 'Jobs', 'Workflows']);
     expect(inGroup(1)).toEqual(['Memory', 'Documents', 'Skills']);
-    expect(inGroup(2)).toEqual(['Agent', 'Manifests', 'Eval', 'GitHub']);
+    expect(inGroup(2)).toEqual(['Agent', 'Manifests', 'Eval', 'GitHub', 'Connections']);
   });
 
   /**

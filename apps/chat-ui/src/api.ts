@@ -486,6 +486,123 @@ export async function revokeGitHubConnection(githubUserId: number): Promise<void
   if (!res.ok && res.status !== 404) throw await problem(res, 'revoke github connection');
 }
 
+/** One of your connections (`GET /connections`). Never a credential. */
+export interface Connection {
+  provider: string;
+  account: string;
+  label: string;
+  kind: 'oauth' | 'secret';
+  status: 'active' | 'revoked';
+  scopes?: string[];
+  created_at: number;
+  updated_at: number;
+  /** Epoch ms the stored grant expires; 0 when the provider did not say. */
+  expires_at?: number;
+}
+
+/** One row of `GET /connections/tenant`. */
+export interface TenantConnection extends Connection {
+  /** `issuer|subject`. */
+  person: string;
+}
+
+/** Something this deployment lets a person connect (`GET /connections/providers`). */
+export interface ConnectProvider {
+  provider: string;
+  label: string;
+  /** `oauth`, `app_password` or `feed_link`; a newer harness may add others. */
+  method: string;
+  scopes: string[];
+}
+
+/** GET /connections → the services you have connected in this tenant. */
+export async function listConnections(): Promise<Connection[]> {
+  const res = await apiFetch('/api/connections');
+  if (!res.ok) throw await problem(res, 'connections');
+  return ((await res.json()) as { items?: Connection[] }).items ?? [];
+}
+
+/** GET /connections/providers → what can be connected here; null on a harness without the route. */
+export async function listConnectProviders(): Promise<ConnectProvider[] | null> {
+  const res = await apiFetch('/api/connections/providers');
+  if (res.status === 404) return null;
+  if (!res.ok) throw await problem(res, 'connection providers');
+  return ((await res.json()) as { items?: ConnectProvider[] }).items ?? [];
+}
+
+/** DELETE /connections/{provider}/{account} → disconnect. A 404 means it was already gone. */
+export async function removeConnection(provider: string, account: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/connections/${encodeURIComponent(provider)}/${encodeURIComponent(account)}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok && res.status !== 404) throw await problem(res, 'disconnect');
+}
+
+/**
+ * POST /connections/google/start → where to send the browser. The response also sets the sealed
+ * flow cookie that alone lets this browser come back, which is why it goes through this origin.
+ */
+export async function startGoogleConnect(returnTo: string, scopes: string[]): Promise<string> {
+  const res = await apiFetch('/api/connections/google/start', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ return_to: returnTo, scopes }),
+  });
+  if (!res.ok) throw await problem(res, 'connect google');
+  return ((await res.json()) as { authorize_url: string }).authorize_url;
+}
+
+/** POST /connections/google/finish → keep the grant this browser brought back. Works once. */
+export async function finishGoogleConnect(): Promise<Connection> {
+  const res = await apiFetch('/api/connections/google/finish', { method: 'POST' });
+  if (!res.ok) throw await problem(res, 'keep the connection');
+  return (await res.json()) as Connection;
+}
+
+/** POST /connections/icloud → checked with Apple before it is kept. */
+export async function connectICloud(appleId: string, appPassword: string): Promise<Connection> {
+  const res = await apiFetch('/api/connections/icloud', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ apple_id: appleId, app_password: appPassword }),
+  });
+  if (!res.ok) throw await problem(res, 'connect icloud');
+  return (await res.json()) as Connection;
+}
+
+/** POST /connections/ics → a published calendar feed, by name. */
+export async function connectFeed(label: string, url: string): Promise<Connection> {
+  const res = await apiFetch('/api/connections/ics', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ label, url }),
+  });
+  if (!res.ok) throw await problem(res, 'connect calendar');
+  return (await res.json()) as Connection;
+}
+
+/** GET /connections/tenant → everyone's, for `connections:admin`. A 403 is the ordinary answer. */
+export async function listTenantConnections(): Promise<TenantConnection[]> {
+  const res = await apiFetch('/api/connections/tenant');
+  if (!res.ok) throw await problem(res, 'tenant connections');
+  return ((await res.json()) as { items?: TenantConnection[] }).items ?? [];
+}
+
+/** POST /connections/tenant/revoke → remove someone's. A 404 means it was already gone. */
+export async function revokeTenantConnection(
+  person: string,
+  provider: string,
+  account: string,
+): Promise<void> {
+  const res = await apiFetch('/api/connections/tenant/revoke', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ person, provider, account }),
+  });
+  if (!res.ok && res.status !== 404) throw await problem(res, 'revoke connection');
+}
+
 export interface GitHubRepo {
   full_name: string;
   private: boolean;
