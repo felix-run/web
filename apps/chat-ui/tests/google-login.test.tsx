@@ -1,9 +1,17 @@
 /** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
 import { getSession, setRelockHandler, setSession, signOut } from '../src/lib/auth';
+
+const renderChip = () =>
+  render(
+    <MemoryRouter>
+      <AccountChip />
+    </MemoryRouter>,
+  );
 
 /**
  * Google sign-in, at the wire: the harness offers it on `/auth/methods` as `google_redirect`, the
@@ -172,7 +180,7 @@ describe('the account chip, for a Google session', () => {
   it('renews by going to Google and back, not with a GitHub code', async () => {
     window.history.replaceState(null, '', '/t/abc');
     setSession(googleSession(5 * 60_000));
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as kids/i }));
     expect(await screen.findByText(/goes to Google and brings you back/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^sign in again$/i })).toBeNull();
@@ -190,7 +198,7 @@ describe('the account chip, for a Google session', () => {
     setSession(googleSession(3_600_000));
     const relock = vi.fn();
     setRelockHandler(relock);
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as kids/i }));
     expect(await screen.findByText(/is still honoured until/i)).toBeTruthy();
     expect(screen.queryByText(/the GitHub connection Felix holds/i)).toBeNull();
@@ -204,7 +212,7 @@ describe('the account chip, for a Google session', () => {
   it('keeps a session stored before Google sign-in on GitHub renewal', async () => {
     const { provider: _, ...older } = googleSession(5 * 60_000);
     setSession({ ...older, login: 'octo', tenant: 'acme' });
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as @octo/i }));
     expect(await screen.findByRole('button', { name: /^sign in again$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
@@ -320,7 +328,7 @@ describe("a Google session's profile", () => {
       name: 'Jade Bauman',
       picture: PIC,
     });
-    render(<AccountChip />);
+    renderChip();
     const chip = screen.getByRole('button', { name: 'Signed in as Jade Bauman' });
     expect(chip.textContent).toContain('Jade');
     expect(chip.textContent).not.toContain('Bauman');
@@ -338,7 +346,7 @@ describe("a Google session's profile", () => {
       provider: 'google',
       email: 'jade@example.com',
     });
-    render(<AccountChip />);
+    renderChip();
     expect(screen.getByRole('button', { name: 'Signed in as jade@example.com' })).toBeTruthy();
   });
 

@@ -8,6 +8,13 @@ import { GitHubPage } from '../src/components/harness/github';
 import { ThreadRepoSection } from '../src/components/workspace/thread-repo';
 import { getSession, setRelockHandler, setSession } from '../src/lib/auth';
 
+const renderChip = () =>
+  render(
+    <MemoryRouter>
+      <AccountChip />
+    </MemoryRouter>,
+  );
+
 /**
  * The GitHub App half of the browser: sign-in by redirect, the thread's repository on the harness,
  * and the connection the harness keeps for you — at the wire, through a stubbed `fetch`.
@@ -375,7 +382,7 @@ describe('your GitHub connection', () => {
           : { connected: false, connection: null },
       );
     };
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke GitHub access' }));
     // Arming asks; nothing is sent until the second press.

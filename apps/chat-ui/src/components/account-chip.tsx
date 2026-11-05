@@ -14,6 +14,9 @@
  * Signing out forgets the token and everything this browser kept for it (`lib/leave.ts`). The
  * harness cannot be told to stop honouring the token, so the popover says until when it still
  * would, rather than implying that leaving cancelled it.
+ *
+ * It also links to Connections, which the sidebar lists only on `/harness` pages and in debug. An
+ * account a person connects is theirs, not an operator's, so it belongs beside who they are.
  */
 
 import { Avatar, AvatarFallback, AvatarImage } from '@felix/ui/avatar';
@@ -22,6 +25,7 @@ import { cn } from '@felix/ui/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { RefreshCwIcon } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { Link } from 'react-router';
 import { type GitHubConnectionState, getGitHubConnection, removeGitHubConnection } from '@/api';
 import { type GitHubSession, getSession, setSession, subscribeCredentials } from '@/lib/auth';
 import { redirectToGoogle, useDeviceLogin } from '@/lib/github-login';
@@ -176,6 +180,17 @@ export function AccountChip() {
         )}
 
         {!google && <GitHubConnectionRow open={open} />}
+
+        <div className="space-y-1.5 border-t border-border/60 pt-3">
+          <Button asChild variant="ghost" size="sm" className="-ml-3.5 coarse:h-10">
+            <Link to="/harness/connections" onClick={() => setOpen(false)}>
+              Connections
+            </Link>
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            The accounts your agents can reach for you, and adding another.
+          </p>
+        </div>
 
         <div className="space-y-1.5 border-t border-border/60 pt-3">
           <Button

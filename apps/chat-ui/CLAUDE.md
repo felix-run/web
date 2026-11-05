@@ -552,7 +552,8 @@ once**: the grant waits in a one-load cookie, so `takeConnectReturn` reads and c
 in one step, and the effect that calls it has no cleanup guard, since StrictMode's second run finds
 nothing and discarding the first would lose the only answer. **An app password and a feed link are
 credentials**: they live in the form's state, are cleared before they are sent, and reach no address,
-storage or error. Scopes start unticked. Debug off, the page is not in the sidebar.
+storage or error. Scopes start unticked. Debug off, the sidebar lists it only on a `/harness` page,
+so the account chip's popover links to it; a browser with no sign-in has no chip and no person to connect for.
 
 ## Rendering
 
