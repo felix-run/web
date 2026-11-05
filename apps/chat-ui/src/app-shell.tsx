@@ -5,11 +5,14 @@ import {
   createChatEngine,
   describeCompaction,
   describeError,
+  describeRestoredFiles,
   eventsToTurns,
   isClosedApproval,
   LeaseRefusedError,
   type ManifestEntry,
   mergeSessions,
+  type RestoredFiles,
+  recordedFileChanges,
   routedDiffReader,
   SideQuestionError,
   snapshotToEvents,
@@ -98,6 +101,7 @@ import {
   RESEND_NOTICE,
   RUN_BUSY_NOTICE,
 } from '@/components/chat/multimodal-input';
+import { type RewindFilesAnswer, RewindFilesDialog } from '@/components/chat/rewind-files-dialog';
 import type { SlashCommand } from '@/components/chat/slash-commands';
 import type { Driver } from '@/components/chat/watching-banner';
 import { HarnessHealthLine } from '@/components/harness-health-line';
@@ -160,6 +164,7 @@ import {
 } from '@/lib/threads';
 import { cn } from '@/lib/utils';
 import { announceViewChange } from '@/lib/view-change';
+import { WORKSPACE_WRITTEN } from '@/lib/workspace-events';
 import {
   type ClientDiagnostics,
   NO_RUN,
@@ -321,6 +326,17 @@ function readView(): ViewLevel {
   } catch {
     return 'everyday';
   }
+}
+
+/** A restore's outcome. What it left undone stays on screen: it is what someone has to act on. */
+function reportRestoredFiles(said: string, files: RestoredFiles | undefined) {
+  const { done, problem } = describeRestoredFiles(files);
+  toast.message(
+    `${said} ${done}`,
+    problem
+      ? { description: problem, duration: Number.POSITIVE_INFINITY, closeButton: true }
+      : undefined,
+  );
 }
 
 export function AppShell() {
@@ -2306,6 +2322,30 @@ export function AppShell() {
     [feedback, serverEventId, threadId],
   );
 
+  /**
+   * Whether a rewind puts back the files on the turns it sets aside. Only asked when there are
+   * some the harness recorded: an agent's own thread workspace, written by its file tools.
+   * Elsewhere a rewind stays one click, and settles as `keep`, which is what it always did.
+   */
+  const [fileQuestion, setFileQuestion] = useState<{
+    files: number;
+    answer: (answer: RewindFilesAnswer) => void;
+  } | null>(null);
+  // Read through a ref so this never changes: `rewindTo` and `editTurn` take it, and a new
+  // identity for them on each thread refresh lays out every finished turn again mid-stream.
+  const fileContext = useRef({ threads, threadId, manifest, manifestEntries });
+  fileContext.current = { threads, threadId, manifest, manifestEntries };
+  const askAboutFiles = useCallback((abandoned: readonly Turn[]): Promise<RewindFilesAnswer> => {
+    const now = fileContext.current;
+    const agent = now.threads.find((t) => t.id === now.threadId)?.manifest?.trim() || now.manifest;
+    const workspace = now.manifestEntries.find((m) => m.id === agent)?.workspace;
+    const recorded =
+      workspace?.scope === 'thread' && (workspace.tools === 'server' || workspace.tools === 'both');
+    const files = recorded ? recordedFileChanges(abandoned) : 0;
+    if (files === 0) return Promise.resolve('keep');
+    return new Promise((resolve) => setFileQuestion({ files, answer: resolve }));
+  }, []);
+
   const rewindingRef = useRef(false);
   const rewindTo = useCallback(
     (eventId: string) => {
@@ -2319,13 +2359,32 @@ export function AppShell() {
       const canUndo = previousLeaf != null && previousLeaf !== eventId;
 
       rewindingRef.current = true;
-      void rewindChat({ threadId, eventId, summarize: false, manifest })
-        .then(() => {
+      void (async () => {
+        try {
+          const choice = await askAboutFiles(currentTurns.slice(targetIndex + 1));
+          if (choice === 'cancel') return;
+          const restoreFiles = choice === 'restore';
+          const { files } = await rewindChat({
+            threadId,
+            eventId,
+            summarize: false,
+            manifest,
+            ...(restoreFiles ? { restoreFiles } : {}),
+          });
           hydrateFromServer(threadId);
-          toast.message(
+          const said =
             hidden > 0
               ? `Rewound. ${hidden} later ${hidden === 1 ? 'turn is' : 'turns are'} off the active branch.`
-              : 'Rewound to this message.',
+              : 'Rewound to this message.';
+          if (restoreFiles) {
+            // No Undo: it would bring the turns back and not the files, leaving a transcript
+            // that claims writes which are no longer there.
+            window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
+            reportRestoredFiles(said, files);
+            return;
+          }
+          toast.message(
+            said,
             canUndo
               ? {
                   action: {
@@ -2344,13 +2403,14 @@ export function AppShell() {
                 }
               : undefined,
           );
-        })
-        .catch((err) => toastError(err, 'rewind this thread', { retry: () => rewindTo(eventId) }))
-        .finally(() => {
+        } catch (err) {
+          toastError(err, 'rewind this thread', { retry: () => rewindTo(eventId) });
+        } finally {
           rewindingRef.current = false;
-        });
+        }
+      })();
     },
-    [streaming, threadId, manifest, hydrateFromServer],
+    [streaming, threadId, manifest, hydrateFromServer, askAboutFiles],
   );
 
   /**
@@ -2430,7 +2490,21 @@ export function AppShell() {
           return;
         }
         const previousLeaf = [...server].reverse().find((t) => t.eventId)?.eventId ?? null;
-        await rewindChat({ threadId, eventId: target.parentEventId, summarize: false, manifest });
+        const choice = await askAboutFiles(local.slice(index));
+        if (choice === 'cancel') {
+          // The edit box closed when this was sent, so the composer is where the text survives.
+          setKept((was) => ({ text: next, files: [], n: (was?.n ?? 0) + 1 }));
+          return;
+        }
+        const restoreFiles = choice === 'restore';
+        const { files } = await rewindChat({
+          threadId,
+          eventId: target.parentEventId,
+          summarize: false,
+          manifest,
+          ...(restoreFiles ? { restoreFiles } : {}),
+        });
+        if (restoreFiles) window.dispatchEvent(new Event(WORKSPACE_WRITTEN));
         if (threadIdRef.current !== threadId) return;
 
         engine.setError(null);
@@ -2455,8 +2529,14 @@ export function AppShell() {
         if (threadIdRef.current !== threadId) return;
         await adoptVersions(threadId);
 
+        const said = 'Edited. The original and its replies are kept on another branch.';
+        // No Restore original once the files went back: see `rewindTo`.
+        if (restoreFiles) {
+          reportRestoredFiles(said, files);
+          return;
+        }
         toast.message(
-          'Edited. The original and its replies are kept on another branch.',
+          said,
           previousLeaf
             ? {
                 duration: 10_000,
@@ -2484,7 +2564,16 @@ export function AppShell() {
         editingRef.current = false;
       }
     },
-    [engine, streaming, threadId, manifest, streamInto, hydrateFromServer, adoptVersions],
+    [
+      engine,
+      streaming,
+      threadId,
+      manifest,
+      streamInto,
+      hydrateFromServer,
+      adoptVersions,
+      askAboutFiles,
+    ],
   );
 
   /**
@@ -3531,6 +3620,13 @@ export function AppShell() {
             <Outlet />
           </SidebarInset>
         </SidebarProvider>
+        <RewindFilesDialog
+          files={fileQuestion?.files ?? null}
+          onAnswer={(answer) => {
+            fileQuestion?.answer(answer);
+            setFileQuestion(null);
+          }}
+        />
       </ShellProvider>
     </div>
   );
