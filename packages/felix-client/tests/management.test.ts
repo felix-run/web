@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFelixClient } from '../src/transport';
 
 /**
@@ -178,5 +178,66 @@ describe('a memory pool on the wire', () => {
     await c.memoriesAsOf(4, { principal: 'github:42', threadId: 't' });
 
     expect(s.calls.every((call) => call.url.includes('principal=github%3A42'))).toBe(true);
+  });
+});
+
+describe('a heartbeat, against a real origin', () => {
+  it('escapes the manifest and uses the verb each route takes', async () => {
+    const s = stub({ items: [], status: 'ok' });
+    const c = client(s.fetch);
+    await c.listHeartbeats();
+    await c.setHeartbeat('a/b', false);
+    await c.runHeartbeat('a/b');
+    await c.deleteHeartbeat('a/b');
+    expect(s.calls).toEqual([
+      { url: 'http://localhost:8080/heartbeats', method: 'GET' },
+      { url: 'http://localhost:8080/heartbeats/a%2Fb', method: 'PUT' },
+      { url: 'http://localhost:8080/heartbeats/a%2Fb/run', method: 'POST' },
+      { url: 'http://localhost:8080/heartbeats/a%2Fb', method: 'DELETE' },
+    ]);
+  });
+
+  it('sends the state it was asked for: a body the harness reads as on by default', async () => {
+    const seen: unknown[] = [];
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      seen.push(JSON.parse(String(init?.body)));
+      return new Response('{}', { status: 200 });
+    });
+    await client(fetcher as unknown as typeof fetch).setHeartbeat('quick', false);
+    await client(fetcher as unknown as typeof fetch).setHeartbeat('quick', true);
+    expect(seen).toEqual([{ enabled: false }, { enabled: true }]);
+  });
+
+  it('unwraps the list, and reads no items as none', async () => {
+    const one = { manifest: 'quick', name: 'hb', enabled: true, schedule: '@daily' };
+    await expect(client(stub({ items: [one] }).fetch).listHeartbeats()).resolves.toEqual([one]);
+    await expect(client(stub({}).fetch).listHeartbeats()).resolves.toEqual([]);
+  });
+
+  it('names a heartbeat already gone, which the harness only calls not_found', async () => {
+    const s = stub({ detail: 'not_found' }, { status: 404 });
+    await expect(client(s.fetch).runHeartbeat('quick')).rejects.toThrow(/404 heartbeat_gone/);
+    await expect(client(s.fetch).deleteHeartbeat('quick')).rejects.toThrow(/404 heartbeat_gone/);
+  });
+
+  it('names an agent that is gone, and keeps every other refusal of a write', async () => {
+    const gone = stub({ detail: { error: 'unknown_manifest' } }, { status: 404 });
+    await expect(client(gone.fetch).setHeartbeat('quick', true)).rejects.toThrow(
+      /404 heartbeat_agent_gone/,
+    );
+    const body = { detail: { error: 'no_heartbeat', detail: 'x' } };
+    await expect(
+      client(stub(body, { status: 422 }).fetch).setHeartbeat('quick', true),
+    ).rejects.toThrow(/heartbeats\/set: 422 .*no_heartbeat/);
+    await expect(
+      client(stub({ detail: 'nope' }, { status: 403 }).fetch).deleteHeartbeat('quick'),
+    ).rejects.toThrow(/heartbeats\/delete: 403 .*nope/);
+  });
+
+  it('keeps the refusal code in the thrown text, where describeError finds it', async () => {
+    const s = stub({ detail: { error: 'heartbeat_running' } }, { status: 409 });
+    await expect(client(s.fetch).runHeartbeat('quick')).rejects.toThrow(
+      /heartbeats\/run: 409 .*heartbeat_running/,
+    );
   });
 });

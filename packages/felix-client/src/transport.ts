@@ -133,11 +133,19 @@ interface RawModelEntry {
     contextWindow?: number | null;
     starters?: unknown;
     greeting?: unknown;
+    heartbeat?: unknown;
     workspace?: unknown;
     commands?: unknown;
     outputStyles?: unknown;
     defaultOutputStyle?: unknown;
   } | null;
+}
+
+/** `felix.heartbeat`: what a person turning one on is agreeing to. Never the operator's checklist. */
+export interface ManifestHeartbeat {
+  schedule: string;
+  /** The IANA zone a cron schedule is read in. Absent is UTC. */
+  timezone?: string;
 }
 
 /** `metadata.greeting`: what a client says on an empty thread. Plain text. */
@@ -219,6 +227,11 @@ export interface ManifestEntry {
    */
   greeting?: ManifestGreeting;
   /**
+   * `felix.heartbeat` (`felix-run/felix#763`): the heartbeat this agent offers. Absent when it
+   * offers none or the harness predates the key, and either way there is nothing to turn on.
+   */
+  heartbeat?: ManifestHeartbeat;
+  /**
    * `felix.workspace` (`felix-run/felix#578`): which workspace this agent's file
    * tools work in. `server`: the harness's own (`read_file`, `write_file`, …),
    * so a file the operator should edit is there, not in the browser. `client`:
@@ -262,6 +275,13 @@ function toGreeting(raw: unknown): ManifestGreeting | undefined {
   const { headline, subtitle } = raw as { headline?: unknown; subtitle?: unknown };
   if (typeof headline !== 'string' || !headline) return undefined;
   return typeof subtitle === 'string' && subtitle ? { headline, subtitle } : { headline };
+}
+
+function toHeartbeat(raw: unknown): ManifestHeartbeat | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { schedule, timezone } = raw as { schedule?: unknown; timezone?: unknown };
+  if (typeof schedule !== 'string' || !schedule) return undefined;
+  return typeof timezone === 'string' && timezone ? { schedule, timezone } : { schedule };
 }
 
 // The harness lists only names a person can type; checked again so a malformed entry cannot
@@ -320,6 +340,8 @@ function toManifestEntry(raw: RawModelEntry): ManifestEntry {
   if (starters) entry.starters = starters;
   const greeting = toGreeting(raw.felix?.greeting);
   if (greeting) entry.greeting = greeting;
+  const heartbeat = toHeartbeat(raw.felix?.heartbeat);
+  if (heartbeat) entry.heartbeat = heartbeat;
   const workspace = toWorkspace(raw.felix?.workspace);
   if (workspace) entry.workspace = workspace;
   const commands = toCommands(raw.felix?.commands);

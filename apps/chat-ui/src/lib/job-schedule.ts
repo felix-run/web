@@ -204,3 +204,13 @@ export function scheduleLabel(schedule: string): string {
   }
   return schedule.trim();
 }
+
+/** `scheduleLabel` with the zone a cron schedule is read in; `null` is UTC. An interval has none. */
+export function zonedScheduleLabel(schedule: string, timezone?: string | null): string {
+  const label = scheduleLabel(schedule);
+  try {
+    return parseSchedule(schedule).kind === 'cron' ? `${label} · ${timezone ?? 'UTC'}` : label;
+  } catch {
+    return label;
+  }
+}

@@ -55,6 +55,7 @@ export {
   IdempotencyKeyReusedError,
   isClosedApproval,
   isLeaseRefusal,
+  isNoPersonRefusal,
   LeaseRefusedError,
   RunInProgressError,
   SendRefusedError,
@@ -86,6 +87,7 @@ export {
   type DocumentHit,
   type DocumentRecord,
 } from './management/documents';
+export type { Heartbeat, HeartbeatRun } from './management/heartbeats';
 export type { MemoryHit, MemoryRecord } from './management/memory';
 export {
   flattenPlan,
@@ -229,6 +231,7 @@ export {
   type ManifestCommand,
   type ManifestEntry,
   type ManifestGreeting,
+  type ManifestHeartbeat,
   type ManifestOutputStyle,
   type ManifestStarter,
   type ManifestWorkspace,

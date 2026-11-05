@@ -851,3 +851,16 @@ used to send the operator back to the thread. Rules that are easy to break:
   stay files-only.
 - `?open=<path>` names the active **browser** file in the address; other kinds come back from
   session storage only. `tests/side-pane.test.tsx` pins all of it, including the zone handover on the real `App`.
+
+## Heartbeats
+
+A heartbeat is the operator's check (`spec.heartbeat`) that each person turns on for themselves, so
+it is the one part of `/harness/agent` that writes: `components/harness/agent-heartbeat.tsx`, a slot on
+`AgentSheet` drawn above the spec's read, because it needs `heartbeats:*` and not `manifests:read`. The
+offer is `ManifestEntry.heartbeat` from `/v1/models`, since `GET /heartbeats` lists only the caller's
+own. No offer and no row draws nothing, even on a refused read. A row without an offer still draws: the
+harness always lets a person turn off or remove what they have, and refuses turning it back on. Turn
+off is `PUT` and keeps the job; Remove is `DELETE`, and either way the conversation stays. A run's
+`result.reason` is a code (`daily_cap`), so `runOutcome` says it in words and never quotes it.
+`Heartbeat` is unguarded by `check-payload-shapes`: the recorder reads
+`_<row>_dict` serializers, and the harness's is `felix/jobs/heartbeat.py:public`.

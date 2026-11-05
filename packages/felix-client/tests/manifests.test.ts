@@ -264,3 +264,25 @@ describe('side questions', () => {
     });
   });
 });
+
+describe('heartbeat', () => {
+  it('keeps the schedule and zone, and treats anything else as no offer', async () => {
+    const { client } = serve({
+      object: 'list',
+      data: [
+        { id: 'a', felix: { heartbeat: { schedule: '0 9 * * *', timezone: 'America/Phoenix' } } },
+        { id: 'b', felix: { heartbeat: { schedule: '@hourly', timezone: null } } },
+        { id: 'c', felix: { heartbeat: null } },
+        { id: 'd', felix: { heartbeat: { timezone: 'UTC' } } },
+        { id: 'e', felix: {} },
+      ],
+    });
+    expect(await client.listManifestEntries()).toEqual([
+      { id: 'a', heartbeat: { schedule: '0 9 * * *', timezone: 'America/Phoenix' } },
+      { id: 'b', heartbeat: { schedule: '@hourly' } },
+      { id: 'c' },
+      { id: 'd' },
+      { id: 'e' },
+    ]);
+  });
+});

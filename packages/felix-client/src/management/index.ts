@@ -23,6 +23,7 @@ import type { FelixHttp } from '../http';
 import { createArtifactsClient } from './artifacts';
 import { createAuditClient } from './audit';
 import { createDocumentsClient } from './documents';
+import { createHeartbeatsClient } from './heartbeats';
 import { createMemoryClient } from './memory';
 import { createPlansClient } from './plans';
 import { createRuntimeSkillsClient } from './runtime-skills';
@@ -36,6 +37,7 @@ export function createManagementClient(http: FelixHttp) {
     ...createAuditClient(http),
     ...createUsageClient(http),
     ...createMemoryClient(http),
+    ...createHeartbeatsClient(http),
     ...createDocumentsClient(http),
     ...createPlansClient(http),
     ...createArtifactsClient(http),

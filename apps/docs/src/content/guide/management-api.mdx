@@ -1445,7 +1445,8 @@ curl -s -X PUT "$BASE_URL/heartbeats/assistant" \
 other field — a `schedule`, a prompt — is a `422`. It writes the job
 `hb-<manifest>-<first 12 hex of sha256(caller)>`, one per person per manifest, recorded as written by
 the caller with their scopes, exactly as a [job](#jobs) write records its writer. The first firing
-waits for the schedule's next slot; turning it on does not run it. On first enrolment it creates the
+waits for the schedule's next slot, and so does the next one after turning it back on; turning it on
+does not run it. On first enrolment it creates the
 caller's heartbeat conversation (`{tenant}:hb-<hex>`, titled `Heartbeat: <manifest>` in
 `GET /chat/sessions`), and a later `PUT` keeps the same one while it exists. The answer is the
 heartbeat as below.
@@ -1458,7 +1459,9 @@ tenant — cannot be re-checked, so the heartbeat records the token's `exp` and 
 heartbeat on has expired; turn it on again") and the heartbeat is turned off; a `PUT` with a fresh
 credential turns it on again.
 
-Refusals, in the order they are checked:
+Refusals, in the order they are checked. Turning off a heartbeat the caller already has stops at
+`shared_subject`: it asks nothing of the manifest, so it works on one that has since been deleted,
+dropped its heartbeat or closed to them.
 
 | Status | `error` | When |
 |---|---|---|
