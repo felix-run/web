@@ -1,8 +1,21 @@
 /** @vitest-environment happy-dom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChip } from '../src/components/account-chip';
 import { Gate } from '../src/components/gate';
+
+function Where() {
+  return <span data-testid="where">{useLocation().pathname}</span>;
+}
+
+const renderChip = () =>
+  render(
+    <MemoryRouter>
+      <AccountChip />
+    </MemoryRouter>,
+  );
+
 import {
   authHeaders,
   getSession,
@@ -313,13 +326,13 @@ describe('the account chip', () => {
   });
 
   it('names no one when not signed in', () => {
-    const { container } = render(<AccountChip />);
+    const { container } = renderChip();
     expect(container.innerHTML).toBe('');
   });
 
   it('shows who is signed in, quietly, until the session is ending', () => {
     setSession(session(3_600_000));
-    render(<AccountChip />);
+    renderChip();
     const chip = screen.getByRole('button', { name: 'Signed in as @octo' });
     expect(chip.textContent).toContain('octo');
     expect(chip.textContent).not.toMatch(/\dm$/);
@@ -327,17 +340,31 @@ describe('the account chip', () => {
 
   it('counts down in the last fifteen minutes', () => {
     setSession(session(12 * 60_000));
-    render(<AccountChip />);
+    renderChip();
     expect(
       screen.getByRole('button', { name: 'Signed in as @octo, session ends in 12 min' }),
     ).toBeTruthy();
+  });
+
+  it('reaches Connections from the popover, and gets out of the way', async () => {
+    setSession(session(3_600_000));
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AccountChip />
+        <Where />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Connections' }));
+    expect(screen.getByTestId('where').textContent).toBe('/harness/connections');
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Connections' })).toBeNull());
   });
 
   it('signs out to the gate without claiming the token is cancelled', async () => {
     setSession(session(3_600_000));
     const relock = vi.fn();
     setRelockHandler(relock);
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
     expect(await screen.findByText(/is still honoured until/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
@@ -360,7 +387,7 @@ describe('the account chip', () => {
     const relock = vi.fn();
     setRelockHandler(relock);
     routes['/api/auth/github/token'] = () => json({ ...TOKEN, access_token: 'fresh' });
-    render(<AccountChip />);
+    renderChip();
     fireEvent.click(screen.getByRole('button', { name: /signed in as/i }));
     fireEvent.click(await screen.findByRole('button', { name: /sign in again/i }));
     // Inside the popover too, which manages focus of its own.

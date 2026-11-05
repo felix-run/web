@@ -145,7 +145,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': {
+      // Anchored with its slash, as `refuseCrossSiteWrites` tests it. A bare `/api` is a prefix
+      // match, so `/apiconnections/icloud` skipped that guard, was rewritten to a real route and
+      // went upstream carrying the dev key: a write any page the developer visits could send.
+      '^/api/': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),

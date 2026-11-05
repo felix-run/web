@@ -548,6 +548,9 @@
     "/connections": {
       "get": {}
     },
+    "/connections/providers": {
+      "get": {}
+    },
     "/connections/tenant": {
       "get": {}
     },

@@ -11,6 +11,7 @@ import {
   GitBranchIcon,
   GithubIcon,
   type LucideIcon,
+  PlugIcon,
   PuzzleIcon,
   WorkflowIcon,
 } from 'lucide-react';
@@ -63,13 +64,14 @@ export type HarnessPath =
   | 'activity'
   | 'agent'
   | 'github'
+  | 'connections'
   | 'manifests'
   | 'jobs'
   | 'workflows'
   | 'eval';
 
 /**
- * The ten destinations, declared once.
+ * The eleven destinations, declared once.
  *
  * The nav and the route table are built from this same list, because a nav entry
  * with no route is a dead link and a route with no nav entry is a page nobody can
@@ -77,7 +79,7 @@ export type HarnessPath =
  *
  * `group` is the question a page answers, in the order an operator coming back
  * asks them: what happened (Activity, Jobs, Workflows), what the agent knows (Memory,
- * Documents, Skills), and how it is set up (Agent, Manifests, Eval, GitHub). It
+ * Documents, Skills), and how it is set up (Agent, Manifests, Eval, GitHub, Connections). It
  * was *records* and *workbenches* — read versus changed — which was how the code
  * was sorted, not a question anyone arrives with, and the first run had grown to
  * six. Runs of four or fewer are read at a glance; Activity leads because
@@ -88,6 +90,9 @@ const MANIFEST_REFERENCE = `${DOCS_ORIGIN}/guide/manifest-reference/`;
 
 /** Where the GitHub page's reference lives: the connection and per-person repositories. */
 export const GITHUB_DOCS = `${DOCS_ORIGIN}/internals/auth/#per-person-repositories`;
+
+/** Where the Connections page's reference lives: the vault and each provider's flow. */
+export const CONNECTIONS_DOCS = `${DOCS_ORIGIN}/internals/auth/#stored-connections`;
 
 export const HARNESS_DESTINATIONS: {
   path: HarnessPath;
@@ -179,6 +184,14 @@ export const HARNESS_DESTINATIONS: {
     icon: GithubIcon,
     group: 'setup',
     element: <HarnessPage path="github" />,
+  },
+  {
+    path: 'connections',
+    docs: CONNECTIONS_DOCS,
+    label: 'Connections',
+    icon: PlugIcon,
+    group: 'setup',
+    element: <HarnessPage path="connections" />,
   },
 ];
 

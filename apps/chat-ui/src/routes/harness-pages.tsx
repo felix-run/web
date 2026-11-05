@@ -5,6 +5,7 @@ import { modelsById } from '@/components/agent-select';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { ActivityLedger } from '@/components/harness/activity-ledger';
 import { AgentSkills } from '@/components/harness/agent-skills';
+import { ConnectionsPage } from '@/components/harness/connections';
 import { DocumentsSection } from '@/components/harness/documents';
 import { GitHubPage } from '@/components/harness/github';
 import { HarnessAgentPicker, useHarnessAgent } from '@/components/harness/harness-agent';
@@ -17,7 +18,7 @@ import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { WorkflowsPage } from '@/components/workflows/workflows-page';
 import { useShell } from '@/shell-context';
-import { GITHUB_DOCS, type HarnessPath } from './harness';
+import { CONNECTIONS_DOCS, GITHUB_DOCS, type HarnessPath } from './harness';
 
 /**
  * The harness: everything the tenant owns, at the lifetime it actually has.
@@ -170,6 +171,10 @@ function GitHubPanel() {
   return <GitHubPage docs={GITHUB_DOCS} />;
 }
 
+function ConnectionsPanel() {
+  return <ConnectionsPage docs={CONNECTIONS_DOCS} />;
+}
+
 function AgentPanel() {
   const { agent } = useHarnessAgent();
   return (
@@ -194,6 +199,7 @@ const PAGES: Record<HarnessPath, () => React.ReactNode> = {
   activity: ActivityPanel,
   agent: AgentPanel,
   github: GitHubPanel,
+  connections: ConnectionsPanel,
   manifests: ManifestsPanel,
   jobs: JobsPanel,
   workflows: WorkflowsPage,
