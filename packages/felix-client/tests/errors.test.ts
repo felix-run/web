@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeError, isClosedApproval } from '../src/errors';
+import { describeError, isClosedApproval, isNoPersonRefusal } from '../src/errors';
 
 /**
  * A refused send says why. Every 409 used to read as an approval someone else had
@@ -117,5 +117,39 @@ describe('a restore someone else owns', () => {
   it('says the rewind did not happen', () => {
     const err = new Error('rewind: 403 {"detail":"not_checkout_opener"}');
     expect(describeError(err, 'rewind this thread').message).toContain('Nothing moved');
+  });
+});
+
+describe('a heartbeat refused', () => {
+  it.each([
+    ['no_caller', 403, /belongs to a signed-in person/],
+    ['shared_subject', 403, /this credential is shared and names no person/],
+    ['heartbeat_running', 409, /a run of this heartbeat is still going/],
+    ['no_heartbeat', 422, /no longer defines a heartbeat/],
+  ])('reads %s by its code, not its status', (code, status, words) => {
+    const err = new Error(`heartbeats/set: ${status} {"detail":{"error":"${code}","detail":"x"}}`);
+    expect(describeError(err, 'turn on your heartbeat').message).toMatch(words);
+  });
+
+  it.each([
+    ['heartbeats/run: 404 heartbeat_gone', /no longer there, so nothing was done/],
+    ['heartbeats/set: 404 heartbeat_agent_gone', /this agent no longer exists/],
+  ])('reads what the client itself threw: %s', (text, words) => {
+    expect(describeError(new Error(text), 'turn on your heartbeat').message).toMatch(words);
+  });
+
+  it('tells a caller who names no person from any other refusal', () => {
+    expect(isNoPersonRefusal(new Error('heartbeats: 403 {"detail":{"error":"no_caller"}}'))).toBe(
+      true,
+    );
+    expect(
+      isNoPersonRefusal(new Error('heartbeats: 403 {"detail":{"error":"shared_subject"}}')),
+    ).toBe(true);
+    expect(isNoPersonRefusal(new Error('heartbeats: 403 {"detail":"no"}'))).toBe(false);
+  });
+
+  it('does not take a longer word for a code', () => {
+    const err = new Error('jobs: 403 {"detail":"no_heartbeats_here"}');
+    expect(describeError(err, 'list jobs').message).not.toMatch(/no longer defines a heartbeat/);
   });
 });

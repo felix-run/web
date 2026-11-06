@@ -22,15 +22,24 @@ import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/types';
 /**
  * Agent spec panel — "what is this agent". Shows the resolved manifest spec for
  * the *selected* agent and, below it, the orchestrator's A2A discovery card (the
- * peer-facing document for the default manifest). Read-only; reflects what the
- * harness compiled.
+ * peer-facing document for the default manifest). Reflects what the harness compiled,
+ * and writes nothing itself: the one part that writes is the `heartbeat` slot.
  *
  * The parts are ranked by the question an operator opens this page with — what
  * can it do, what can it reach, and what stops it — before how it is configured
  * to think. Governance used to sit fifth, below the loop pattern and the
  * temperature, at the same weight as both.
  */
-export function AgentSheet({ manifest, picker }: { manifest: string; picker?: ReactNode }) {
+export function AgentSheet({
+  manifest,
+  picker,
+  heartbeat,
+}: {
+  manifest: string;
+  picker?: ReactNode;
+  /** The person's own heartbeat on this agent. Drawn whatever becomes of the spec's read: it needs `heartbeats:*`, not `manifests:read`. */
+  heartbeat?: ReactNode;
+}) {
   const [resolved, setResolved] = useState<ResolvedManifest | null>(null);
   const [card, setCard] = useState<AgentCard | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -103,6 +112,8 @@ export function AgentSheet({ manifest, picker }: { manifest: string; picker?: Re
       />
 
       <PanelBody>
+        {heartbeat && <div className="mb-6">{heartbeat}</div>}
+
         {/* The same loading and failure grammar as every section page, rather
             than a bare "Loading…" line only this page drew. */}
         <SectionBody

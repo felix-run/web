@@ -123,14 +123,22 @@ const REFUSALS: Record<string, string> = {
   job_changed_hands:
     'someone else saved this job just now, which clears its preferences, so these were not kept.',
   compaction_failed: 'the summariser failed, so the thread was left as it was.',
+  no_caller: 'this belongs to a signed-in person, and this request has none. Sign in as yourself.',
+  shared_subject:
+    'this credential is shared and names no person, so this could not belong to anyone. Sign in as yourself.',
+  heartbeat_running: 'a run of this heartbeat is still going. Try again once it has finished.',
+  no_heartbeat: 'this agent no longer defines a heartbeat.',
+  // Not the harness's word: it answers `not_found`, too broad to match in every route's text, so
+  // the heartbeats client names the one case it means.
+  heartbeat_gone: 'this heartbeat is no longer there, so nothing was done.',
+  heartbeat_agent_gone: 'this agent no longer exists, so its heartbeat cannot be turned on.',
 };
+
+const REFUSAL_CODE = new RegExp(`\\b(${Object.keys(REFUSALS).join('|')})\\b`);
 
 /** The harness's refusal code in a thrown error's text, when it is one of `REFUSALS`. */
 function refusalCode(text: string): string | null {
-  const m =
-    /\b(approval_already_decided|approval_expired|self_approval_forbidden|not_checkout_opener|principal_not_a_person|memory_held_by_another_pool|not_job_writer|job_running|job_changed_hands|compaction_failed)\b/.exec(
-      text,
-    );
+  const m = REFUSAL_CODE.exec(text);
   return m ? (m[1] as string) : null;
 }
 
@@ -141,6 +149,15 @@ function refusalCode(text: string): string | null {
 export function isClosedApproval(err: unknown): boolean {
   const code = refusalCode(String((err as Error)?.message ?? err));
   return code === 'approval_already_decided' || code === 'approval_expired';
+}
+
+/**
+ * Refused because the caller names no one person: a shared key, or no sign-in at all. A standing
+ * answer no retry changes, so a page says it once, quietly, and does not raise an alert.
+ */
+export function isNoPersonRefusal(err: unknown): boolean {
+  const code = refusalCode(String((err as Error)?.message ?? err));
+  return code === 'no_caller' || code === 'shared_subject';
 }
 
 /** A network-layer failure, i.e. the request never reached the harness at all. */

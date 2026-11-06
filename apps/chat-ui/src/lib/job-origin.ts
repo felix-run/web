@@ -41,7 +41,9 @@ export function takeoverQuestion(j: JobRecord, origin: JobOrigin, verb: string):
 }
 
 /** The tool sources a run could not reach, across the agent and any child it compiled. */
-export function missingSources(run: JobRun): string[] {
+export function missingSources(run: {
+  result?: { unavailable_sources?: Record<string, string[]> } | null;
+}): string[] {
   const by = run.result?.unavailable_sources;
   return by ? [...new Set(Object.values(by).flat())] : [];
 }

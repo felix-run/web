@@ -98,6 +98,55 @@ describe('the harness address', () => {
     expect(document.body.textContent).toContain(label);
   });
 
+  it('offers the heartbeat /v1/models names, on the agent in the address, without the spec', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/v1/models')) {
+          const felix = { heartbeat: { schedule: '0 9 * * *', timezone: 'America/Phoenix' } };
+          const data = [{ id: 'quick' }, { id: 'deep', felix }];
+          return new Response(JSON.stringify({ data }), { status: 200 });
+        }
+        if (url.includes('/manifests')) return new Response('{}', { status: 403 });
+        const body = { items: [], requests: [], events: [], sessions: [] };
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+    );
+    mount('/harness/agent?agent=deep');
+    const consent = await screen.findByText(/deep can check in for you/);
+    expect(consent.textContent).toContain('0 9 * * * · America/Phoenix');
+  });
+
+  it("does not carry one agent's heartbeat news onto the next", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/v1/models')) {
+          const felix = { heartbeat: { schedule: '@daily', timezone: null } };
+          const data = [
+            { id: 'deep', felix },
+            { id: 'quick', felix },
+          ];
+          return new Response(JSON.stringify({ data }), { status: 200 });
+        }
+        if (init?.method === 'PUT' && url.includes('/heartbeats/')) {
+          const row = { manifest: 'deep', name: 'hb', enabled: true, schedule: '@daily' };
+          return new Response(JSON.stringify(row), { status: 200 });
+        }
+        const body = { items: [], requests: [], events: [], sessions: [] };
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+    );
+    mount('/harness/agent?agent=deep');
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
+    await screen.findByText(/Your heartbeat is on/);
+    act(() => go('/harness/agent?agent=quick'));
+    await screen.findByText(/quick can check in for you/);
+    expect(screen.queryByText(/Your heartbeat is on/)).toBeNull();
+  });
+
   it('offers every destination in the nav, so none is reachable only by typing', async () => {
     mount('/harness');
     await waitFor(() => expect(document.body.textContent).toContain('Memory'));

@@ -4,6 +4,7 @@ import { AgentSheet } from '@/components/agent/agent-sheet';
 import { modelsById } from '@/components/agent-select';
 import { EvalSheet } from '@/components/eval/eval-sheet';
 import { ActivityLedger } from '@/components/harness/activity-ledger';
+import { AgentHeartbeat } from '@/components/harness/agent-heartbeat';
 import { AgentSkills } from '@/components/harness/agent-skills';
 import { ConnectionsPage } from '@/components/harness/connections';
 import { DocumentsSection } from '@/components/harness/documents';
@@ -17,7 +18,7 @@ import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { WorkflowsPage } from '@/components/workflows/workflows-page';
-import { useShell } from '@/shell-context';
+import { useShell, useShellPick } from '@/shell-context';
 import { CONNECTIONS_DOCS, GITHUB_DOCS, type HarnessPath } from './harness';
 
 /**
@@ -176,9 +177,15 @@ function ConnectionsPanel() {
 }
 
 function AgentPanel() {
+  const { manifestEntries } = useShellPick('manifestEntries');
   const { agent } = useHarnessAgent();
+  const offer = manifestEntries.find((m) => m.id === agent)?.heartbeat;
   return (
-    <AgentSheet manifest={agent} picker={<HarnessAgentPicker labelledBy="agent-page-heading" />} />
+    <AgentSheet
+      manifest={agent}
+      picker={<HarnessAgentPicker labelledBy="agent-page-heading" />}
+      heartbeat={<AgentHeartbeat key={agent} agent={agent} offer={offer} />}
+    />
   );
 }
 
