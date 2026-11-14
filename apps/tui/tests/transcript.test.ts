@@ -3,6 +3,7 @@ import type { Turn } from '@felix/client';
 import { createTextAttributes, type ScrollBoxRenderable } from '@opentui/core';
 import { createElement } from 'react';
 import { spinnerTicking, Transcript } from '../src/ui/transcript';
+import { WorkspaceResults } from '../src/ui/workspace-summary';
 import { hasAttribute, lines, mount, shows, styleOf, testTheme } from './render';
 
 /**
@@ -31,6 +32,78 @@ const user = (content: string): Turn => ({
   id: `u-${content}`,
   role: 'user',
   content,
+});
+
+describe('workspace result summary', () => {
+  it('integrates the summary for a completed coding turn', async () => {
+    const turn: Turn = {
+      id: 'work',
+      role: 'assistant',
+      content: '',
+      tools: [{ name: 'local_edit', input: { path: 'a.ts' }, output: 'edited', done: true }],
+    };
+    const ui = await mount(
+      createElement(Transcript, { turns: [turn], showWorkspaceResults: true, theme: testTheme }),
+      { width: 60, height: 16 },
+    );
+    try {
+      expect(shows(ui.frame(), 'Workspace results')).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('shows observed operations and failures in a narrow terminal', async () => {
+    const turn: Turn = {
+      id: 'work',
+      role: 'assistant',
+      content: '',
+      tools: [
+        { name: 'local_edit', input: { path: 'src/api.ts' }, output: 'edited', done: true },
+        {
+          name: 'local_shell',
+          input: { command: 'npm test' },
+          output: '[tool error/provider_error] exit 1',
+          done: true,
+        },
+      ],
+    };
+    const ui = await mount(createElement(WorkspaceResults, { turn, theme: testTheme }), {
+      width: 38,
+      height: 14,
+    });
+    try {
+      expect(shows(ui.frame(), 'Workspace results')).toBe(true);
+      expect(shows(ui.frame(), 'File operations: 1')).toBe(true);
+      expect(shows(ui.frame(), 'Issues: 1')).toBe(true);
+      expect(ui.frame()).not.toContain('Commands completed');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('waits until streaming finishes before displaying a summary', async () => {
+    const turn: Turn = {
+      id: 'work',
+      role: 'assistant',
+      content: '',
+      tools: [{ name: 'local_edit', input: { path: 'a.ts' }, output: 'edited', done: true }],
+    };
+    const ui = await mount(
+      createElement(Transcript, {
+        turns: [turn],
+        streaming: true,
+        showWorkspaceResults: true,
+        theme: testTheme,
+      }),
+      { width: 60, height: 12 },
+    );
+    try {
+      expect(ui.frame()).not.toContain('Workspace results');
+    } finally {
+      ui.stop();
+    }
+  });
 });
 
 describe('the greeting', () => {

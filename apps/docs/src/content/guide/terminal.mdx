@@ -449,3 +449,11 @@ Commands start inside the project, but **are not sandboxed**: an approved comman
 account's filesystem and network access. stdin is closed; interactive programs are unsupported.
 Output is capped at 200 kB and commands time out after four minutes. Stop cancels the process
 group. `local_open` displays text files through `$PAGER`; web URLs appear as links to open manually.
+
+
+After a `code` turn finishes, **Workspace results** summarizes observed file operations,
+completed commands, issues, unconfirmed operations, and unfinished plan steps. It uses
+recorded tool results, not the agent's prose. A completed command is not a claim that tests
+passed. Failed attempts remain visible even after a successful retry; partial or missing
+results are marked unconfirmed. Each group shows up to six entries, with the rest available
+in the tool results above.
