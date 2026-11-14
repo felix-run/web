@@ -23,10 +23,12 @@ async function writeAndCommit(
   writable: FileSystemWritableFileStream,
   data: string | Uint8Array<ArrayBuffer>,
   check: MutationCheck,
+  beforeCommit?: () => Promise<void>,
 ): Promise<void> {
   try {
     check();
     await writable.write(data);
+    await beforeCommit?.();
     check();
     await writable.close();
   } catch (error) {
@@ -224,11 +226,12 @@ export async function mountWrite(
   content: string,
   append = false,
   check: MutationCheck = unchecked,
+  expected?: string,
 ): Promise<void> {
-  const { parent, name } = await resolve(path, { create: true, check });
+  const { parent, name } = await resolve(path, { create: expected === undefined, check });
   check();
   if (!name) throw new Error('not a file');
-  const fileHandle = await parent.getFileHandle(name, { create: true });
+  const fileHandle = await parent.getFileHandle(name, { create: expected === undefined });
   check();
   let next = content;
   if (append) {
@@ -241,8 +244,14 @@ export async function mountWrite(
     }
   }
   check();
+  const verify = async () => {
+    if (expected !== undefined && (await (await fileHandle.getFile()).text()) !== expected)
+      throw new Error(`${path} changed since it was read; read it again before editing`);
+    check();
+  };
+  await verify();
   const writable = await fileHandle.createWritable();
-  await writeAndCommit(writable, next, check);
+  await writeAndCommit(writable, next, check, verify);
 }
 
 export async function mountMkdir(path: string, check: MutationCheck = unchecked): Promise<void> {
@@ -388,6 +397,12 @@ export async function mountRename(
   const writable = await out.createWritable();
   await writeAndCommit(writable, bytes, check);
   check();
+  const latest = new Uint8Array(
+    await (await (await src.parent.getFileHandle(src.name)).getFile()).arrayBuffer(),
+  );
+  check();
+  if (latest.length !== bytes.length || latest.some((byte, index) => byte !== bytes[index]))
+    throw new Error(`rename created ${to} but kept ${from}: source changed during the move`);
   await src.parent.removeEntry(src.name);
 }
 

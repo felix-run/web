@@ -29,16 +29,16 @@
  * confirmed real command. Only its initial cwd is contained; this is not an OS sandbox.
  */
 
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import {
   access,
   appendFile,
+  link,
   lstat,
   mkdir,
   readdir,
   readFile,
   realpath,
-  rename,
   stat,
   unlink,
   writeFile,
@@ -310,6 +310,27 @@ async function refuseLink(realRoot: string, path: string): Promise<void> {
     throw new Error(`${path} is a symbolic link; links are not followed here`);
 }
 
+async function assertUnchanged(
+  root: string,
+  path: string,
+  target: string,
+  before: Stats,
+): Promise<void> {
+  await refuseLink(root, path);
+  if ((await resolveWithin(root, path)) !== target)
+    throw new Error(`${path} changed location while awaiting approval; inspect it again`);
+  const now = await lstat(target);
+  if (
+    !now.isFile() ||
+    now.dev !== before.dev ||
+    now.ino !== before.ino ||
+    now.size !== before.size ||
+    now.mtimeMs !== before.mtimeMs
+  )
+    throw new Error(`${path} changed while awaiting approval; inspect it again`);
+  await assertWritable(root, target);
+}
+
 /**
  * The working directory as the `local_*` file tools see it, under the same three rules as the
  * shell verbs above: every path through `resolveWithin`, every write through `assertWritable`
@@ -338,11 +359,18 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       }
       return await readFile(target, 'utf8');
     },
-    write: async (path, content, { append, summary }) => {
+    write: async (path, content, { append, summary, expected }) => {
       const root = await realRoot();
       const target = await resolveWithin(root, path);
       await assertWritable(root, target);
       if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
+      // Approval may take minutes. Revalidate both the destination and the
+      // content used to construct an edit before replacing the file.
+      if ((await resolveWithin(root, path)) !== target)
+        throw new Error(`${path} changed location; read it again before editing`);
+      await assertWritable(root, target);
+      if (expected !== undefined && (await readFile(target, 'utf8')) !== expected)
+        throw new Error(`${path} changed since it was read; read it again before editing`);
       await mkdir(dirname(target), { recursive: true });
       opts.signal?.throwIfAborted();
       if (append) await appendFile(target, content, 'utf8');
@@ -358,6 +386,7 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       if (!info.isFile()) throw new Error(`${path} is not a file; only files are deleted`);
       await assertWritable(root, target);
       if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
+      await assertUnchanged(root, path, target, info);
       opts.signal?.throwIfAborted();
       await unlink(target);
     },
@@ -381,15 +410,45 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       }
       if (!(await opts.confirm(`${summary} ${from} → ${to}`)))
         throw new Error('refused by the user');
+      await assertUnchanged(root, path, from, info);
+      await refuseLink(root, toPath);
+      if ((await resolveWithin(root, toPath)) !== to)
+        throw new Error(`${toPath} changed location while awaiting approval; inspect it again`);
+      await assertWritable(root, to);
       await mkdir(dirname(to), { recursive: true });
       opts.signal?.throwIfAborted();
-      await rename(from, to);
+      // link is exclusive: a destination created after the checks is never
+      // replaced. Unlink only after the new name exists and source is rechecked.
+      // Cross-filesystem links fail safely, leaving the source in place.
+      await link(from, to);
+      try {
+        await assertUnchanged(root, path, from, info);
+        opts.signal?.throwIfAborted();
+        await unlink(from);
+      } catch (error) {
+        // Do not remove either name during uncertain concurrent changes.
+        throw new Error(`rename created ${toPath} but kept ${path}: ${String(error)}`);
+      }
     },
   };
 }
 
 async function run(req: ClientToolRequest, opts: WorkspaceOptions): Promise<ClientToolResult> {
   try {
+    if (req.name === 'local_info') {
+      return {
+        content: JSON.stringify({
+          client: 'terminal',
+          workspace: { kind: 'directory', root: await realpath(opts.root) },
+          shell: {
+            mode: opts.shell ? 'native' : 'emulated',
+            ...(opts.shell
+              ? { interpreter: '/bin/sh', confirmation: 'always', sandboxed: false }
+              : { commands: ['pwd', 'ls', 'cat', 'echo', 'mkdir', 'touch', 'tree', 'help'] }),
+          },
+        }),
+      };
+    }
     if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workingDirFs(opts));
     if (req.name === 'local_shell') {
       const command = typeof req.args.command === 'string' ? req.args.command : '';

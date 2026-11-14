@@ -421,6 +421,30 @@ commands for builds, tests and Git. Each command shows its full text and absolut
 directory for confirmation, including when `--yes` skips file-write prompts. Without
 `--shell`, only the existing emulated file commands are available.
 
+The coding agent calls `local_info` to check which client and workspace it is using.
+The terminal reports whether native shell execution is enabled; the browser reports
+emulated commands and whether files live in a mounted directory or its virtual workspace.
+This check reads no project files and runs no command. Older clients can continue using
+the file tools, but do not support this capability check.
+
+Before editing a target file, `code` can use `local_instructions` to read the `AGENTS.md`
+and `CLAUDE.md` files in its parent directories, starting at the workspace root. This
+also works for new files. Results include truncation offsets when instructions exceed
+the response budget; the agent must finish those reads before editing. Both tools
+are available in plan mode.
+
+`local_edit` rechecks the original contents after terminal confirmation and before
+committing a browser write. If the file changed, it reports a conflict and preserves
+the newer work so the agent can reread and reconcile it. This does not lock the file
+against other programs.
+
+Delete and rename also recheck the source after terminal confirmation. Terminal
+rename creates the destination exclusively before removing the source, so it cannot
+replace a file created during approval. It requires a filesystem that supports hard
+links and refuses moves across filesystems. If a move fails after creating the
+destination, inspect both paths: the source is retained when its removal is uncertain.
+Browser rename copies before deleting and retains a source changed during that copy.
+
 Commands start inside the project, but **are not sandboxed**: an approved command has your
 account's filesystem and network access. stdin is closed; interactive programs are unsupported.
 Output is capped at 200 kB and commands time out after four minutes. Stop cancels the process
