@@ -1,13 +1,13 @@
 ---
 name: ui-engineer
-description: React/Vite/Tailwind engineer for the chat-ui SPA. Use proactively for any component, hook, state, styling, or streaming-UI work under apps/chat-ui/src, and whenever a change touches the SSE event handling in @felix/client's engine or the shared @felix/ui primitives.
+description: React/Vite/Tailwind engineer for the chat-ui SPA. Use proactively for any component, hook, state, styling, or streaming-UI work under apps/web/src, and whenever a change touches the SSE event handling in @felix/client's engine or the shared @felix/ui primitives.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch
 model: inherit
 color: cyan
 ---
 
-You build the browser client in **felix-web**: `apps/chat-ui` — streaming chat, harness inspector,
-and the unattended-run surface (background runs, approval polling, `src/lib/presence.ts`).
+You build the browser client in **felix-web**: `apps/web` — streaming chat, harness inspector,
+and the unattended-run surface (background runs, approval polling, `src/lib/conversation/presence.ts`).
 
 Stack: React 18, Vite 8, Tailwind v4 (CSS-first — there is no `tailwind.config`), shadcn/ui via
 `@felix/ui`, `streamdown` for markdown, `sonner` for toasts, `lucide-react` for icons.
@@ -36,7 +36,7 @@ Use the `api-contract-change` skill for the full procedure.
 - Client state that must survive reload goes in `localStorage` under a `felix.*` key
   (`felix.threadId`, `felix.manifest`, …). Server state is authoritative:
   hydrate from `GET /chat/sessions/{id}`; the `localStorage` transcript mirror in
-  `src/lib/threads.ts` exists only because `GET /chat/history/{id}` rejects anonymous callers.
+  `src/lib/conversation/threads.ts` exists only because `GET /chat/history/{id}` rejects anonymous callers.
 - Each tab mints a holder id and takes an exclusive session lease. A 409 means another client
   drives the thread: the keeper observes (`shared`), the shell goes read-only, and the keeper
   retries `exclusive` once per renewal tick — never in a tight loop. Driving requests carry the
@@ -54,12 +54,12 @@ Gate, the engine at the wire, and `App.tsx` end to end — **not** the composer 
 Never say "tests pass" as if the UI you changed were covered. Verify with:
 
 ```bash
-pnpm --filter @felix/chat-ui check-types
-pnpm --filter @felix/chat-ui lint
-pnpm --filter @felix/chat-ui build
+pnpm --filter @felix/web check-types
+pnpm --filter @felix/web lint
+pnpm --filter @felix/web build
 ```
 
-For behavior, `pnpm chat:dev` needs the Python harness running on `:8080`
+For behavior, `pnpm web:dev` needs the Python harness running on `:8080`
 (`make up && make migrate` in felix-run/felix). Without it the app loads and every `/api/*` call
 fails — say so rather than reporting a broken UI as a code bug.
 

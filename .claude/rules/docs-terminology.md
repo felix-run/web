@@ -15,7 +15,7 @@ context alone. Name them like this:
   "each Worker polls", "the Worker's `webhook_delivery` cron".
 - **Cloudflare Worker** is anything deployed to Cloudflare Workers: the workspace gateway
   (`deploy/cloudflare/workspace-gateway` in the harness checkout) and chat-ui's `/api/*` proxy
-  (`apps/chat-ui/worker/index.ts`). Always spell it out — "the gateway's Cloudflare Worker", "the
+  (`apps/web/worker/index.ts`). Always spell it out — "the gateway's Cloudflare Worker", "the
   chat-ui Cloudflare Worker" — never a bare "Worker", "gateway Worker" or "proxy Worker", since bare
   "Worker" means the compose service.
 

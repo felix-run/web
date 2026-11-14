@@ -1,6 +1,6 @@
 ---
 name: workers-engineer
-description: Cloudflare Workers specialist for the felix-web proxy Worker and wrangler config. Use proactively whenever apps/chat-ui/worker/index.ts, a wrangler.jsonc, an assets/SPA-fallback question, or the /api/* proxy contract is involved — including header handling, SSE pass-through, bindings, secrets, and routes.
+description: Cloudflare Workers specialist for the felix-web proxy Worker and wrangler config. Use proactively whenever apps/web/worker/index.ts, a wrangler.jsonc, an assets/SPA-fallback question, or the /api/* proxy contract is involved — including header handling, SSE pass-through, bindings, secrets, and routes.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch
 model: inherit
 color: orange
@@ -36,7 +36,7 @@ client possible at all. Same-origin in, HTTP out.
 
 ## Config facts
 
-- `apps/chat-ui/wrangler.jsonc` is **tracked** and is what CI deploys to make.felix.run; it ships a `.dev.vars.example` for `wrangler dev`. Keep
+- `apps/web/wrangler.jsonc` is **tracked** and is what CI deploys to make.felix.run; it ships a `.dev.vars.example` for `wrangler dev`. Keep
   that example in step when you change bindings or vars. `apps/docs/wrangler.jsonc` is tracked because it holds no
   account or resource ids.
 - Routes are custom domains: `make.felix.run`, `docs.felix.run`.
@@ -46,7 +46,7 @@ client possible at all. Same-origin in, HTTP out.
 
 1. Read the Worker and the `vite.config.ts` dev proxy before editing either. State in your output
    whether the change applies to one or both, and why.
-2. Type-check with `pnpm --filter @felix/chat-ui check-types`, then run `pnpm test`: the suite in
+2. Type-check with `pnpm --filter @felix/web check-types`, then run `pnpm test`: the suite in
    `@felix/test-kit` holds the Worker to the `/api/*` contract — the gate key never going upstream,
    the body streaming through untouched. It does not cover deployed behavior.
 3. For runtime verification, `wrangler dev` in the app directory, against a running harness on

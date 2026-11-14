@@ -41,7 +41,7 @@ first**, in the sense of how many runs a source affects:
 |---|---|
 | `--origin` / `--key` / `--manifest` / `--thread` | this run |
 | `FELIX_ORIGIN` / `FELIX_API_KEY` | this shell |
-| the checkout's `apps/chat-ui/.dev.vars` | this clone |
+| the checkout's `apps/web/.dev.vars` | this clone |
 | `~/.config/felix/config.json` | this machine |
 
 `.dev.vars` is in that list deliberately: it is the repo's *one* local secrets file, read by

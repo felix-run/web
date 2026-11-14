@@ -11,7 +11,7 @@ in this repo beyond one thin proxy Worker.
 
 | Path | Role |
 |---|---|
-| `apps/chat-ui` (`@felix/chat-ui`) | Full streaming chat + harness inspector (React/Vite → Worker) |
+| `apps/web` (`@felix/web`) | Full streaming chat + harness inspector (React/Vite → Worker) |
 | `apps/tui` (`@felix/tui`) | Full-screen terminal chat client (OpenTUI → Bun) |
 | `apps/docs` (`@felix/docs`) | Starlight docs site → Workers static assets |
 | `packages/ui` (`@felix/ui`) | shadcn/ui primitives, consumed as raw `.tsx` source |
@@ -27,7 +27,7 @@ in this repo beyond one thin proxy Worker.
 
 ```bash
 pnpm install
-pnpm chat:dev          # Vite :5173 — /api/* proxied to Python Felix on :8080
+pnpm web:dev          # Vite :5173 — /api/* proxied to Python Felix on :8080
 pnpm tui:dev           # terminal client, straight to FELIX_ORIGIN (default :8080)
 pnpm docs:dev
 pnpm build             # turbo run build (tsc -b && vite build; astro build)
@@ -44,7 +44,7 @@ pnpm check-bundle-budget    # chat-ui's first load (entry + preloads + CSS, gzip
 pnpm sync:harness [path]    # re-record all four contract files from a harness checkout
 pnpm sync:diagrams [path]   # re-render the harness's docs/diagrams/*.mmd into apps/docs/src/diagrams (docs theme)
 pnpm sync:brand             # re-render favicons, touch/PWA icons, docs logo + social card (needs rsvg-convert, magick)
-pnpm --filter @felix/chat-ui <script>   # scope to one package
+pnpm --filter @felix/web <script>   # scope to one package
 pnpm dlx shadcn@latest add <name> --cwd packages/ui   # add a shared primitive
 ```
 
@@ -113,11 +113,11 @@ stale data forever under a driver, which looks like a broken refresh and is not.
 
 Three mechanical guards cover the hand-mirrored wire contract, one per direction it can drift.
 
-`pnpm check-api-drift` walks the fetch call sites in `apps/chat-ui/src/api.ts`,
+`pnpm check-api-drift` walks the fetch call sites in `apps/web/src/api/client.ts`,
 `packages/felix-client/src/transport.ts` and `packages/felix-client/src/management/*.ts` —
 including the ones that deliberately bypass the
 401-handling wrapper — and diffs path *and* verb against
-`apps/chat-ui/harness-openapi.json`, a committed record of what the harness serves. **That file
+`apps/web/harness-openapi.json`, a committed record of what the harness serves. **That file
 list is explicit and the script does no discovery**, so a new module of routes that is not added to
 the `check-api-drift` script in `package.json` is simply not walked — the check keeps printing
 `✓ no drift` while covering fewer calls than it did. Compare the call-site count, not just the exit
@@ -138,7 +138,7 @@ chat-ui now calls `/eval/runs`.)
 contract" but "does it match *this deployment*".** The record is only as current as the last sync,
 so a deployment older than it passes the default check while every call to a route it lacks 404s.
 It fetches `<origin>/openapi.json` (default `FELIX_ORIGIN`, then `http://localhost:8080`) with
-`FELIX_API_KEY` from the environment or `apps/chat-ui/.dev.vars`, fails on a client call the
+`FELIX_API_KEY` from the environment or `apps/web/.dev.vars`, fails on a client call the
 deployment does not serve, and lists — advisory — the recorded routes it lacks and the ones it has
 that the record does not, with both versions. Exit 2 means it could not ask (unreachable, or a key
 it refused). It never writes the record, for the reason below: a deployment is not the contract.
@@ -190,7 +190,7 @@ snapshot silently omitted `/memory/*` and `GET /chat/stream/{thread_id}`. FastAP
 without a database, so nothing needs to be running.
 
 A guard of a different kind covers the stylesheet, which fails in the same silent way for another reason.
-`pnpm check-tailwind-sources` compiles `apps/chat-ui/src/index.css` twice — once as written, once
+`pnpm check-tailwind-sources` compiles `apps/web/src/styles/index.css` twice — once as written, once
 with every `@source` line stripped — and asserts that each guarded tree's canary classes appear in
 the first and not the second. Present in both means the canary proves nothing; absent from both
 means Tailwind is no longer scanning that tree, and every class living only there is being dropped
@@ -201,7 +201,7 @@ The guarded trees and their canaries are the `GUARDED` table at the top of the s
 the deletion of is not a guard.
 
 A fifth guard covers the one duplication that is *correct* and still drifts. The run-state ramp —
-`blocked` / `done` / `running` / `failed` — is authored as `oklch()` in `apps/chat-ui/src/index.css`,
+`blocked` / `done` / `running` / `failed` — is authored as `oklch()` in `apps/web/src/styles/index.css`,
 where the lightness is tuned for contrast and the comments say why, and frozen as sRGB hex in
 `packages/design/src/tokens.ts` because neither a terminal nor `RGBA.fromHex` takes `oklch()`.
 `pnpm check-state-palette` converts the first to the second and asserts they match, so a change to
@@ -221,7 +221,7 @@ means running it against a live harness.
 ### The `/api/*` proxy contract
 
 Felix serves no static assets and no CORS headers, so the browser can never call it directly.
-`apps/chat-ui/worker/index.ts` implements the contract and `vite.config.ts` mirrors it in dev:
+`apps/web/worker/index.ts` implements the contract and `vite.config.ts` mirrors it in dev:
 
 ```
 browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──▶ Python Felix
@@ -230,7 +230,7 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
 - The `/api` prefix is **stripped**; everything else (SSE bodies, `x-manifest-variant`) passes through.
 - **The Worker holds no credential** (2026-10-23). A browser reaches the harness only as the
   person who signed in — the bearer from the harness's GitHub or Google login
-  (`src/lib/github-login.ts`) — forwarded untouched; the harness alone decides what it may do. A
+  (`src/lib/auth/github-login.ts`) — forwarded untouched; the harness alone decides what it may do. A
   request with none goes upstream with none: a harness that requires sign-in refuses it, and one
   on `FELIX_AUTH_MODE=none` is open by its own choice. There used to be a shared access key
   (`CHAT_UI_KEY`, sent as `x-chat-key`) that, once matched, ran the request as the deployment
@@ -238,7 +238,7 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   per-person control. Both are gone and ignored if still set. Do not bring back a credential the
   Worker attaches for an anonymous browser: with it, the Worker is the lock, and a lock nobody
   signs in to.
-- `src/lib/auth.ts` holds **one** credential, the session; `dropLegacyKey` removes a stored
+- `src/lib/auth/auth.ts` holds **one** credential, the session; `dropLegacyKey` removes a stored
   `felix.apiKey` on every gate check. A 401 anywhere drops the session and re-prompts via
   `components/gate.tsx`. The gate offers GitHub and/or Google from `/auth/methods`, and with
   neither says no browser can sign in. The session lapses with no refresh and no revocation, so
@@ -257,12 +257,12 @@ browser ──/api/<path>──▶ proxy Worker ──FELIX_ORIGIN/<path>──�
   `vite.config.ts` mirrors it in a middleware ahead of the proxy, where it matters more: the dev
   proxy injects the dev key.
 
-The dev proxy in `apps/chat-ui/vite.config.ts` is a second copy of this contract — change one and
+The dev proxy in `apps/web/vite.config.ts` is a second copy of this contract — change one and
 the other diverges silently.
 
 **The dev proxy injects `Authorization` too.** `make up` runs `scripts/dev-key.sh`, which sets the
 harness to `FELIX_AUTH_MODE=api_key` and generates a key, so an unauthenticated `vite dev` 401s on
-every `/api/*` call. Put the key in `apps/chat-ui/.dev.vars` as `FELIX_API_KEY=…` — the same
+every `/api/*` call. Put the key in `apps/web/.dev.vars` as `FELIX_API_KEY=…` — the same
 gitignored file `wrangler dev` reads for the Worker, so local dev has one secrets file rather than
 two. `process.env.FELIX_API_KEY` overrides it for a one-off run, and `FELIX_AUTH_API_KEYS` — the
 harness's own spelling, which is what people carry across — is accepted with a notice. With no key configured the header
@@ -291,8 +291,8 @@ issues?, reasons?}`, because a 409 is a merge (`parent_changed`) or a rename (`s
 cap before sending.
 
 **chat-ui's shell — routing, the three zones, the sidebar, the instrument, `/harness` — and its
-attention line, rendering pipeline, AI Elements and side pane are in `apps/chat-ui/CLAUDE.md`**,
-which loads when you work under `apps/chat-ui`. Read it before touching the shell.
+attention line, rendering pipeline, AI Elements and side pane are in `apps/web/CLAUDE.md`**,
+which loads when you work under `apps/web`. Read it before touching the shell.
 
 *Almost* every frame is a bare `data:` line carrying one envelope `{event, type, data, text}`,
 terminated by `data: [DONE]`. Two other SSE fields carry meaning, and a reader that matches whole
@@ -381,7 +381,7 @@ Flows worth knowing before editing the app:
   adds or removes lines inside turns, so the height above the reader changed and the view landed
   elsewhere. The place — the deepest elements near the viewport's top on the column's centre line,
   then their row — is recorded when the change is announced (`announceViewChange` in
-  `src/lib/view-change.ts`, called first by every setter of the level), not on every scroll: that
+  `src/lib/navigation/view-change.ts`, called first by every setter of the level), not on every scroll: that
   was five hit-tests per scroll event, 430 in one streamed reply. The View menu is modal and sets
   `pointer-events: none` on the body, which hit-testing skips, so the probes lift it for their
   duration — without that every probe hit `<html>` and a debug switch moved the reader ~900px
@@ -439,7 +439,7 @@ Flows worth knowing before editing the app:
   `durable-runs.ts`) are the terminal set and the sentence for a run that ended with no answer;
   `run_expired:` with a token in hand is not an error; a failed poll read is retried, a 404 ends
   it. `onRunAccepted`/`onRunSettled` let chat-ui keep the token per thread
-  (`src/lib/durable-runs.ts`, `localStorage`), and `loadThread` calls `engine.rejoinRun`, which
+  (`src/lib/conversation/durable-runs.ts`, `localStorage`), and `loadThread` calls `engine.rejoinRun`, which
   marks the thread streaming — so the composer queues — polls, and settles as `send` does.
   **While it polls it holds the thread's reattach stream open** (`reattachThread({ holdOpen })`,
   2026-10-08, `felix-run/felix#534`): the poll carries no frames, and since #534 the reattach
@@ -474,7 +474,7 @@ Flows worth knowing before editing the app:
   landed rather than imply a reply is still being written. A clean end is not the end of the thread
   — the harness closes an idle reattach at ~300s and expects the client back — so the loop re-checks
   `phase` and returns while it is still working.
-- **The service worker is `apps/chat-ui/public/sw.js`, hand-written, and it never touches
+- **The service worker is `apps/web/public/sw.js`, hand-written, and it never touches
   `/api/*`.** That is the live console: SSE, uploads, credentialed reads, approvals that must be current or
   absent. It does two things: page loads go network-first, falling back to the cached shell so an
   installed app opened offline reaches the gate's "Could not reach the server"; and hashed
@@ -498,7 +498,7 @@ Flows worth knowing before editing the app:
   load, since the harness drops rows after five failed sends. `presence.ts` shows its own
   notifications through the worker when there is one: an installed iOS app refuses
   `new Notification()`. Without a key on the harness the routes answer 503 and nothing is offered.
-- **Coming back to a suspended page** is `src/lib/resume.ts`: `visibilitychange` to visible,
+- **Coming back to a suspended page** is `src/lib/conversation/resume.ts`: `visibilitychange` to visible,
   `pageshow` from the back/forward cache, and `online`, coalesced into one call. A phone freezes
   every timer while the app is in the background, so the shell asks `/approvals` at once on return,
   and calls `engine.checkLiveness()`. That cuts a live stream that has gone silent, which a
@@ -525,7 +525,7 @@ Flows worth knowing before editing the app:
   the snapshot holds more turns than the tab, because a rebuild discards local detail.
 - **Session state is server-authoritative** — `GET /chat/sessions/{id}` returns the snapshot
   (transcript, phase, thinking level, leaf, lease) used to hydrate a thread, and `GET /chat/sessions`
-  is the thread index behind the history rail. The `localStorage` copy in `src/lib/threads.ts` is a
+  is the thread index behind the history rail. The `localStorage` copy in `src/lib/conversation/threads.ts` is a
   cache, not the list: `mergeSessions` folds the two, and the split matters because **neither side is
   a superset**. The harness owns which threads exist and what they are *named*
   (`POST /chat/sessions/name`), and since `felix-run/felix#521` each index row also carries a
@@ -538,7 +538,7 @@ Flows worth knowing before editing the app:
     empty `catch`, so a cold load under 429 showed the local half ("Older 1") as the whole list,
     the header titled the thread with its raw suffix and the composer called its agent "not
     recorded". Every good read is kept in `sessionStorage` (`felix.threadIndex`,
-    `src/lib/thread-index.ts`, one tab's like `felix.tabThread`) and merged in when a read fails,
+    `src/lib/conversation/thread-index.ts`, one tab's like `felix.tabThread`) and merged in when a read fails,
     so the title and agent come from it too; a delete drops its row. The failure is
     `ShellValue.threadIndex`, drawn under the sidebar's Threads heading (*Couldn't refresh the
     harness's threads · showing its list from 3m ago · Retry*, or *showing this browser's N* with
@@ -555,7 +555,7 @@ Flows worth knowing before editing the app:
     snapshot route.
 - **Leases** — each tab mints a holder id and takes an exclusive lease (`/chat/sessions/lease`,
   released on `pagehide`). A 409 means another client drives the thread, and the keeper
-  (`src/lib/session-lease.ts`) takes a `shared` observer hold instead: the shell goes read-only
+  (`src/lib/conversation/session-lease.ts`) takes a `shared` observer hold instead: the shell goes read-only
   under a `role="status"` banner. Every hold has its own token, renewed and released with it — the
   harness refuses either by holder id alone (`felix-run/felix#479`). While observing, each renewal
   tick first tries `exclusive` with no token, so a watching tab takes over within one
@@ -643,7 +643,7 @@ Flows worth knowing before editing the app:
   in the Activity ledger, while the run readout said Idle. Now every surface says `denied` in the
   neutral tone; red stays for `failed` and for a control's `refused`. The result says only *that*
   it was denied; who and when are on the decided `/approvals` row, which
-  `src/lib/denials.ts` matches back to the card **by the row's `tool_call_id`** against the
+  `src/lib/conversation/denials.ts` matches back to the card **by the row's `tool_call_id`** against the
   card's `callId` (live and rebuilt cards both carry it), and what is left **by order** (the n-th
   denied call of a tool on the thread is the n-th denied row for it, and nothing when the counts
   disagree), read once per
@@ -655,7 +655,7 @@ Flows worth knowing before editing the app:
   call, so the card's **Ask again** only puts an editable request in the composer
   (`draftMessage`, the kept-message path) and sends nothing. In the audit, an approval's denial
   is a `policy_deny` with `control: 'approvals'`, and the harness writes the turn's
-  `final_response` as `error` when its last batch held any denial; `src/lib/audit-outcome.ts`
+  `final_response` as `error` when its last batch held any denial; `src/lib/harness/audit-outcome.ts`
   reads that reply as `after-denial` (from `payload.denied_calls`, or, on a harness without it,
   from a turn with a denial and no broken call), so it is not a second failure, in the ledger or
   in the sidebar's Activity glance.
@@ -682,7 +682,7 @@ Flows worth knowing before editing the app:
   (`manifests/builder.py`), so an edited approval stands for every identical call until the grant
   expires rather than correcting the one in front of you.
 - **Images are uploads, not inline.** `submit` in `app-shell.tsx` fits each image to the harness's
-  600 KiB `/files` limit in the browser (`fitImage` in `src/lib/image-upload.ts`: WebP, else JPEG on
+  600 KiB `/files` limit in the browser (`fitImage` in `src/lib/conversation/image-upload.ts`: WebP, else JPEG on
   white; a GIF over the limit is refused rather than flattened), uploads it, and sends
   `attachments[].url` as `felix-file://<id>`. Inline `data:` URLs land in the session log and are
   re-sent to the model every turn, and the API's 1 MiB body limit refused anything over ~750 KB
@@ -796,7 +796,7 @@ Flows worth knowing before editing the app:
   that covers, so the warning is over the window rather than over whatever was on screen.
 
   **The page is a ledger by thread** (`components/harness/activity-ledger.tsx`, grouping in
-  `src/lib/ledger.ts`). It reads four things for one window — the audit events every 10s, the
+  `src/lib/conversation/ledger.ts`). It reads four things for one window — the audit events every 10s, the
   other three at most once a minute (`SLOW_READS_MS`; a retry or a new window reads them at once),
   since only the events move while someone watches: the audit events
   (`listAuditWindow`, which follows `/audit`'s cursor under `since` up to 2,000 and says when it
@@ -1024,7 +1024,7 @@ Flows worth knowing before editing the app:
 - **Other verbs** the UI drives: abort, steer/follow-up, continue, thinking level, rewind
   (`/chat/rewind` moves the active leaf), fork/compact/export, and full-text
   `/chat/sessions/search`. **Continue is for a turn that stopped short** — the harness refuses
-  `nothing_to_continue` and `already_complete` — so `continueOffer` (`src/lib/continue-run.ts`)
+  `nothing_to_continue` and `already_complete` — so `continueOffer` (`src/lib/conversation/continue-run.ts`)
   reads the last non-note turn and the phase, the Session menu leads with *Continue run* only
   then (otherwise it follows Copy thread id, disabled, saying why), and `/continue` toasts the
   reason instead of spending a request (2026-10-16, `tests/continue-run.test.tsx`).
@@ -1055,7 +1055,7 @@ in `apps/tui/CLAUDE.md`, which loads when you work under `apps/tui`.
 
 `@felix/ui` and `@felix/cowork-client` have **no build step** — they export `.tsx`/`.ts` source
 directly, resolved via `paths` in each app's `tsconfig.json`. Adding an export means updating the
-package `exports` map *and* the tsconfig `paths` in `apps/chat-ui`.
+package `exports` map *and* the tsconfig `paths` in `apps/web`.
 
 `@felix/ui` carries shadcn's October 2026 **Trace** (`trace.tsx`) and **Code Block** (`code-block.tsx`,
 with `hooks/use-highlighted-code` and `lib/highlighter`), installed by hand from the radix-nova
@@ -1066,13 +1066,13 @@ language table; a language off it renders plain rather than rejecting. `shiki` i
 version so the package and chat-ui (and streamdown) share one copy.
 
 Because `@felix/ui` lives outside the app root, Tailwind's automatic content detection does not see
-it; `apps/chat-ui/src/index.css` declares `@source "../../../packages/ui/src"` to compensate. Drop
+it; `apps/web/src/styles/index.css` declares `@source "../../../packages/ui/src"` to compensate. Drop
 that line and every utility used *only* inside a primitive (`bg-primary`, the `focus-visible:ring-*`
 set) is silently omitted from the build — the class stays on the element, no CSS is generated, and
 the component renders unstyled with no error anywhere. A new shared package that ships classes needs
 its own `@source` line.
 
-The root `tsconfig.json` explicitly **excludes** `apps/chat-ui` and `apps/docs` (JSX / Astro virtual
+The root `tsconfig.json` explicitly **excludes** `apps/web` and `apps/docs` (JSX / Astro virtual
 modules don't resolve under the workspace options); those apps type-check via their own configs.
 
 ### Docs
@@ -1128,14 +1128,14 @@ the `toolkit-authoring` skill is how to extend it.
   there; secrets go through `wrangler secret put`.
 - Biome, not ESLint/Prettier: single quotes, semicolons, trailing commas, 2-space indent, 100 cols.
   `noExplicitAny` is a warning; a11y rules are relaxed under `packages/ui/src` and
-  `apps/chat-ui/src/components`.
+  `apps/web/src/components`.
 - **Shared dependency versions live in `pnpm-workspace.yaml` under `catalog:`.** Anything used by
   2+ workspace packages is declared once there and referenced as `"catalog:"` in each `package.json`;
   a single-use dep keeps its literal version where it is. Bump a shared version in the catalog, not
   in a manifest. Note that `pnpm add` writes a **literal** version even for a package already in the
   catalog (pnpm's default `catalogMode: manual`) — fix it to `"catalog:"` by hand. See `README.md`.
 - **Touch rules live in CSS, not in each component.** Text fields are 16px under
-  `@media (pointer: coarse)` from an *unlayered* rule in `apps/chat-ui/src/index.css` — inside a
+  `@media (pointer: coarse)` from an *unlayered* rule in `apps/web/src/styles/index.css` — inside a
   layer, any `text-sm` would outrank it and iOS would zoom on focus. Hover reveals are gated on
   `[@media(hover:hover)]`, never on a width breakpoint, and dense controls grow with `coarse:`.
   `tests/touch-affordances.test.tsx` pins the first two by shape, since happy-dom evaluates

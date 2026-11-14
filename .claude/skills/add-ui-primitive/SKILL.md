@@ -18,7 +18,7 @@ app's tsconfig. That means adding a component is three wiring steps, not one.
 pnpm dlx shadcn@latest add <name> --cwd packages/ui
 ```
 
-Config comes from `apps/chat-ui/components.json`: style `new-york`, base color `neutral`, CSS
+Config comes from `apps/web/components.json`: style `new-york`, base color `neutral`, CSS
 variables on, `lucide` icons, `utils` aliased to `@felix/ui/lib/utils`. Files land in
 `packages/ui/src/`, flat — no `components/ui/` nesting.
 
@@ -41,7 +41,7 @@ top-level `.tsx` — a subdirectory, a `.ts` helper, a hook — needs its own `e
 
 ## 3. Check the tsconfig paths
 
-`apps/chat-ui/tsconfig.json` carries:
+`apps/web/tsconfig.json` carries:
 
 ```json
 "@felix/ui/*": ["../../packages/ui/src/*"],
@@ -70,7 +70,7 @@ Shared versions live in the `catalog:` block of `pnpm-workspace.yaml`, so:
 
 ```bash
 pnpm --filter @felix/ui check-types
-pnpm --filter @felix/chat-ui check-types
+pnpm --filter @felix/web check-types
 pnpm lint
 ```
 

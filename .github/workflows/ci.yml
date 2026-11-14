@@ -87,7 +87,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm build
         env:
-          FELIX_OPENAPI_SPEC: ${{ github.workspace }}/apps/chat-ui/harness-openapi.json
+          FELIX_OPENAPI_SPEC: ${{ github.workspace }}/apps/web/harness-openapi.json
 
       # What chat-ui loads before it can draw anything. KaTeX and rehype-raw each
       # rode into it on one static import inside a dependency, and nothing above

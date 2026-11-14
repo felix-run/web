@@ -120,7 +120,7 @@ importers:
         specifier: 'catalog:'
         version: 8.1.4(@types/node@25.7.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0)
 
-  apps/chat-ui:
+  apps/web:
     dependencies:
       '@felix/client':
         specifier: workspace:*

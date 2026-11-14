@@ -5,7 +5,7 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "../../apps/chat-ui/src/index.css",
+    "css": "../../apps/web/src/styles/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""

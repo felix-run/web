@@ -5,7 +5,7 @@
  * Two files describe the hand-mirrored contract, and both were maintained by
  * hand against whatever happened to be running:
  *
- *   apps/chat-ui/harness-openapi.json  — every route, for check-api-drift
+ *   apps/web/harness-openapi.json  — every route, for check-api-drift
  *   scripts/harness-events.json        — every SSE event, for check-protocol-parity
  *   scripts/harness-payloads.json      — every response row shape, for check-payload-shapes
  *   scripts/harness-tool-results.json  — every failed-result prefix, for tool-results.test.ts
@@ -33,7 +33,7 @@ import { argv, exit } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OPENAPI_OUT = join(REPO, 'apps/chat-ui/harness-openapi.json');
+const OPENAPI_OUT = join(REPO, 'apps/web/harness-openapi.json');
 const EVENTS_OUT = join(REPO, 'scripts/harness-events.json');
 const PAYLOADS_OUT = join(REPO, 'scripts/harness-payloads.json');
 const TOOL_RESULTS_OUT = join(REPO, 'scripts/harness-tool-results.json');

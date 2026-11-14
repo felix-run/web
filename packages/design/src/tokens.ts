@@ -12,7 +12,7 @@
 /**
  * The warm neutral scale (2026-10-10, the Warm Workbench redesign) — the only
  * colors the docs surfaces use. Converted from the stone/charcoal oklch values
- * chat-ui authors in `apps/chat-ui/src/index.css` (hue ~60–75, chroma under
+ * chat-ui authors in `apps/web/src/styles/index.css` (hue ~60–75, chroma under
  * 0.016), so the docs and the app share one material: `100` is chat-ui's stone
  * ground, `0` its sheet, `900`/`950` its charcoal sheet and ground. `500` sits a
  * step darker than an even ramp would put it so faint text clears AA on the
@@ -93,7 +93,7 @@ export const DARK: ThemePalette = {
  * do it. So this is the one place hue is allowed, and it stays a closed set of
  * five rather than a palette anyone can add to.
  *
- * The reference values are the oklch pairs in `apps/chat-ui/src/index.css`,
+ * The reference values are the oklch pairs in `apps/web/src/styles/index.css`,
  * where this ramp was born and is still consumed from — converted here to sRGB
  * hex because that is what a terminal and a `RGBA.fromHex` can take, and CSS
  * `oklch()` cannot be handed to either. Aligning chat-ui to read these back is

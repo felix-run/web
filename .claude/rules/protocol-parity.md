@@ -1,9 +1,9 @@
 ---
 paths:
-  - "apps/chat-ui/src/api.ts"
-  - "apps/chat-ui/src/types.ts"
-  - "apps/chat-ui/src/App.tsx"
-  - "apps/chat-ui/src/lib/presence.ts"
+  - "apps/web/src/api/client.ts"
+  - "apps/web/src/api/types.ts"
+  - "apps/web/src/app/app.tsx"
+  - "apps/web/src/lib/conversation/presence.ts"
   - "packages/felix-client/src/*.ts"
   - "apps/*/worker/index.ts"
   - "apps/*/vite.config.ts"
@@ -28,8 +28,8 @@ must be listed rather than trusted.
 
 ## 1. The `/api/*` proxy contract — two copies
 
-`apps/chat-ui/worker/index.ts` runs in production; the `server.proxy` block in
-`apps/chat-ui/vite.config.ts` runs only under `vite dev`. Both strip the `/api` prefix and forward to
+`apps/web/worker/index.ts` runs in production; the `server.proxy` block in
+`apps/web/vite.config.ts` runs only under `vite dev`. Both strip the `/api` prefix and forward to
 the harness. They cannot be one module — different runtimes, different config — so if they drift,
 dev and production behave differently and nothing reports it.
 
@@ -78,7 +78,7 @@ A blocking state is supposed to arrive as an SSE frame, and does not reliably: t
 announce a gated tool on the stream, and a **durable** run (`POST /chat` → `202 + resume_token`)
 carries no frames at all — `/chat/runs/{token}` reports only its own status. So the same state is
 also discovered by the `/approvals` poll — `syncApprovals` in `@felix/client`, driven for as long as
-a run is in flight — and announced outside the viewport through chat-ui's `src/lib/presence.ts`.
+a run is in flight — and announced outside the viewport through chat-ui's `src/lib/conversation/presence.ts`.
 
 Wiring only the frame is the failure this rule exists to prevent: it looks correct in a watched tab
 and hangs forever in an unwatched one.

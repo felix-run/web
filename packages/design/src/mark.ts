@@ -16,7 +16,7 @@
  * Colour is not decoration here (DESIGN.md's State-Only Rule): the head and
  * prompt are neutral ink, and the only hue the mark ever shows is a state's.
  * Everything that draws the mark — the static favicons, the runtime favicon in
- * `apps/chat-ui/src/lib/presence.ts`, the in-page lockups — builds from these
+ * `apps/web/src/lib/conversation/presence.ts`, the in-page lockups — builds from these
  * numbers, so none of them can drift from the others.
  */
 import { STATE_DARK } from './tokens';

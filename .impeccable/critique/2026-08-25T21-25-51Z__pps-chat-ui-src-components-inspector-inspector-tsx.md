@@ -8,7 +8,7 @@ slug: pps-chat-ui-src-components-inspector-inspector-tsx
 ---
 # Design Critique — Inspector › Activity
 
-**Target**: `apps/chat-ui/src/components/inspector/inspector.tsx` (lines 46–523: `ActivitySection`, `StatusDot`, `toolOf`, `summary`, `relTime`, and the `Section` / `SectionBody` shell it inherits)
+**Target**: `apps/web/src/components/inspector/inspector.tsx` (lines 46–523: `ActivitySection`, `StatusDot`, `toolOf`, `summary`, `relTime`, and the `Section` / `SectionBody` shell it inherits)
 **Register**: product · **Assessment A**: source review against PRODUCT.md · **Assessment B**: deterministic detector
 
 ## Design Health Score
@@ -59,7 +59,7 @@ Biggest opportunity: the 12-row cap can hide exactly the events the color system
 
 **Fix**: Add `summary()` arms for the three unhandled types. `guardrail_block` → rule/policy name plus blocked tool. `model_switch` → `from → to`. `plan_step` → step label plus new status. Verify payload keys against the harness.
 
-**Suggested command**: `/impeccable clarify apps/chat-ui/src/components/inspector/inspector.tsx`
+**Suggested command**: `/impeccable clarify apps/web/src/components/inspector/inspector.tsx`
 
 ### [P1] The header count and the screen-reader announcement are both the fetch cap
 
@@ -69,7 +69,7 @@ Biggest opportunity: the 12-row cap can hide exactly the events the color system
 
 **Fix**: Make the header meta a signal — count of failed/blocked events in the window with `metaTone="attention"` when non-zero, falling back to the newest event's age when clean. Request `limit: 61` and render `60+`, or relabel the footer "Showing 12 of the last 60". Derive the live-region string from something that moves.
 
-**Suggested command**: `/impeccable harden apps/chat-ui/src/components/inspector/inspector.tsx`
+**Suggested command**: `/impeccable harden apps/web/src/components/inspector/inspector.tsx`
 
 ### [P1] Twelve rows, no filter, no drill-down — and the API already supports the filter
 
@@ -79,7 +79,7 @@ Biggest opportunity: the 12-row cap can hide exactly the events the color system
 
 **Fix**: Failures-only toggle in the section header wired to the existing `status` parameter. Expandable rows in place (`Collapsible` is already imported) or route to the agent sheet. Raise or make the 12-row cap adjustable once the footer tells the truth.
 
-**Suggested command**: `/impeccable layout apps/chat-ui/src/components/inspector/inspector.tsx`
+**Suggested command**: `/impeccable layout apps/web/src/components/inspector/inspector.tsx`
 
 ### [P2] Status vocabulary is passed through raw, and `capitalize`d
 
@@ -89,7 +89,7 @@ Biggest opportunity: the 12-row cap can hide exactly the events the color system
 
 **Fix**: Map raw status onto a display vocabulary — Succeeded / Failed / Denied / Running / Pending — with an explicit `running` branch painting `--state-running`; keep the raw string in a `title`. Drop `capitalize`.
 
-**Suggested command**: `/impeccable clarify apps/chat-ui/src/components/inspector/inspector.tsx`
+**Suggested command**: `/impeccable clarify apps/web/src/components/inspector/inspector.tsx`
 
 ### [P2] Four of seven help strings can never render, and the three that can need a mouse
 
@@ -99,7 +99,7 @@ Biggest opportunity: the 12-row cap can hide exactly the events the color system
 
 **Fix**: Either surface the type on every row (quiet unbadged label for routine types, tonal badge for exceptions) so all seven strings have somewhere to live, or move help out of `title` into a real tooltip primitive with focus and touch support. Delete entries that genuinely have no place.
 
-**Suggested command**: `/impeccable polish apps/chat-ui/src/components/inspector/inspector.tsx`
+**Suggested command**: `/impeccable polish apps/web/src/components/inspector/inspector.tsx`
 
 ## Persona Red Flags
 

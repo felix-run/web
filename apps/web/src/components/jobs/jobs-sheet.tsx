@@ -1,0 +1,975 @@
+import { relativeTime, threadSuffix } from '@felix/client';
+import { Badge } from '@felix/ui/badge';
+import { Button } from '@felix/ui/button';
+import {
+  ClockIcon,
+  HistoryIcon,
+  LoaderIcon,
+  PauseIcon,
+  PlayIcon,
+  StepForwardIcon,
+  Trash2Icon,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
+import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api/client';
+import { ConfirmButton } from '@/components/confirm-button';
+import { ErrorNotice } from '@/components/error-notice';
+import {
+  CREATE_FORM,
+  CreateToggle,
+  PageEmpty,
+  PageHeader,
+  PageSection,
+  Panel,
+  PanelBody,
+  plural,
+} from '@/components/harness/panel';
+import {
+  isFailure,
+  StaleNotice,
+  StatusDot,
+  TransientRead,
+  withAge,
+} from '@/components/inspector/primitives';
+import { JobCreateForm } from '@/components/jobs/job-create-form';
+import { JobPreferencesSection, JobStateSection } from '@/components/jobs/job-details';
+import { useRecentAudit, useWeekFailures } from '@/hooks/use-recent-audit';
+import { useSharedPoll } from '@/hooks/useSharedPoll';
+import {
+  failing,
+  JOBS_POLL_KEY,
+  jobThreadOutcome,
+  recentFailures,
+  threadOutcomes,
+} from '@/lib/harness/harness-glances';
+import { isTransientFailure } from '@/lib/harness/harness-health';
+import { jobOrigin, missingSources, reportProblem, takeoverQuestion } from '@/lib/harness/job-origin';
+import { parseSchedule, scheduleLabel } from '@/lib/harness/job-schedule';
+import { useOptionalShell } from '@/app/shell-context';
+import type { JobRecord, JobRun } from '@/api/types';
+
+/**
+ * Scheduled-jobs workbench — the `/jobs` registry as a `/harness` page. A job is a
+ * persistent, tenant-scoped record the scheduler fires on its `schedule`, in the grammar
+ * `lib/job-schedule.ts` mirrors from the harness. **An empty schedule is manual only**
+ * (`felix-run/felix#629`): it never fires on its own, only through Run now. A scheduled job with
+ * no `next_run_at` yet — a new one — fires at the next sweep, whatever its schedule says, and
+ * then follows it.
+ *
+ * The sweep only fires when felix-scheduler runs alongside felix-worker. Run now
+ * (`POST /jobs/{name}/run`) fires a job by hand and answers when the run has finished.
+ */
+
+/** As many runs as the history asks for; a list this long says it was cut. */
+const RUNS_SHOWN = 20;
+
+/** `1.4s`, `2m 05s`: how long a run took, from its own timestamps. */
+function duration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const m = Math.floor(ms / 60_000);
+  const sec = Math.round((ms % 60_000) / 1000);
+  return `${m}m ${String(sec).padStart(2, '0')}s`;
+}
+
+/** `0:42`: a running clock, for a Run now that takes a whole agent turn. */
+function clock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** The window a row's spend covers: the Activity page's own `24h`. */
+const SPEND_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SPEND_POLL_KEY = 'jobs-spend';
+
+/**
+ * A job runs on `{tenant}:job:<name>`, or `{tenant}:job:<name>:<id>` with a fresh thread each
+ * run (`felix/jobs/scheduler.py`). `/usage/threads` names threads in that full spelling.
+ */
+function isJobThread(threadId: string, jobName: string): boolean {
+  const suffix = threadId.slice(threadId.indexOf(':') + 1);
+  return suffix === `job:${jobName}` || suffix.startsWith(`job:${jobName}:`);
+}
+
+/** Where a workflow job's firing can be watched: the run view of its workflow. */
+function workflowRunHref(workflowId: string, runId: string): string {
+  return `/harness/workflows?workflow=${encodeURIComponent(workflowId)}&view=run&run=${encodeURIComponent(runId)}`;
+}
+
+/**
+ * The scheduler's refusal for a workflow saved again since the job was (`felix/jobs/scheduler.py`):
+ * the job is held to the revision it was written over, so a later edit never runs on the writer's
+ * scopes until someone saves the job over it.
+ */
+function heldToOldRevision(j: JobRecord): boolean {
+  return Boolean(j.workflow_id) && /changed since this job was written/.test(j.last_error ?? '');
+}
+
+/**
+ * What a re-save must carry beyond the record's own keys: `PUT /jobs/{name}` replaces the whole
+ * job, so a pause that left these out put a zoned job back on UTC and stopped requiring its
+ * preferences.
+ */
+function keptOnResave(j: JobRecord) {
+  return { timezone: j.timezone ?? null, preferences_required: j.preferences_required === true };
+}
+
+/** The open incidents the harness's health watch recorded, newest kind first. */
+function incidents(j: JobRecord): { kind: 'overdue' | 'failing'; since?: number; cls?: string }[] {
+  const out: { kind: 'overdue' | 'failing'; since?: number; cls?: string }[] = [];
+  for (const kind of ['overdue', 'failing'] as const) {
+    const held = j.health?.[kind];
+    if (held && typeof held === 'object' && Object.keys(held).length > 0) {
+      out.push({ kind, since: held.since, cls: held.error_class });
+    }
+  }
+  return out;
+}
+
+/** An agent job that requires preferences and has none: every firing is skipped. */
+function awaitingPreferences(j: JobRecord): boolean {
+  return j.preferences_required === true && j.preferences_set === false && !j.workflow_id;
+}
+
+/** `412 workflow_changed` on a save that named the revision it was holding. */
+function isWorkflowChanged(err: unknown): boolean {
+  return (
+    /\b412\b/.test(String((err as Error)?.message ?? err)) &&
+    /workflow_changed/.test(String((err as Error)?.message ?? err))
+  );
+}
+
+// Re-exported from where the rail's glance can import them without this page.
+export { failing, JOBS_POLL_KEY };
+
+export function JobsSheet({
+  manifest,
+  manifestOptions,
+}: {
+  manifest: string;
+  manifestOptions: string[];
+}) {
+  // A managed poll rather than a bare interval: this was the one poll in the app
+  // that never moved onto one, so a backgrounded tab with the sheet open kept
+  // hitting the harness every four seconds forever. Shared with the rail's `Jobs · N failing` glance: one request, and the two
+  // can never disagree about the count.
+  const {
+    data,
+    error: listError,
+    lastOkAt,
+    refresh,
+  } = useSharedPoll(JOBS_POLL_KEY, listJobs, { intervalMs: 4000 });
+  // Kept apart from `data` so the header can tell "no jobs" from "not loaded yet".
+  // Failing first: someone coming back wants the exception before the list.
+  // Stable otherwise, so the harness's own order holds among the healthy ones.
+  // An open incident ranks with a failure: an overdue job has no failed run to show for it.
+  const needsLook = (j: JobRecord) => failing(j) || incidents(j).length > 0;
+  const jobs = [...(data ?? [])].sort((a, b) => Number(needsLook(b)) - Number(needsLook(a)));
+  const failingCount = jobs.filter(failing).length;
+
+  const [actionError, setActionError] = useState<unknown>(null);
+  // The form sits behind a button. It led the page, so what an operator comes
+  // here to read — which jobs exist, and how their last run went — started below
+  // five inputs and a paragraph about thread reuse, for a page visited far more
+  // often to look than to create.
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  // `null` means "not loaded yet", which is not the same as "no runs". Rendering an
+  // empty array during the fetch told the operator a job had never run while its
+  // history was still in flight — the one moment the answer matters most.
+  const [runs, setRuns] = useState<JobRun[] | null>(null);
+  const [runsError, setRunsError] = useState<unknown>(null);
+  // The job a Run now is waiting on. The route answers when the run has finished, which is
+  // a whole agent turn, so the row says it is going rather than looking idle.
+  // Per job, with when it started: a Run now locks its own row, not every row, and says how
+  // long it has been going — the route answers only when the whole agent turn is over.
+  const [running, setRunning] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(() => Date.now());
+  const anyRunning = Object.keys(running).length > 0;
+  // Every second while a Run now counts; every 15s otherwise. It ticked only during a run, so
+  // a page left open measured "due now" and the form's preview against when it was opened.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), anyRunning ? 1000 : 15_000);
+    return () => clearInterval(id);
+  }, [anyRunning]);
+  // Spend per job over the last day, from the same per-thread meter the Activity page reads.
+  // 200 is the route's ceiling (a larger limit is a 422, and the page said nothing at all).
+  // `null` is a harness without the route: say nothing rather than draw every job as free.
+  const spend = useSharedPoll(
+    SPEND_POLL_KEY,
+    () => listUsageByThread({ since_ms: Date.now() - SPEND_WINDOW_MS, limit: 200 }),
+    { intervalMs: 60_000 },
+  ).data;
+  // How each job's last run went on its thread, from the audit read the sidebar's
+  // Activity glance already polls — no request of its own (`jobThreadOutcome`).
+  const recentAudit = useRecentAudit().data;
+  const outcomes = useMemo(() => threadOutcomes(recentAudit ?? [], Date.now()), [recentAudit]);
+  // And the threads each job failed on over the glance's week, by the Activity
+  // page's rule and from the same two reads as the sidebar's `Activity · N threads
+  // failed` (`useWeekFailures`): a job's failures, narrowed to its threads and
+  // counted in the same unit. Matched on the full thread id, because a fresh-thread
+  // job's runs each have a suffix of their own that names no job.
+  const week = useWeekFailures();
+  const failedThreadsOf = (jobName: string) =>
+    recentFailures(
+      week.events.filter((e) => {
+        const raw = e.payload?.thread_id;
+        return typeof raw === 'string' && isJobThread(raw, jobName);
+      }),
+      Date.now(),
+      week.since,
+    ).ids.size;
+  const spendOf = (jobName: string) => {
+    if (!spend) return null;
+    const rows = spend.items.filter((t) => isJobThread(t.thread_id, jobName));
+    if (rows.length === 0) return spend.truncated ? null : { calls: 0, cost: 0 };
+    return {
+      calls: rows.reduce((n, t) => n + t.calls, 0),
+      cost: rows.reduce((n, t) => n + t.cost_usd, 0),
+    };
+  };
+  // What the last Run now came to, for a screen reader: the spinner turning back into a
+  // button announced nothing.
+  const [announce, setAnnounce] = useState('');
+  // A run blocked on an approval waits on a person, and the row only said "Running…". The
+  // tenant-wide `/approvals` poll names each row's thread; a job runs on `job:<name>` (or
+  // `job:<name>:<id>` with a fresh thread each run).
+  const approvals = useOptionalShell()?.tenantApprovals.pending ?? [];
+  // Any run of the job, scheduled or by hand: a scheduled firing blocked on an approval
+  // waits on a person just the same. The rows carry the client's suffix (`threadSuffix`, the
+  // part after the *last* colon), so the shared thread `{tenant}:job:<name>` arrives as
+  // `<name>`; a fresh-thread run's arrives as its own id and cannot be told apart.
+  const waitingOn = (jobName: string) =>
+    approvals.some((a) => a.thread_id === threadSuffix(`job:${jobName}`));
+
+  async function toggleRuns(jobName: string) {
+    if (expanded === jobName) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(jobName);
+    setRuns(null);
+    setRunsError(null);
+    try {
+      setRuns(await listJobRuns(jobName, RUNS_SHOWN));
+    } catch (err) {
+      setRunsError(err);
+      setRuns([]);
+    }
+  }
+
+  /**
+   * `?job=<name>` opens that job's runs and brings its row into view, once per
+   * link — the sidebar's Needs-you band links a failing job here, and landing at
+   * the top of the list to hunt for it was the dead end the band's row led to.
+   * Once handled the operator's own toggles win, so closing it stays closed.
+   */
+  const [params] = useSearchParams();
+  const linked = params.get('job');
+  const handledLink = useRef<string | null>(null);
+  const linkedLoaded = linked != null && jobs.some((j) => j.name === linked);
+  useEffect(() => {
+    if (!linked || !linkedLoaded || handledLink.current === linked) return;
+    handledLink.current = linked;
+    if (expanded !== linked) void toggleRuns(linked);
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-job="${CSS.escape(linked)}"]`)
+        ?.scrollIntoView?.({ block: 'center' }),
+    );
+  }, [linked, linkedLoaded]);
+
+  // An open history follows the job. It was read once, so a row reading `last running` sat
+  // over a list whose newest run said OK, and a job firing every minute showed the same
+  // twenty runs for as long as the list was open. Re-read when the job's own last run moves,
+  // which the page's poll already reports — not on every tick.
+  const openJob = jobs.find((j) => j.name === expanded);
+  const openMark = openJob ? `${openJob.last_run_at ?? ''}|${openJob.last_status ?? ''}` : '';
+  useEffect(() => {
+    if (!expanded || !openMark) return;
+    let live = true;
+    listJobRuns(expanded, RUNS_SHOWN).then(
+      (next) => {
+        if (live) {
+          setRuns(next);
+          setRunsError(null);
+        }
+      },
+      () => {
+        // Keep what is on screen; the next movement tries again.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [expanded, openMark]);
+
+  /** Close the form and hand focus back to the toggle that opened it, not to the page. */
+  function closeForm() {
+    setCreating(false);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('[aria-controls="job-create"]')?.focus(),
+    );
+  }
+
+  /**
+   * Pause or resume: the same record with `enabled` flipped. The docs' way to stop a job was
+   * `enabled: false`, and the page had no control for it, so stopping one meant deleting it
+   * and its history.
+   */
+  async function setEnabled(j: JobRecord, enabled: boolean) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      // The whole record back, workflow and its revision included: without them a pause
+      // saved a workflow job as one with no agent and no workflow, and without the revision
+      // it would re-pin a workflow someone has edited since — on the pauser's scopes.
+      await upsertJob({
+        name: j.name,
+        schedule: j.schedule ?? '',
+        manifest_id: j.manifest_id ?? '',
+        ...(j.workflow_id
+          ? { workflow_id: j.workflow_id, workflow_revision: j.workflow_revision || undefined }
+          : {}),
+        payload: j.payload ?? {},
+        enabled,
+        ...keptOnResave(j),
+      });
+      setAnnounce(`${j.name} ${enabled ? 'resumed' : 'paused'}.`);
+      refresh();
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Save a workflow job over the workflow as it is now. Its firings are held to the revision
+   * current when it was saved; after the workflow changes it refuses to fire until someone
+   * saves it again, and whoever does becomes who it runs for.
+   */
+  async function repin(j: JobRecord) {
+    if (!j.workflow_id) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await upsertJob({
+        name: j.name,
+        schedule: j.schedule ?? '',
+        workflow_id: j.workflow_id,
+        payload: j.payload ?? {},
+        enabled: j.enabled !== false,
+        ...keptOnResave(j),
+      });
+      setAnnounce(`${j.name} now runs the current revision of ${j.workflow_id}.`);
+      refresh();
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(jobName: string) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await deleteJob(jobName);
+      if (expanded === jobName) setExpanded(null);
+      refresh();
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Fire a job now and show what it did. The response is the finished run, so its history
+   * opens with that run on top; the list refreshes for the row's `last` and `ran`.
+   */
+  async function runNow(jobName: string) {
+    setRunning((r) => ({ ...r, [jobName]: Date.now() }));
+    setNow(Date.now());
+    setActionError(null);
+    setAnnounce('');
+    try {
+      const run = await runJobNow(jobName);
+      setAnnounce(
+        run.status === 'error' || run.error
+          ? `${jobName} ran and failed.`
+          : run.result?.reason
+            ? `${jobName} was skipped: ${run.result.reason}.`
+            : `${jobName} ran: ${run.status ?? 'done'}.`,
+      );
+      setExpanded(jobName);
+      setRunsError(null);
+      setRuns(await listJobRuns(jobName, RUNS_SHOWN).catch(() => [run]));
+      refresh();
+    } catch (err) {
+      setAnnounce(`${jobName} could not be run.`);
+      setActionError(err);
+    } finally {
+      setRunning(({ [jobName]: _, ...rest }) => rest);
+    }
+  }
+
+  return (
+    <Panel>
+      {/* "Jobs", as the nav says. The page was "Scheduled jobs" under a nav entry
+          reading "Jobs", which is one place answering to two names. */}
+      <PageHeader
+        icon={<ClockIcon />}
+        title="Jobs"
+        // The count, then how many are failing in the failed chip — the one
+        // number here an operator acts on, which the header never said.
+        valueLead={data && failingCount > 0 ? `${plural(jobs.length, 'job')} ·` : undefined}
+        // Aged when the latest read failed: the list below is the last good
+        // one, and the count above it should not claim to be current.
+        value={withAge(
+          data
+            ? failingCount > 0
+              ? `${failingCount} failing`
+              : plural(jobs.length, 'job')
+            : undefined,
+          listError ? lastOkAt : undefined,
+        )}
+        valueTone={failingCount > 0 ? 'failed' : 'default'}
+        controls={
+          <CreateToggle
+            open={creating}
+            onToggle={() => setCreating((v) => !v)}
+            controls="job-create"
+          >
+            New job
+          </CreateToggle>
+        }
+      />
+
+      <PanelBody className="space-y-4">
+        <p role="status" className="sr-only">
+          {announce}
+        </p>
+        {/* A failed read after a good one keeps the rows under one line, as every
+            polled page does; the box is only for a failure with nothing earlier
+            to show. Jobs polls every few seconds, so it meets a 429 first. */}
+        {listError && isTransientFailure(listError) ? (
+          // A passing failure is the shell's one line; the rows stay as they were.
+          <TransientRead error={listError} lastOkAt={data ? lastOkAt : null} onRetry={refresh} />
+        ) : listError && data && lastOkAt != null ? (
+          <StaleNotice
+            error={listError}
+            doing="list scheduled jobs"
+            lastOkAt={lastOkAt}
+            onRetry={refresh}
+          />
+        ) : listError ? (
+          <ErrorNotice
+            error={listError}
+            doing="list scheduled jobs"
+            action={
+              <Button size="sm" variant="outline" className="self-start text-xs" onClick={refresh}>
+                Try again
+              </Button>
+            }
+          />
+        ) : null}
+        {actionError != null &&
+          (isWorkflowChanged(actionError) ? (
+            // A 412 reads as "rejected" in the shared words, which says nothing to act on.
+            <p role="alert" className="mb-3 text-sm text-state-failed">
+              Could not update this job: its workflow has been saved again since the job was. Use
+              “Run the current revision” on the job to move it onto the new one first.
+            </p>
+          ) : (
+            <ErrorNotice error={actionError} doing="update this job" />
+          ))}
+
+        {creating && (
+          // A section with a heading, not a dashed box: the form is a part of
+          // the page while it is open, and a heading is what names a part.
+          <div
+            id="job-create"
+            role="group"
+            aria-label="New job"
+            className={CREATE_FORM}
+            onKeyDown={(e) => {
+              // As every other dismissable surface here: Escape puts it away.
+              if (e.key === 'Escape' && !e.defaultPrevented) closeForm();
+            }}
+          >
+            <PageSection title="Job to schedule">
+              {/* Visible labels, with the format under the field it describes. The
+                  labels were `sr-only` and the cron grammar lived in a placeholder,
+                  so the one hint the schedule field needs vanished on the first
+                  keystroke — and a half-typed `0 9 * *` has nothing to check it
+                  against. */}
+              <JobCreateForm
+                manifest={manifest}
+                manifestOptions={manifestOptions}
+                jobs={jobs}
+                onCreated={() => {
+                  closeForm();
+                  refresh();
+                }}
+                onCancel={closeForm}
+              />
+            </PageSection>
+          </div>
+        )}
+
+        {/* Rows divided by hairlines, as the Activity page's are. Each job was a bordered
+            card, which made a list of one kind of thing look like a pile of
+            separate things, and spent a border on every row saying so. */}
+        <div>
+          {/* The page's one explanation lives here now, where it is needed: the
+                header lost its subline, and a page with jobs on it explains itself. */}
+          {data && jobs.length === 0 && (
+            <PageEmpty>
+              No jobs yet. A job is an agent run the scheduler starts on its schedule. One with no
+              schedule runs only when you press Run now.
+            </PageEmpty>
+          )}
+          {jobs.map((j) => {
+            let invalid = false;
+            let manual = false;
+            let once = false;
+            try {
+              const { kind } = parseSchedule(j.schedule ?? '');
+              manual = kind === 'manual';
+              once = kind === 'once';
+            } catch {
+              invalid = true;
+            }
+            const jobSpend = spendOf(j.name);
+            // The thread's word only where it disagrees: a firing the scheduler
+            // calls OK whose turn failed. Agreeing, the scheduler's word stands.
+            const threadFailed =
+              j.last_status !== 'running' &&
+              !(j.last_status && isFailure(j.last_status)) &&
+              jobThreadOutcome(j, outcomes) === 'failed';
+            // Threads, as everywhere a failure is counted: one for a job that keeps
+            // its thread, one per failed run for a job that starts a fresh one.
+            const threadFailures = failedThreadsOf(j.name);
+            const freshThreads = j.payload?.fresh_thread === true;
+            const origin = jobOrigin(j);
+            const pauseVerb = j.enabled === false ? 'Resume' : 'Pause';
+            const pauseLabel =
+              j.enabled === false ? (
+                <>
+                  <StepForwardIcon className="size-3" /> Resume
+                </>
+              ) : (
+                <>
+                  <PauseIcon className="size-3" /> Pause
+                </>
+              );
+            return (
+              <div
+                key={j.name}
+                data-job={j.name}
+                className="border-b border-border/60 py-2 text-sm first-of-type:border-t"
+              >
+                {/* wraps so an armed delete confirmation gets its own line rather
+                      than crushing the job name out of the row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* A heading, so a screen reader can move job to job. */}
+                  <h3 className="font-mono text-sm font-medium">{j.name}</h3>
+                  {/* On the name line, where the job's state is read: as a word on the meta
+                    line it sat among muted facts and was missed. */}
+                  {j.enabled === false && (
+                    <span className="text-xs font-medium text-muted-foreground">paused</span>
+                  )}
+                  <Badge
+                    variant="secondary"
+                    className="py-0 font-mono text-xs"
+                    // The badge is what the harness will do; the stored text is in the title
+                    // when the two differ (an empty schedule).
+                    title={
+                      j.schedule
+                        ? `Schedule: ${j.schedule}${j.timezone ? ` in ${j.timezone}` : ' (UTC)'}`
+                        : 'No schedule: runs only by hand'
+                    }
+                  >
+                    {scheduleLabel(j.schedule ?? '')}
+                    {/* Said only off UTC, which the harness assumes. */}
+                    {j.timezone && j.schedule ? ` · ${j.timezone}` : ''}
+                  </Badge>
+                  {/* Mono: the harness named it (the Provenance Rule). */}
+                  {j.workflow_id ? (
+                    <Link
+                      to={`/harness/workflows?workflow=${encodeURIComponent(j.workflow_id)}`}
+                      className="font-mono text-xs text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                      title="The workflow each run starts"
+                    >
+                      workflow {j.workflow_id}
+                    </Link>
+                  ) : j.manifest_id ? (
+                    <span className="font-mono text-xs text-muted-foreground">{j.manifest_id}</span>
+                  ) : (
+                    // The harness skips a run with no agent (`no_manifest`); said in words.
+                    <span className="text-xs text-muted-foreground">
+                      no agent — runs are skipped
+                    </span>
+                  )}
+                  {origin && (
+                    <span className="text-xs text-muted-foreground">
+                      {origin.kind === 'task' ? 'Scheduled by an agent' : 'Heartbeat'}
+                      {origin.title ? ` · ${origin.title}` : ''}
+                    </span>
+                  )}
+                  {invalid && (
+                    // It never fires — the scheduler refuses it — though its next time stays.
+                    <span className="text-xs font-medium text-state-failed">invalid schedule</span>
+                  )}
+                  {awaitingPreferences(j) && j.enabled !== false && (
+                    // Amber: it waits on a person writing them, under Runs.
+                    <span className="text-xs font-medium text-state-blocked">
+                      Runs skipped until preferences are written
+                    </span>
+                  )}
+                  {waitingOn(j.name) && (
+                    <span className="text-xs font-medium text-state-blocked">
+                      Waiting on an approval — see the attention line
+                    </span>
+                  )}
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="ml-auto coarse:h-9 coarse:px-3"
+                    disabled={running[j.name] !== undefined}
+                    aria-label={running[j.name] !== undefined ? undefined : `Run ${j.name} now`}
+                    title={
+                      j.enabled === false
+                        ? 'Run once now. The job stays disabled for its schedule.'
+                        : j.workflow_id
+                          ? 'Start a run of its workflow now, without waiting for the schedule.'
+                          : 'Run once now, without waiting for the schedule. A whole agent turn.'
+                    }
+                    onClick={() => runNow(j.name)}
+                  >
+                    {running[j.name] !== undefined ? (
+                      <>
+                        <LoaderIcon className="size-3 motion-safe:animate-spin" />
+                        <span className="shimmer shimmer-color-foreground">
+                          Running ·{' '}
+                          <span className="tabular-nums">{clock(now - running[j.name])}</span>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <PlayIcon className="size-3" /> Run now
+                      </>
+                    )}
+                  </Button>
+                  {/* `enabled` is only settable by a re-save, and a re-save by anyone but the
+                    writer makes a person's task or heartbeat an ordinary job of the presser's. */}
+                  {origin ? (
+                    <ConfirmButton
+                      size="xs"
+                      variant="ghost"
+                      className="coarse:h-9 coarse:px-3"
+                      disabled={busy}
+                      aria-label={`${pauseVerb} ${j.name}`}
+                      question={takeoverQuestion(j, origin, pauseVerb)}
+                      confirmLabel={pauseVerb}
+                      onConfirm={() => setEnabled(j, j.enabled === false)}
+                    >
+                      {pauseLabel}
+                    </ConfirmButton>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="coarse:h-9 coarse:px-3"
+                      disabled={busy}
+                      aria-label={`${pauseVerb} ${j.name}`}
+                      onClick={() => setEnabled(j, j.enabled === false)}
+                    >
+                      {pauseLabel}
+                    </Button>
+                  )}
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="coarse:h-9 coarse:px-3"
+                    aria-expanded={expanded === j.name}
+                    aria-controls={`job-runs-${j.name}`}
+                    aria-label={`Runs of ${j.name}`}
+                    onClick={() => toggleRuns(j.name)}
+                  >
+                    <HistoryIcon className="size-3" /> Runs
+                  </Button>
+                  <ConfirmButton
+                    size="xs"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-state-failed coarse:h-9 coarse:px-3"
+                    disabled={busy}
+                    destructive
+                    question={
+                      origin?.kind === 'heartbeat'
+                        ? `Delete ${j.name}? This turns off ${j.created_by ?? 'its person'}'s heartbeat, and its run history goes with it.`
+                        : `Delete ${j.name}? Its run history goes with it.`
+                    }
+                    confirmLabel="Delete job"
+                    onConfirm={() => remove(j.name)}
+                  >
+                    <Trash2Icon className="size-3" />
+                    <span className="sr-only">Delete {j.name}</span>
+                  </ConfirmButton>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  {/* State first, then timing, then what it costs, then what it says: the
+                    quoted prompt led the line, so its first words were content, not state. */}
+                  {/* The status as the Activity page draws one — word and dot — rather
+                    than plain muted text that read the same whether it passed. */}
+                  {/* A run in progress is said as one: "last running" read as a finished run
+                    whose result was "running". */}
+                  {j.last_status === 'running' ? (
+                    <span className="inline-flex items-center gap-1">
+                      <StatusDot status="running" />
+                    </span>
+                  ) : threadFailed ? (
+                    // The scheduler records that the firing returned; the turn it
+                    // ran is what failed.
+                    <span
+                      data-slot="job-thread-outcome"
+                      className="inline-flex items-center gap-1"
+                      title="The run returned, but the turn it ran on the job's thread failed"
+                    >
+                      last <StatusDot status="error" />
+                    </span>
+                  ) : j.last_status ? (
+                    <span className="inline-flex items-center gap-1">
+                      last <StatusDot status={j.last_status} />
+                    </span>
+                  ) : null}
+                  {/* The harness's own health watch: a job overdue after the scheduler had its
+                      chance, or failing a streak. Said with since when; the class, never the
+                      error's text, is all the incident keeps. */}
+                  {incidents(j).map((inc) => (
+                    <span
+                      key={inc.kind}
+                      data-slot="job-incident"
+                      className="font-medium text-state-failed"
+                      title={
+                        inc.kind === 'overdue'
+                          ? 'Due and not fired, after a scheduler sweep had its chance'
+                          : `Its last runs all failed${inc.cls ? ` (${inc.cls})` : ''}`
+                      }
+                    >
+                      {inc.kind}
+                      {inc.since ? ` since ${relativeTime(inc.since)}` : ''}
+                    </span>
+                  ))}
+                  {/* The week behind the last run, which `last` alone hides: a job
+                      that failed four days ago and has run cleanly since read
+                      `last ● OK` beside the Activity page leading with it. Links to
+                      the failures on its thread, as the spend links to its turns. */}
+                  {threadFailures > 0 && (
+                    <Link
+                      data-slot="job-thread-failures"
+                      to={{
+                        pathname: '/harness/activity',
+                        // A fresh-thread job's runs have no one thread to open.
+                        search: freshThreads
+                          ? '?since=7d&failed=1'
+                          : `?since=7d&failed=1&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
+                      }}
+                      className="text-state-failed underline decoration-state-failed/40 underline-offset-2"
+                      title={
+                        freshThreads
+                          ? `${threadFailures} of this job's runs failed in the last ${week.span}, each on a thread of its own — open them on the Activity page`
+                          : `This job's thread failed in the last ${week.span} — open it on the Activity page`
+                      }
+                    >
+                      {threadFailures} {threadFailures === 1 ? 'thread' : 'threads'} failed ·{' '}
+                      {week.span}
+                    </Link>
+                  )}
+                  {j.last_run_at && (
+                    <span title={new Date(j.last_run_at).toLocaleString()}>
+                      ran {relativeTime(j.last_run_at)}
+                    </span>
+                  )}
+                  {/* Null is a job the scheduler has not claimed yet — it fires at the next
+                    sweep; a time already past is due, not "next just now". A manual job has
+                    no next time at all: its badge already says so. */}
+                  {origin?.threadSuffix && (
+                    <Link
+                      to={`/t/${encodeURIComponent(origin.threadSuffix)}`}
+                      className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                      title="The conversation it reports to"
+                    >
+                      its conversation
+                    </Link>
+                  )}
+                  {/* A one-shot with no next time has fired, and never will again. */}
+                  {j.enabled !== false &&
+                    !invalid &&
+                    !manual &&
+                    !(once && j.next_run_at == null) &&
+                    (j.next_run_at == null ? (
+                      <span>first run at the next sweep</span>
+                    ) : j.next_run_at <= now + 1000 ? (
+                      <span title={new Date(j.next_run_at).toLocaleString()}>due now</span>
+                    ) : (
+                      <span title={new Date(j.next_run_at).toLocaleString()}>
+                        next {relativeTime(j.next_run_at)}
+                      </span>
+                    ))}
+                  {jobSpend && (
+                    <Link
+                      to={{
+                        pathname: '/harness/activity',
+                        // One thread to open unless each run has its own.
+                        search:
+                          j.payload?.fresh_thread === true
+                            ? '?since=24h'
+                            : // The ledger files threads under `threadSuffix`, as every client does.
+                              `?since=24h&thread=${encodeURIComponent(threadSuffix(`job:${j.name}`))}`,
+                      }}
+                      className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                      title="This job's spend and turns on the Activity page"
+                    >
+                      {jobSpend.calls === 0
+                        ? 'no model calls · 24h'
+                        : jobSpend.cost > 0
+                          ? `$${jobSpend.cost.toFixed(jobSpend.cost < 1 ? 3 : 2)} · ${jobSpend.calls} calls · 24h`
+                          : // Metered but unpriced: `0` does not mean free.
+                            `${jobSpend.calls} calls, unpriced · 24h`}
+                    </Link>
+                  )}
+                  {/* Said only when set: the default is one thread kept between runs, and
+                      restating a default on every row is what makes the exception vanish. */}
+                  {j.payload?.fresh_thread === true && (
+                    <span title="Each run gets a thread of its own; nothing carries over between runs.">
+                      fresh thread each run
+                    </span>
+                  )}
+                  {typeof j.payload?.prompt === 'string' && j.payload.prompt && (
+                    <span className="min-w-0 truncate" title={j.payload.prompt}>
+                      “{j.payload.prompt}”
+                    </span>
+                  )}
+                  {/* Whose scopes its runs carry: whoever saved it last. */}
+                  {j.created_by && <span>runs as {j.created_by}</span>}
+                  {j.last_error && <span className="text-state-failed">{j.last_error}</span>}
+                  {heldToOldRevision(j) && (
+                    <ConfirmButton
+                      size="xs"
+                      variant="outline"
+                      disabled={busy}
+                      question={`${j.name} will run ${j.workflow_id} as it is now, on your scopes.${j.preferences_set ? ' If it runs for someone else, their preferences are cleared.' : ''}`}
+                      confirmLabel="Run the current revision"
+                      onConfirm={() => repin(j)}
+                    >
+                      Run the current revision
+                    </ConfirmButton>
+                  )}
+                </div>
+                {expanded === j.name && (
+                  <div id={`job-runs-${j.name}`} className="mt-1.5 border-t pt-1.5">
+                    {runsError != null ? (
+                      <ErrorNotice error={runsError} doing="load this job's run history" />
+                    ) : runs === null ? (
+                      <p className="text-sm text-muted-foreground">Loading runs…</p>
+                    ) : runs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No runs recorded.</p>
+                    ) : (
+                      // A list, in columns: status, when, how long, how it started, what it said.
+                      // It was a row of loose spans, so nothing lined up from one run to the next.
+                      <ol className="space-y-0.5">
+                        {runs.map((r, i) => (
+                          <li
+                            key={r.run_id ?? `${j.name}-${i}`}
+                            className="grid grid-cols-[3.5rem_4.5rem_3rem_minmax(0,1fr)] items-center gap-2 text-xs text-muted-foreground"
+                          >
+                            <span>{r.status ? <StatusDot status={r.status} /> : '—'}</span>
+                            <span
+                              title={
+                                r.started_at ? new Date(r.started_at).toLocaleString() : undefined
+                              }
+                            >
+                              {r.started_at ? relativeTime(r.started_at) : '—'}
+                            </span>
+                            <span className="text-right tabular-nums">
+                              {r.started_at && r.finished_at && r.finished_at >= r.started_at
+                                ? duration(r.finished_at - r.started_at)
+                                : ''}
+                            </span>
+                            <span className="flex min-w-0 gap-2">
+                              {/* Said only when it was not the schedule: the default is cron. */}
+                              {r.result?.trigger === 'manual' && <span>run by hand</span>}
+                              {/* Ahead of the answer: an `ok` run missing a source is the one
+                                  that reads as a quiet day (`felix-run/felix#732`). */}
+                              {missingSources(r).length > 0 && (
+                                <span className="shrink-0 text-state-failed">
+                                  could not reach {missingSources(r).join(', ')}
+                                </span>
+                              )}
+                              {reportProblem(r) && (
+                                <span className="shrink-0">{reportProblem(r)}</span>
+                              )}
+                              {r.result?.quiet === true && <span>quiet</span>}
+                              {r.error || r.result?.error ? (
+                                <span className="text-state-failed">
+                                  {r.error || r.result?.error}
+                                </span>
+                              ) : r.result?.workflow_run_id && r.result.workflow_id ? (
+                                <Link
+                                  to={workflowRunHref(
+                                    r.result.workflow_id,
+                                    r.result.workflow_run_id,
+                                  )}
+                                  className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                                >
+                                  workflow run
+                                </Link>
+                              ) : r.result?.reason ? (
+                                <span>skipped: {r.result.reason}</span>
+                              ) : r.result?.answer ? (
+                                // One line of what the agent said; the whole of it on hover.
+                                <span
+                                  className="min-w-0 truncate text-foreground/80"
+                                  title={r.result.answer}
+                                >
+                                  {r.result.answer}
+                                </span>
+                              ) : null}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    {/* The route returns the newest few; a list that long was cut, and
+                      said nothing about it. */}
+                    {runs !== null && runs.length >= RUNS_SHOWN && (
+                      <p className="pt-1 text-xs text-muted-foreground">
+                        The latest {RUNS_SHOWN} runs.
+                      </p>
+                    )}
+                    {/* Read only now the job is open: both are its writer's, and may be personal.
+                        A workflow job has no prompt to carry preferences. */}
+                    {!j.workflow_id && (
+                      <div className="mt-2">
+                        <h4 className="mb-1 text-xs font-medium">Preferences</h4>
+                        <JobPreferencesSection jobName={j.name} onChanged={refresh} />
+                      </div>
+                    )}
+                    <div className="mt-2">
+                      <h4 className="mb-1 text-xs font-medium">Saved state</h4>
+                      <JobStateSection jobName={j.name} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </PanelBody>
+    </Panel>
+  );
+}

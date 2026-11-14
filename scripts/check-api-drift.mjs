@@ -36,7 +36,7 @@
  *
  * The origin defaults to `FELIX_ORIGIN`, then `http://localhost:8080`. The spec
  * needs a key: `FELIX_API_KEY` from the environment, else from
- * `apps/chat-ui/.dev.vars` — the same place `vite dev` reads it.
+ * `apps/web/.dev.vars` — the same place `vite dev` reads it.
  */
 import { readFileSync } from 'node:fs';
 import { argv, env, exit } from 'node:process';
@@ -282,7 +282,7 @@ export function compareSpecs(recorded, live) {
 /** `KEY=value` lines, as `vite.config.ts` reads them. Missing file -> {}. */
 function devVars() {
   try {
-    const raw = readFileSync(new URL('../apps/chat-ui/.dev.vars', import.meta.url), 'utf8');
+    const raw = readFileSync(new URL('../apps/web/.dev.vars', import.meta.url), 'utf8');
     const out = {};
     for (const line of raw.split('\n')) {
       const t = line.trim();
@@ -304,7 +304,7 @@ function devVars() {
 async function fetchLiveSpec(origin) {
   const vars = devVars();
   const key = env.FELIX_API_KEY || vars.FELIX_API_KEY || vars.FELIX_AUTH_API_KEYS || '';
-  const source = env.FELIX_API_KEY ? 'FELIX_API_KEY' : key ? 'apps/chat-ui/.dev.vars' : 'none';
+  const source = env.FELIX_API_KEY ? 'FELIX_API_KEY' : key ? 'apps/web/.dev.vars' : 'none';
   if (key.trim().startsWith('{')) {
     console.error('✗ the key looks like JSON — use the token inside it, not the object');
     exit(2);

@@ -4,7 +4,7 @@
  *
  * What a browser fetches before it can draw anything is `dist/index.html`'s own list: the
  * entry script, every `modulepreload`, and the stylesheet. It was ~504 kB gzipped until
- * KaTeX and `rehype-raw` (with parse5) were moved out of it (`src/lib/reply-plugins.ts`),
+ * KaTeX and `rehype-raw` (with parse5) were moved out of it (`src/lib/markdown/reply-plugins.ts`),
  * and both left the same way they came in — one static import, at the top of a
  * dependency's bundle, that type-checks, lints and renders exactly as before. Nothing
  * else in CI would notice either coming back, or the next one arriving.
@@ -26,11 +26,11 @@ import { gzipSync } from 'node:zlib';
 const BUDGET_KB = 450;
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(REPO, 'apps/chat-ui/dist');
+const DIST = join(REPO, 'apps/web/dist');
 const html = join(DIST, 'index.html');
 
 if (!existsSync(html)) {
-  console.error(`✗ ${html} not found — run \`pnpm --filter @felix/chat-ui build\` first.`);
+  console.error(`✗ ${html} not found — run \`pnpm --filter @felix/web build\` first.`);
   exit(2);
 }
 
@@ -65,7 +65,7 @@ if (total > BUDGET_KB) {
   for (const s of sizes.slice(0, 8)) console.error(`    ${kb(s.gz).padStart(9)}  ${s.file}`);
   console.error(
     '  Find what arrived with `vite build --sourcemap` and move it behind a dynamic import,\n' +
-      '  as KaTeX and rehype-raw are (apps/chat-ui/vite.config.ts, src/lib/reply-plugins.ts).\n' +
+      '  as KaTeX and rehype-raw are (apps/web/vite.config.ts, src/lib/markdown/reply-plugins.ts).\n' +
       '  Raise BUDGET_KB only on purpose, in the PR that needs it.',
   );
   exit(1);

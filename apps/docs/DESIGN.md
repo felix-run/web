@@ -168,7 +168,7 @@ body text, comments (italic) and punctuation in faint — and by one hue that is
 so a block sits on the panel step like inline code. No red, amber or green ever reaches syntax.
 
 The neutral hexes are canonical in `packages/design/src/tokens.ts` (`NEUTRAL`, converted to hex
-from the stone/charcoal oklch chat-ui authors in `apps/chat-ui/src/index.css`) and reach the site
+from the stone/charcoal oklch chat-ui authors in `apps/web/src/styles/index.css`) and reach the site
 through the generated `src/styles/theme.css` (`pnpm sync:theme`; hand edits are hook-blocked). The state hexes
 are the same file's `STATE_DARK`/`STATE_LIGHT`, which are themselves derived from chat-ui's oklch
 values and held to them by `pnpm check-state-palette`. Starlight's semantic grey slots are filled

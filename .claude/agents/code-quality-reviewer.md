@@ -46,7 +46,7 @@ The per-dimension checklist with concrete repo targets is in the `code-quality` 
 
 ## What is deliberate here — do not report it as a defect
 
-- **The proxy contract is stated twice on purpose** — `apps/chat-ui/worker/index.ts` and the `/api`
+- **The proxy contract is stated twice on purpose** — `apps/web/worker/index.ts` and the `/api`
   rewrite in `vite.config.ts` — because one runs in production and the other only in `vite dev`
   (`.claude/rules/protocol-parity.md`). Divergence between them is a finding; the duplication is not.
 - **`@felix/protocol` is hand-mirrored** from the Python harness in a separate repo. It looks
@@ -54,7 +54,7 @@ The per-dimension checklist with concrete repo targets is in the `code-quality` 
 - **`packages/ui` and `packages/cowork-client` ship raw `.tsx`/`.ts`** with no build step. The
   double wiring (exports map + tsconfig paths) is the design, not an oversight.
 - **`apps/docs/src/styles/theme.css` is generated** from `packages/design/src/tokens.ts`.
-- **shadcn primitives** under `packages/ui/src` and `apps/chat-ui/src/components` are vendored
+- **shadcn primitives** under `packages/ui/src` and `apps/web/src/components` are vendored
   upstream code with relaxed lint rules. Do not restyle them to match house conventions.
 
 ## Calibration

@@ -21,7 +21,7 @@ saying so.
 
 ## Invariants you must not break
 
-1. **The proxy contract is stated twice on purpose.** `apps/chat-ui/worker/index.ts` runs in
+1. **The proxy contract is stated twice on purpose.** `apps/web/worker/index.ts` runs in
    production; the `/api` rewrite in `vite.config.ts` runs only in `vite dev`. They cannot be one
    module (`.claude/rules/protocol-parity.md`). The correct cleanup is the opposite one: make the
    copies match, in the same PR.
@@ -34,7 +34,7 @@ saying so.
    `packages/design/src/tokens.ts` via `pnpm sync:theme`; `block-generated.sh` will deny the edit.
 5. **Shared dependency versions live in `pnpm-workspace.yaml` under `catalog:`.** Fixing drift means
    replacing a literal version with `"catalog:"`, not bumping it in the manifest.
-6. **shadcn primitives are vendored.** Leave `packages/ui/src` and `apps/chat-ui/src/components`
+6. **shadcn primitives are vendored.** Leave `packages/ui/src` and `apps/web/src/components`
    alone unless the finding is about our own code inside them.
 
 ## How to work

@@ -8,7 +8,7 @@ slug: s-chat-ui-src-components-chat-multimodal-input-tsx
 ---
 # Critique: the composer
 
-Target `apps/chat-ui/src/components/chat/multimodal-input.tsx` (672 lines) and the `prompt-input` primitive it wraps (1,175). Driven live against the harness on `:8080`.
+Target `apps/web/src/components/chat/multimodal-input.tsx` (672 lines) and the `prompt-input` primitive it wraps (1,175). Driven live against the harness on `:8080`.
 
 ## Design Health Score
 

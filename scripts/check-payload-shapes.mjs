@@ -59,7 +59,7 @@ export const GUARDED = [
     // A GitHub connection: the caller's own (`/github/connection`) and, for an administrator,
     // every one in the tenant (`/github/connections`).
     type: 'GitHubConnection',
-    file: 'apps/chat-ui/src/api.ts',
+    file: 'apps/web/src/api/client.ts',
     serializer: 'felix/auth/github_connections.py:_connection_dict',
   },
   {
@@ -68,7 +68,7 @@ export const GUARDED = [
     // rows that carried `pass` and `rule` for as long as it did — but the row's
     // own keys (`error_count` arrived in v0.3.0) are guarded from here on.
     type: 'EvalRun',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'apps/web/src/api/types.ts',
     serializer: 'felix/eval/store.py:_run_dict',
   },
   {
@@ -76,7 +76,7 @@ export const GUARDED = [
     // `prompt` and `fresh_thread` inside it are the scheduler's contract, not
     // this check's.
     type: 'JobRecord',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'apps/web/src/api/types.ts',
     serializer: 'felix/jobs/store.py:_job_dict',
   },
   {
@@ -84,7 +84,7 @@ export const GUARDED = [
     // it. `result` is a free dict on the wire (the answer, the trigger), so its keys are the
     // scheduler's contract, not this check's.
     type: 'JobRun',
-    file: 'apps/chat-ui/src/types.ts',
+    file: 'apps/web/src/api/types.ts',
     serializer: 'felix/jobs/store.py:_run_dict',
   },
   {
