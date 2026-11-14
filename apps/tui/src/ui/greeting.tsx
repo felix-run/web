@@ -52,13 +52,18 @@ export function Greeting({
   return (
     <box flexDirection="column" marginBottom={1}>
       <text>
-        <span fg={theme.ready}>FELIX</span>
-        <span attributes={DIM}> · {manifest}</span>
+        <span fg={theme.ready} attributes={BOLD}>
+          FELIX
+        </span>
+        <span attributes={DIM}> · </span>
+        <span fg={theme.accent}>{manifest}</span>
       </text>
       <text attributes={DIM}> </text>
       {greeting ? (
         <>
-          <text attributes={BOLD}>{greeting.headline}</text>
+          <text fg={theme.agent} attributes={BOLD}>
+            {greeting.headline}
+          </text>
           {greeting.subtitle ? <text attributes={DIM}>{greeting.subtitle}</text> : null}
           <text attributes={DIM}> </text>
         </>
@@ -77,14 +82,14 @@ export function Greeting({
           <text attributes={DIM}> </text>
           {starters.map((s, i) => (
             <text key={s.title}>
-              <span fg={theme.ready}>{`  ${i + 1}  `}</span>
+              <span fg={theme.ready} attributes={BOLD}>{`  ${i + 1}  `}</span>
               <span>{s.title}</span>
             </text>
           ))}
           <text attributes={DIM}> </text>
           <text attributes={DIM}>
-            /start {starters.length === 1 ? '1' : `1–${starters.length}`} puts one in the composer,
-            or ask anything. /help for more.
+            Enter a number or /start {starters.length === 1 ? '1' : `1–${starters.length}`} to put
+            one in the composer, or ask anything. /help for more.
           </text>
         </>
       ) : (
