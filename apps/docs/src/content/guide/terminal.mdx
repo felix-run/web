@@ -457,3 +457,11 @@ recorded tool results, not the agent's prose. A completed command is not a claim
 passed. Failed attempts remain visible even after a successful retry; partial or missing
 results are marked unconfirmed. Each group shows up to six entries, with the rest available
 in the tool results above.
+
+Use `/work` to open a coding report for the loaded thread history in `$PAGER`. It
+combines operations and command attempts across turns and uses the latest recorded
+state of each plan. Failed attempts remain visible after successful retries; only the
+latest unfinished plan steps are listed. The report makes no model call, runs no
+command against the project, and changes no project file. The pager uses a private
+temporary report file. It reports loaded history rather
+than fetching a fresh Git diff or checking the current workspace.
