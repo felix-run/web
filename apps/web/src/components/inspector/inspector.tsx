@@ -14,7 +14,7 @@ import {
   SectionBoundary,
 } from '@/components/inspector/primitives';
 import { ThreadChanges } from '@/components/workspace/changes-list';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { callTarget } from '@/lib/conversation/call-target';
 import { cn } from '@/lib/utils';
 import { type ShellValue, useOptionalShellPick, useShell } from '@/app/shell-context';

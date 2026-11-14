@@ -24,8 +24,8 @@ import { DRAWER_MOTION, PaneColumn, PaneOverlay } from '@/components/pane/pane-z
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
 import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { usePoll } from '@/hooks/usePoll';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { usePoll } from '@/hooks/use-poll';
 import { changesByReply, landedPaths } from '@/lib/workspace/changes';
 import { DEFAULT_MANIFEST } from '@/lib/harness/manifests';
 import { openInPane, usePaneState } from '@/lib/navigation/side-pane';

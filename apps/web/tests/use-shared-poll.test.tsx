@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSharedPolls, useSharedPoll } from '../src/hooks/useSharedPoll';
+import { resetSharedPolls, useSharedPoll } from '../src/hooks/use-shared-poll';
 
 /**
  * The rail's glances and the pages they summarise read the same routes; this is

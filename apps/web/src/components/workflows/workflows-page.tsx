@@ -58,8 +58,8 @@ import {
   RunInspector,
   runWord,
 } from '@/components/workflows/workflow-inspector';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { usePoll } from '@/hooks/usePoll';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { usePoll } from '@/hooks/use-poll';
 import { isTransientFailure } from '@/lib/harness/harness-health';
 import { cn } from '@/lib/utils';
 import {

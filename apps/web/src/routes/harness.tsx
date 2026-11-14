@@ -34,8 +34,8 @@ import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/p
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useWeekFailures } from '@/hooks/use-recent-audit';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { useSharedPoll } from '@/hooks/use-shared-poll';
 import { landedPaths } from '@/lib/workspace/changes';
 import {
   ACTIVITY_GLANCE_SPAN,

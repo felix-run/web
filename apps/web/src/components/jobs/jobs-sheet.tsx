@@ -35,7 +35,7 @@ import {
 import { JobCreateForm } from '@/components/jobs/job-create-form';
 import { JobPreferencesSection, JobStateSection } from '@/components/jobs/job-details';
 import { useRecentAudit, useWeekFailures } from '@/hooks/use-recent-audit';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { useSharedPoll } from '@/hooks/use-shared-poll';
 import {
   failing,
   JOBS_POLL_KEY,

@@ -1,4 +1,4 @@
-# chat-ui
+# web
 
 Guidance for `apps/web`, split out of the root `CLAUDE.md` (which still holds the proxy
 contract, the wire protocol and the run flows). Paths are relative to `apps/web` unless they
@@ -14,9 +14,12 @@ needed it went when the editor moved into the side pane, whose store keeps the e
 navigation). TanStack Query is the skill library's alone and loads with it:
 `components/skills/query-root.tsx` creates one client lazily and each lazy skills entry point
 wraps itself in it, unless a host (a test) already provided one; everything older polls through
-`usePoll`; `src/app/app-shell.tsx` is the layout route that owns the engine, the thread, the `/approvals`
-poll and `presence.ts`, and renders the matched route into an `<Outlet/>`. Everything below that
-seam reads `src/app/shell-context.ts`. The engine is *above* the `<Outlet/>` on purpose: a run is alive
+`usePoll`; `src/app/app-shell.tsx` composes the layout and renders the matched route into
+an `<Outlet/>`. `src/app/use-app-controller.ts` owns conversation actions and coordinates the
+engine and thread. Focused hooks in `src/app/hooks/` own preferences, manifests, thread indexing,
+workspace panes, approval polling, run clocks and recovery, side questions, and notifications.
+`src/app/shell-header.tsx` renders the header. Everything below that seam reads
+`src/app/shell-context.ts`. The engine is *above* the `<Outlet/>` on purpose: a run is alive
 for as long as the tab is, so mounting `createChatEngine` inside a route would unmount it — and kill
 a live run — on a visit to any other address.
 

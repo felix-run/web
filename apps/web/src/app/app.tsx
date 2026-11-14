@@ -1,9 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from '@/app/app-shell';
+import { useShell } from '@/app/shell-context';
 import { PanelBoundary } from '@/components/harness/panel';
 import { HARNESS_DESTINATIONS, HarnessLayout } from '@/routes/harness';
 import { Workbench } from '@/routes/workbench';
-import { useShell } from '@/app/shell-context';
 
 /**
  * The addresses this client answers to.
