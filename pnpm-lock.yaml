@@ -107,6 +107,9 @@ importers:
       '@types/node':
         specifier: ^25.7.0
         version: 25.7.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
       turbo:
         specifier: ^2.5.8
         version: 2.10.4

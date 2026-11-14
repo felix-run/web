@@ -35,6 +35,7 @@
     "@biomejs/biome": "^2.4.15",
     "@cloudflare/workers-types": "catalog:",
     "@types/node": "^25.7.0",
+    "@types/react": "catalog:",
     "turbo": "^2.5.8",
     "typescript": "catalog:",
     "vite": "catalog:"

@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { executeClientTool } from '../src/client-tools';
 import {
   clearMount,
   getMountLabel,
@@ -20,6 +21,7 @@ import {
   supportsDirectoryPicker,
   TargetExistsError,
 } from '../src/fs-mount';
+import { getVfs } from '../src/vfs';
 
 /**
  * The mount is a real folder on the user's disk, reached through the File
@@ -416,4 +418,98 @@ describe('folders in the mount', () => {
     expect(await mountRead('pkg/src/a.ts')).toBe('A');
     await expect(mountRead('src/a.ts')).rejects.toThrow();
   });
+});
+
+it('aborts an uncommitted write when the request is stopped', async () => {
+  const file = await root.getFileHandle('code.ts', { create: true });
+  file.content = 'before';
+  const controller = new AbortController();
+  const writable = {
+    write: vi.fn(async () => {}),
+    close: vi.fn(async () => {}),
+    abort: vi.fn(async () => {}),
+  };
+  vi.spyOn(file, 'createWritable').mockImplementation(async () => {
+    controller.abort();
+    return writable;
+  });
+  await expect(
+    mountWrite('code.ts', 'after', false, () => controller.signal.throwIfAborted()),
+  ).rejects.toThrow();
+  expect(writable.abort).toHaveBeenCalledOnce();
+  expect(writable.close).not.toHaveBeenCalled();
+  expect(file.content).toBe('before');
+});
+
+it('does not delete a rename source after the call is stopped', async () => {
+  const file = await root.getFileHandle('old.ts', { create: true });
+  file.content = 'source';
+  const controller = new AbortController();
+  const original = file.getFile.bind(file);
+  vi.spyOn(file, 'getFile').mockImplementation(async () => {
+    const result = await original();
+    controller.abort();
+    return result;
+  });
+  await expect(
+    mountRename('old.ts', 'new.ts', () => controller.signal.throwIfAborted()),
+  ).rejects.toThrow();
+  expect(root.children.has('old.ts')).toBe(true);
+  expect(root.children.has('new.ts')).toBe(false);
+});
+
+it.each(['unmount', 'replace'])('never redirects an edit after a workspace %s', async (change) => {
+  const vfs = getVfs(`workspace-change-${change}`);
+  vfs.reset();
+  const file = await root.getFileHandle('code.ts', { create: true });
+  file.content = 'before';
+  const replacement = new MockDirHandle('project');
+  const other = await replacement.getFileHandle('code.ts', { create: true });
+  other.content = 'other folder';
+  const original = file.getFile.bind(file);
+  vi.spyOn(file, 'getFile').mockImplementation(async () => {
+    if (change === 'unmount') clearMount();
+    else {
+      (
+        window as unknown as { showDirectoryPicker: () => Promise<MockDirHandle> }
+      ).showDirectoryPicker = async () => replacement;
+      await pickDirectory();
+    }
+    return original();
+  });
+  const result = await executeClientTool(
+    {
+      id: 'edit-moved-workspace',
+      name: 'local_edit',
+      args: { path: 'code.ts', old_string: 'before', new_string: 'after' },
+    },
+    vfs,
+  );
+  expect(result.error).toBe(true);
+  expect(result.content).toContain('workspace changed');
+  expect(file.content).toBe('before');
+  expect(other.content).toBe('other folder');
+  expect(vfs.list()).toEqual([]);
+});
+
+it('aborts staged content instead of closing it when Stop arrives during write', async () => {
+  const file = await root.getFileHandle('code.ts', { create: true });
+  file.content = 'before';
+  const controller = new AbortController();
+  const writable = {
+    write: vi.fn(async () => {
+      controller.abort();
+    }),
+    close: vi.fn(async () => {
+      file.content = 'after';
+    }),
+    abort: vi.fn(async () => {}),
+  };
+  vi.spyOn(file, 'createWritable').mockResolvedValue(writable);
+  await expect(
+    mountWrite('code.ts', 'after', false, () => controller.signal.throwIfAborted()),
+  ).rejects.toThrow();
+  expect(writable.abort).toHaveBeenCalledOnce();
+  expect(writable.close).not.toHaveBeenCalled();
+  expect(file.content).toBe('before');
 });

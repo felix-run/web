@@ -31,8 +31,12 @@ const vfs = getVfs('felix.chat.vfs');
  * The browser's client tools. `openFile` is where `local_open` puts a workspace
  * file — the side pane of the thread the call is on, never a new window.
  */
-export async function executeClientTool(req: ClientToolRequest, openFile: (path: string) => void) {
-  return exec(req, vfs, { openFile });
+export async function executeClientTool(
+  req: ClientToolRequest,
+  openFile: (path: string) => void,
+  signal?: AbortSignal,
+) {
+  return exec(req, vfs, { openFile, signal });
 }
 
 export async function readWorkspaceFile(path: string): Promise<string | null> {

@@ -25,10 +25,10 @@
  * under the root — `.env` included — and the result goes to the harness. Scope
  * that by choosing the directory you start in.
  *
- * No process execution. `local_shell` here is the same handful of verbs the
- * browser client implements, run against real files — not a shell. Spawning
- * what the model typed is a different feature with a different threat model.
+ * By default `local_shell` emulates the browser verbs. With --shell it runs a
+ * confirmed real command. Only its initial cwd is contained; this is not an OS sandbox.
  */
+
 import { constants } from 'node:fs';
 import {
   access,
@@ -43,7 +43,7 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   type ClientToolRequest,
   type ClientToolResult,
@@ -52,6 +52,7 @@ import {
   runLocalFileTool,
   settleClientTool,
 } from '@felix/client';
+import { runNativeShell } from './shell.js';
 
 /**
  * Asked before anything is written, with the **absolute** path it would touch.
@@ -65,6 +66,12 @@ export type ConfirmFn = (summary: string) => Promise<boolean>;
 export interface WorkspaceOptions {
   root: string;
   confirm: ConfirmFn;
+  /** Real process execution is an explicit CLI opt-in. */
+  shell?: boolean;
+  /** Shell commands always ask, even when file writes use --yes. */
+  confirmShell?: ConfirmFn;
+  /** Display a text file in the terminal viewer. URLs are returned as links. */
+  openFile?: (body: string, name: string) => Promise<void>;
   /** Abandons an in-flight tool when the run is stopped. */
   signal?: AbortSignal;
 }
@@ -337,6 +344,7 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       await assertWritable(root, target);
       if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
       await mkdir(dirname(target), { recursive: true });
+      opts.signal?.throwIfAborted();
       if (append) await appendFile(target, content, 'utf8');
       else await writeFile(target, content, 'utf8');
     },
@@ -350,6 +358,7 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       if (!info.isFile()) throw new Error(`${path} is not a file; only files are deleted`);
       await assertWritable(root, target);
       if (!(await opts.confirm(`${summary} ${target}`))) throw new Error('refused by the user');
+      opts.signal?.throwIfAborted();
       await unlink(target);
     },
     rename: async (path, toPath, { summary }) => {
@@ -373,6 +382,7 @@ function workingDirFs(opts: WorkspaceOptions): LocalFs {
       if (!(await opts.confirm(`${summary} ${from} → ${to}`)))
         throw new Error('refused by the user');
       await mkdir(dirname(to), { recursive: true });
+      opts.signal?.throwIfAborted();
       await rename(from, to);
     },
   };
@@ -383,13 +393,43 @@ async function run(req: ClientToolRequest, opts: WorkspaceOptions): Promise<Clie
     if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workingDirFs(opts));
     if (req.name === 'local_shell') {
       const command = typeof req.args.command === 'string' ? req.args.command : '';
-      const content = await runShell(command, opts);
-      return { content: content || '(ok)' };
+      const cwd = typeof req.args.cwd === 'string' ? req.args.cwd : '.';
+      const target = await resolveWithin(await realpath(opts.root), cwd);
+      if (!(await stat(target)).isDirectory()) throw new Error(`${cwd} is not a directory`);
+      if (opts.shell) {
+        return await runNativeShell(
+          command,
+          target,
+          opts.confirmShell ?? opts.confirm,
+          opts.signal,
+        );
+      }
+      const content = await runShell(command, { ...opts, root: target });
+      return {
+        content: content || '(ok)',
+        ...(content.startsWith('unsupported') ||
+        content.startsWith('usage:') ||
+        content.startsWith('error:') ||
+        content.startsWith('refused')
+          ? { error: true }
+          : {}),
+      };
     }
-    // The browser opens a tab. There is no equivalent here that is not a
-    // surprise, and answering with a refusal keeps the run moving.
     if (req.name === 'local_open') {
-      return { content: 'error: local_open is not supported by the terminal client', error: true };
+      const target = typeof req.args.target === 'string' ? req.args.target : '';
+      if (!target.trim()) throw new Error('target is required');
+      if (/^https?:\/\//i.test(target)) {
+        const url = new URL(target);
+        return { content: `Open this link in your browser: ${url.href}` };
+      }
+      if (!opts.openFile) throw new Error('no terminal file viewer is connected');
+      const path = await resolveWithin(await realpath(opts.root), target);
+      const text = await readFileText(path);
+      if (text === null)
+        throw new Error(`${target} is not a readable text file under ${MAX_READ_BYTES} bytes`);
+      if (opts.signal?.aborted) throw new Error('local_open aborted');
+      await opts.openFile(text, basename(path));
+      return { content: `Viewed ${target}` };
     }
     return { content: `error: unknown client tool ${req.name}`, error: true };
   } catch (err) {
@@ -399,9 +439,47 @@ async function run(req: ClientToolRequest, opts: WorkspaceOptions): Promise<Clie
 
 /** The `EnginePorts.clientTools` implementation this app hands the engine. */
 export function createWorkspace(opts: WorkspaceOptions) {
+  const active = new Set<AbortController>();
   return {
-    execute: (req: ClientToolRequest) =>
-      settleClientTool(req, () => run(req, opts), opts.signal ? { signal: opts.signal } : {}),
+    /** Stop work as well as settling its result; a later turn gets a fresh controller. */
+    cancel: () => {
+      for (const controller of active) controller.abort();
+    },
+    execute: async (req: ClientToolRequest) => {
+      const controller = new AbortController();
+      active.add(controller);
+      const signal = opts.signal
+        ? AbortSignal.any([opts.signal, controller.signal])
+        : controller.signal;
+      // Cancels the underlying work, including a confirmation answered after timeout.
+      const timer = setTimeout(
+        () => controller.abort(),
+        opts.shell && req.name === 'local_shell' ? 270_000 : 29_000,
+      );
+      try {
+        const confirm =
+          (ask: ConfirmFn): ConfirmFn =>
+          async (summary) => {
+            if (signal.aborted) return false;
+            const ok = await ask(summary);
+            return ok && !signal.aborted;
+          };
+        return await settleClientTool(
+          req,
+          () =>
+            run(req, {
+              ...opts,
+              signal,
+              confirm: confirm(opts.confirm),
+              confirmShell: confirm(opts.confirmShell ?? opts.confirm),
+            }),
+          { signal, timeoutMs: opts.shell && req.name === 'local_shell' ? 275_000 : 30_000 },
+        );
+      } finally {
+        clearTimeout(timer);
+        active.delete(controller);
+      }
+    },
     /**
      * Pre-edit text for a `write_file` approval diff. Null means new, unreadable,
      * a directory, or too large — anything the banner must not present as

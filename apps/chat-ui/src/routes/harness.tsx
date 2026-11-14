@@ -25,7 +25,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { Link, Navigate, NavLink, Outlet, useMatch } from 'react-router';
+import { Link, Navigate, NavLink, type NavLinkRenderProps, Outlet, useMatch } from 'react-router';
 import { listJobs, listSkillReviewQueue } from '@/api';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
@@ -481,7 +481,7 @@ function HarnessNav({ onNavigate, className }: { onNavigate?: () => void; classN
                     onClick={onNavigate}
                     // The sidebar's row grammar (`SidebarMenuButton`): the same list
                     // drawn two ways read as two lists.
-                    className={({ isActive }) =>
+                    className={({ isActive }: NavLinkRenderProps) =>
                       cn(
                         'flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm transition-[background-color,color,box-shadow] coarse:h-11',
                         'focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none',

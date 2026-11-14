@@ -54,6 +54,7 @@ import {
 import { OPEN_FILE_TOOL, openedPath } from './open-file';
 import { reattachThread } from './reattach';
 import { eventsToTurns } from './session-log';
+import { classifyToolResult } from './tool-results';
 import type { FelixClient } from './transport';
 import { closeTool, markToolPhase, type Turn, toolImages, type WorkspaceEdit } from './turns';
 import { describeWorkspaceEdit, workspaceEditOf } from './workspace-edits';
@@ -79,6 +80,8 @@ export interface EngineState {
 }
 
 export interface ClientToolPort {
+  /** Cancel underlying local work on Stop or a thread reset. */
+  cancel?(): void;
   /** Run the tool the harness handed back, and never throw — a hang costs the run. */
   execute(req: {
     id: string;
@@ -345,6 +348,13 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
    * folder for one call.
    */
   const takenToolRequests = new Set<string>();
+  let toolGeneration = 0;
+  const pendingClientTools = new Set<symbol>();
+  const cancelClientTools = () => {
+    toolGeneration++;
+    pendingClientTools.clear();
+    ports.clientTools?.cancel?.();
+  };
 
   let controller: AbortController | null = null;
   /**
@@ -749,19 +759,54 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
         }));
         // The run is blocked on this. A client with no executor still has to
         // answer, or the harness waits out the tool's timeout for nothing.
-        const result = ports.clientTools
-          ? await ports.clientTools.execute({ id: data.id, name: data.name, args: data.args ?? {} })
-          : { content: `error: this client cannot run ${data.name}`, error: true };
-        await ports.client.postToolResult({
-          threadId: ports.threadId(),
-          toolCallId: data.id,
-          content: result.content,
-          error: result.error,
-        });
-        patch((t) => ({
-          ...t,
-          tools: closeTool(t.tools, `client · ${data.name}`, result.content, data.id),
-        }));
+        const threadId = ports.threadId();
+        const generation = toolGeneration;
+        const pending = Symbol(data.id);
+        const stream = liveStream;
+        pendingClientTools.add(pending);
+        try {
+          let result: { content: string; error?: boolean };
+          try {
+            result = ports.clientTools
+              ? await ports.clientTools.execute({
+                  id: data.id,
+                  name: data.name,
+                  args: data.args ?? {},
+                })
+              : { content: `error: this client cannot run ${data.name}`, error: true };
+          } catch (error) {
+            result = {
+              content: `error: ${error instanceof Error ? error.message : String(error)}`,
+              error: true,
+            };
+          }
+          // A stopped or replaced turn must never submit a late result to the
+          // thread that happens to be selected now, nor patch its transcript.
+          if (generation !== toolGeneration || ports.threadId() !== threadId) break;
+          await ports.client.postToolResult({
+            threadId,
+            toolCallId: data.id,
+            content: result.content,
+            error: result.error,
+          });
+          if (generation !== toolGeneration || ports.threadId() !== threadId) break;
+          // The local card sees the raw client result before the harness
+          // adds its failure marker. Preserve the explicit error bit here too.
+          const name = `client · ${data.name}`;
+          const output =
+            result.error && !classifyToolResult(name, result.content)
+              ? `[tool error/provider_error] ${result.content}`
+              : result.content;
+          patch((t) => ({
+            ...t,
+            tools: closeTool(t.tools, name, output, data.id),
+          }));
+        } finally {
+          pendingClientTools.delete(pending);
+          // SSE dispatch awaits this handler, so no heartbeat can be read
+          // during the command. Give the reader a fresh liveness window.
+          if (stream && liveStream === stream) stream.lastActivityAt = Date.now();
+        }
         break;
       }
       // Nothing to read here: the harness puts its in-process `InvokeOutput` on this
@@ -1041,22 +1086,26 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
           threadId,
           signal: follow.signal,
           holdOpen: true,
-          onTurns: adoptTurns,
-          onEvent: (ev) => applyEvent(ev),
+          onTurns: (turns) => {
+            if (!signal.aborted) adoptTurns(turns);
+          },
+          onEvent: (ev) => (signal.aborted ? Promise.resolve() : applyEvent(ev)),
         })
       : Promise.resolve();
     let run: DurableRun;
     try {
       run = await ports.client.pollDurableRun(token, {
         signal,
-        onTick: (r) => tick(r.status || 'pending'),
+        onTick: (r) => {
+          if (!signal.aborted) tick(r.status || 'pending');
+        },
       });
     } finally {
       signal.removeEventListener('abort', stopFollowing);
       follow.abort();
       await followed;
     }
-    finishDurable(run);
+    if (!signal.aborted) finishDurable(run);
   };
 
   /**
@@ -1097,7 +1146,10 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
 
   /** What every run leaves behind, however it ended. */
   const endRun = (ctrl: AbortController) => {
-    if (controller === ctrl) controller = null;
+    // A stopped send may still be awaiting its executor when a new send starts.
+    // Only the current run owns the transcript and the streaming/phase flags.
+    if (controller !== ctrl) return;
+    controller = null;
     replayPrefix = null;
     replayEvents = [];
     // Stopped on purpose: nothing is left for a reload to rejoin.
@@ -1125,6 +1177,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     if (state.streaming) return;
     const ctrl = new AbortController();
     controller = ctrl;
+    if (resumeToken !== token) takenToolRequests.clear();
     activeAssistantId = newId();
     resumeToken = token;
     lastEventId = undefined;
@@ -1148,6 +1201,12 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
 
   const send = async (args: SendArgs): Promise<SendOutcome> => {
     const mode = args.mode ?? 'stream';
+    if (controller && !controller.signal.aborted) {
+      controller.abort();
+      cancelClientTools();
+    }
+    // Deduplicate tool requests within this run, not the engine's lifetime.
+    takenToolRequests.clear();
     activeAssistantId = args.assistantId;
 
     const ctrl = new AbortController();
@@ -1208,13 +1267,16 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
             },
             {
               onOpen: ({ replayed }) => {
+                if (ctrl.signal.aborted || controller !== ctrl) return;
                 opened = true;
                 if (!replayed) return;
                 replayPrefix = beforeRun();
                 replayEvents = [];
               },
-              onEvent: (ev) => applyEvent(ev),
+              onEvent: (ev) =>
+                ctrl.signal.aborted || controller !== ctrl ? Promise.resolve() : applyEvent(ev),
               onCursor: (id) => {
+                if (ctrl.signal.aborted || controller !== ctrl) return;
                 lastEventId = id;
               },
               onActivity: ({ keepAlive }) => {
@@ -1263,9 +1325,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               client: ports.client,
               threadId,
               signal: ctrl.signal,
-              onTurns: (rebuilt) => set({ turns: rebuilt }),
-              onPhase: (phase) => set({ phase }),
-              onEvent: (ev) => applyEvent(ev),
+              onTurns: (rebuilt) => {
+                if (!ctrl.signal.aborted && controller === ctrl) set({ turns: rebuilt });
+              },
+              onPhase: (phase) => {
+                if (!ctrl.signal.aborted && controller === ctrl) set({ phase });
+              },
+              onEvent: (ev) =>
+                ctrl.signal.aborted || controller !== ctrl ? Promise.resolve() : applyEvent(ev),
             });
           } finally {
             set({ reattaching: false });
@@ -1294,9 +1361,14 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
               threadId,
               lastEventId,
               signal: ctrl.signal,
-              onTurns: (rebuilt) => set({ turns: rebuilt }),
-              onPhase: (phase) => set({ phase }),
-              onEvent: (ev) => applyEvent(ev),
+              onTurns: (rebuilt) => {
+                if (!ctrl.signal.aborted && controller === ctrl) set({ turns: rebuilt });
+              },
+              onPhase: (phase) => {
+                if (!ctrl.signal.aborted && controller === ctrl) set({ phase });
+              },
+              onEvent: (ev) =>
+                ctrl.signal.aborted || controller !== ctrl ? Promise.resolve() : applyEvent(ev),
             });
           } finally {
             set({ reattaching: false });
@@ -1312,6 +1384,7 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     try {
       await run();
     } catch (err) {
+      if (ctrl.signal.aborted || controller !== ctrl) return 'done';
       if (err instanceof RunInProgressError) {
         outcome = 'run_in_progress';
         refusedFor = err.resumeToken;
@@ -1381,6 +1454,11 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     },
     setTurns: adoptTurns,
     reset() {
+      controller?.abort();
+      controller = null;
+      liveStream = null;
+      cancelClientTools();
+      takenToolRequests.clear();
       seenApprovals.clear();
       activeAssistantId = '';
       resumeToken = null;
@@ -1388,6 +1466,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       lastEventId = undefined;
       set({
         turns: [],
+        streaming: false,
+        reattaching: false,
         error: null,
         phase: 'idle',
         approvals: [],
@@ -1400,7 +1480,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
     applyEvent,
     checkLiveness(now = Date.now()) {
       const stream = liveStream;
-      if (!stream || now - stream.lastActivityAt < STREAM_STALL_MS) return false;
+      if (!stream || pendingClientTools.size || now - stream.lastActivityAt < STREAM_STALL_MS)
+        return false;
       // A durable run's stream carries status, not deltas, and never heartbeats.
       const proved = stream.heartbeats || (harnessHeartbeats && resumeToken === null);
       if (!proved) return false;
@@ -1495,8 +1576,8 @@ export function createChatEngine(ports: EnginePorts): ChatEngine {
       set({ permissionMode: mode === 'default' ? null : mode });
     },
     abort() {
+      cancelClientTools();
       controller?.abort();
-      controller = null;
     },
   };
 }

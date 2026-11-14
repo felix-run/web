@@ -103,6 +103,7 @@ export function App({
    * the wire before `onExit` waits for it (`settleReleases`).
    */
   const exit = useCallback(() => {
+    workspaceRef.current?.cancel();
     void leaseRef.current?.release();
     onExit();
   }, [onExit]);
@@ -176,9 +177,20 @@ export function App({
     prompt: writePrompt,
     answer: answerWrite,
     confirm: confirmWrite,
-    cancel: cancelWrite,
+    cancel: cancelPrompt,
   } = writeGate;
 
+  const workspaceRef = useRef<ReturnType<typeof createWorkspace> | null>(null);
+  const cancelWrite = useCallback(() => {
+    workspaceRef.current?.cancel();
+    cancelPrompt();
+  }, [cancelPrompt]);
+  useEffect(
+    () => () => {
+      workspaceRef.current?.cancel();
+    },
+    [],
+  );
   const engineRef = useRef<ChatEngine | null>(null);
   /** The open thread's lease, for the client's hooks, which are built before it. */
   const leaseRef = useRef<LeaseHold | null>(null);
@@ -213,6 +225,21 @@ export function App({
       },
     });
     clientRef.current = client;
+    workspaceRef.current = createWorkspace({
+      root,
+      shell: config.shell,
+      confirmShell: confirmWrite,
+      openFile: async (body, name) => {
+        if (!pagerCommand()) throw new Error('set $PAGER to view files');
+        renderer.suspend();
+        try {
+          page(body, name);
+        } finally {
+          renderer.resume();
+        }
+      },
+      confirm: config.yes ? async () => true : confirmWrite,
+    });
     engineRef.current = createChatEngine({
       client,
       threadId: () => threadIdRef.current,
@@ -226,15 +253,7 @@ export function App({
       // *because* a durable stream carries no deltas, so there is no local
       // detail for the rebuild to throw away.
       onDurableComplete: () => void hydrateRef.current(threadIdRef.current),
-      clientTools: withHarnessDiffs(
-        createWorkspace({
-          root,
-          // `--yes` is a confirm that always agrees, not an absent one: a
-          // workspace with no confirm at all would be a silent writer.
-          confirm: config.yes ? async () => true : confirmWrite,
-        }),
-        client,
-      ),
+      clientTools: withHarnessDiffs(workspaceRef.current, client),
     });
     engineRef.current.setTurns(store.loadTurns(threadIdRef.current));
   }

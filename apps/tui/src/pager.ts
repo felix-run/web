@@ -38,7 +38,9 @@ export function page(body: string, name: string): { path: string } {
   const cmd = pagerCommand();
   if (cmd?.length) {
     const [bin, ...args] = cmd as [string, ...string[]];
-    spawnSync(bin, [...args, path], { stdio: 'inherit' });
+    const result = spawnSync(bin, [...args, path], { stdio: 'inherit' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error(`pager exited with ${result.signal ?? result.status}`);
   }
   return { path };
 }

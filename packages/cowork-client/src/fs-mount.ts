@@ -10,6 +10,33 @@ export type DirHandle = FileSystemDirectoryHandle;
 let root: DirHandle | null = null;
 let mountName = '';
 
+/** Identity only: callers pin the store across an asynchronous tool call. */
+export function getMountIdentity(): object | null {
+  return root;
+}
+
+/** Revalidate a request after an awaited handle operation, before its next mutation. */
+type MutationCheck = () => void;
+const unchecked: MutationCheck = () => {};
+
+async function writeAndCommit(
+  writable: FileSystemWritableFileStream,
+  data: string | Uint8Array<ArrayBuffer>,
+  check: MutationCheck,
+): Promise<void> {
+  try {
+    check();
+    await writable.write(data);
+    check();
+    await writable.close();
+  } catch (error) {
+    // A stream's writes are staged until close. Abort drops those changes; a
+    // browser operation already committed before cancellation is not rolled back.
+    await writable.abort().catch(() => {});
+    throw error;
+  }
+}
+
 /** `queryPermission`/`requestPermission` are not in the DOM lib yet. */
 type PermissionCapableHandle = DirHandle & {
   queryPermission?: (opts: { mode: 'readwrite' }) => Promise<PermissionState>;
@@ -136,8 +163,9 @@ function splitContainedPath(path: string): string[] {
 
 async function resolve(
   path: string,
-  opts: { create?: boolean } = {},
+  opts: { create?: boolean; check?: MutationCheck } = {},
 ): Promise<{ parent: DirHandle; name: string }> {
+  opts.check?.();
   if (!root) throw new Error('no folder mounted');
   const parts = splitContainedPath(path);
   if (parts.length === 0) return { parent: root, name: '' };
@@ -146,6 +174,7 @@ async function resolve(
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
     dir = await dir.getDirectoryHandle(part, { create: opts.create });
+    opts.check?.();
   }
   const name = parts[parts.length - 1]!;
   return { parent: dir, name };
@@ -190,30 +219,41 @@ export async function mountReadBytes(path: string): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
 }
 
-export async function mountWrite(path: string, content: string, append = false): Promise<void> {
-  const { parent, name } = await resolve(path, { create: true });
+export async function mountWrite(
+  path: string,
+  content: string,
+  append = false,
+  check: MutationCheck = unchecked,
+): Promise<void> {
+  const { parent, name } = await resolve(path, { create: true, check });
+  check();
   if (!name) throw new Error('not a file');
   const fileHandle = await parent.getFileHandle(name, { create: true });
+  check();
   let next = content;
   if (append) {
     try {
       const existing = await (await fileHandle.getFile()).text();
+      check();
       next = existing + content;
     } catch {
       // new file
     }
   }
+  check();
   const writable = await fileHandle.createWritable();
-  await writable.write(next);
-  await writable.close();
+  await writeAndCommit(writable, next, check);
 }
 
-export async function mountMkdir(path: string): Promise<void> {
+export async function mountMkdir(path: string, check: MutationCheck = unchecked): Promise<void> {
+  check();
   const parts = splitContainedPath(path);
   if (!root || !parts.length) throw new Error('invalid path');
   let dir = root;
   for (const part of parts) {
+    check();
     dir = await dir.getDirectoryHandle(part, { create: true });
+    check();
   }
 }
 
@@ -300,12 +340,14 @@ export class TargetExistsError extends Error {
 }
 
 /** Delete one file in the mounted folder. A directory is refused. */
-export async function mountRemove(path: string): Promise<void> {
-  const { parent, name } = await resolve(path);
+export async function mountRemove(path: string, check: MutationCheck = unchecked): Promise<void> {
+  const { parent, name } = await resolve(path, { check });
+  check();
   if (!name) throw new Error('not a file');
   // Asked for as a file first, so a folder of the same name is refused rather
   // than removed: `removeEntry` takes either.
   await parent.getFileHandle(name);
+  check();
   await parent.removeEntry(name);
 }
 
@@ -316,12 +358,19 @@ export async function mountRemove(path: string): Promise<void> {
  * written in full before anything is removed, and a failure after the write
  * leaves two copies, never none.
  */
-export async function mountRename(from: string, to: string): Promise<void> {
-  const src = await resolve(from);
+export async function mountRename(
+  from: string,
+  to: string,
+  check: MutationCheck = unchecked,
+): Promise<void> {
+  const src = await resolve(from, { check });
+  check();
   if (!src.name) throw new Error('not a file');
   const handle = await src.parent.getFileHandle(src.name);
   const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer());
-  const dst = await resolve(to, { create: true });
+  check();
+  const dst = await resolve(to, { create: true, check });
+  check();
   if (!dst.name) throw new Error('no destination');
   const taken = await dst.parent
     .getFileHandle(dst.name)
@@ -332,11 +381,13 @@ export async function mountRename(from: string, to: string): Promise<void> {
         .then(() => true)
         .catch(() => false),
     );
+  check();
   if (taken) throw new TargetExistsError(to);
   const out = await dst.parent.getFileHandle(dst.name, { create: true });
+  check();
   const writable = await out.createWritable();
-  await writable.write(bytes);
-  await writable.close();
+  await writeAndCommit(writable, bytes, check);
+  check();
   await src.parent.removeEntry(src.name);
 }
 

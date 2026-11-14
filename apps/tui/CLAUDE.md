@@ -290,3 +290,14 @@ browser cannot do rather than about the chat:
 - **`apps/tui` runs on Bun, and only Bun.** The renderer reaches a native core over FFI, which Bun has
   first-class (`bun:ffi`) and Node has only as `node:ffi`, experimental and flag-gated behind
   `--experimental-ffi` from Node 26. The rest of the repo is unchanged and still Node.
+
+
+## Coding tools (November 2026)
+
+`--shell` opts into native `/bin/sh` through `src/shell.ts`; without it the emulated verbs
+remain. Native commands always use the local confirmation gate, even under `--yes`, and
+respect `cwd` after containment validation. cwd containment is not process sandboxing.
+The workspace owns per-call abort controllers; `cancel()` kills active process groups and
+invalidates pending confirmations. App stop, thread changes and unmount call it. Output is
+bounded and a four-minute process timer precedes the 270-second workspace cancellation.
+`local_open` pages contained text files; URLs are returned for manual opening.

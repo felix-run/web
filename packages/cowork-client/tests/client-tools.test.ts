@@ -156,3 +156,56 @@ describe('executeClientTool', () => {
     expect(Number.isFinite(DEFAULT_CLIENT_TOOL_TIMEOUT_MS)).toBe(true);
   });
 });
+
+it('reports unsupported browser commands as failures', async () => {
+  const result = await executeClientTool(
+    { id: 'build', name: 'local_shell', args: { command: 'npm test' } },
+    vfs,
+  );
+  expect(result.error).toBe(true);
+  expect(result.content).toContain('unsupported');
+});
+
+it('supports compact echo redirection instead of falsely reporting a write', async () => {
+  const result = await executeClientTool(
+    { id: 'write', name: 'local_shell', args: { command: 'echo hello >notes.md' } },
+    vfs,
+  );
+  expect(result.error).toBeUndefined();
+  expect(vfs.read('notes.md')).toBe('hello\n');
+});
+
+it.each([
+  'abort',
+  'timeout',
+])('never resumes an edit after %s settles the request', async (reason) => {
+  vfs.write('code.ts', 'before');
+  let finish!: (text: string) => void;
+  const read = vi.spyOn(vfs, 'read').mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }) as unknown as string,
+  );
+  const write = vi.spyOn(vfs, 'write');
+  const controller = new AbortController();
+  const pending = executeClientTool(
+    {
+      id: 'late-edit',
+      name: 'local_edit',
+      args: { path: 'code.ts', old_string: 'before', new_string: 'after' },
+    },
+    vfs,
+    { signal: controller.signal, timeoutMs: reason === 'timeout' ? 20 : 500 },
+  );
+  if (reason === 'abort') controller.abort();
+  try {
+    expect((await pending).error).toBe(true);
+    finish('before');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(write).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    write.mockRestore();
+  }
+});

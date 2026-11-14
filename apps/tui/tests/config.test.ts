@@ -197,3 +197,10 @@ describe('readDevVars', () => {
     expect(readDevVars(file)).toEqual({});
   });
 });
+
+it('enables native shell only with an explicit switch and keeps the first message', () => {
+  expect(resolveConfig([], {}, noFiles).config.shell).toBe(false);
+  const result = resolveConfig(['--shell', 'run', 'tests'], {}, noFiles);
+  expect(result.config.shell).toBe(true);
+  expect(result.firstMessage).toBe('run tests');
+});

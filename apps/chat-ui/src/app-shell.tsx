@@ -551,14 +551,25 @@ export function AppShell() {
       // its tool results, take its approvals and write its transcript to its
       // own thread, not to whichever one is showing now (`engine-pool.ts`).
       create: (id) => {
+        // The run stays alive on navigation; Stop/disposal cancels only this
+        // engine's local tools, never the ones another thread is running.
+        let toolController = new AbortController();
         const created = createChatEngine({
           client: felix,
           threadId: () => id,
           clientTools: {
+            cancel: () => {
+              toolController.abort();
+              toolController = new AbortController();
+            },
             // `local_open` on a file opens it in this thread's side pane: the
             // engine's own thread, so a run on another thread fills that one's.
             execute: (req) =>
-              executeClientTool(req, (path) => openPaneItem(id, { kind: 'file', path })),
+              executeClientTool(
+                req,
+                (path) => openPaneItem(id, { kind: 'file', path }),
+                toolController.signal,
+              ),
             // A `local_*` write's before is the browser's file; any other write's
             // is the harness's, on the thread the write is on.
             readForDiff: routedDiffReader(felix, readWorkspaceFile),
