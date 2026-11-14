@@ -2,9 +2,9 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Turn } from '../src/api/types';
 import { ContextMeter, contextFill } from '../src/components/chat/context-meter';
 import { Message } from '../src/components/chat/message';
-import type { Turn } from '../src/api/types';
 
 /**
  * The meter reads the newest figure the transcript has, against the selected

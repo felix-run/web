@@ -1,6 +1,8 @@
 import { ChevronRightIcon, PanelRightOpenIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
+import { useShell } from '@/app/shell-context';
 import { CodePane } from '@/components/approval/approval-decision';
+import { cn } from '@/lib/utils';
 import {
   type ChangeEvidence,
   changeSource,
@@ -10,8 +12,6 @@ import {
   runHasToolCalls,
   treePath,
 } from '@/lib/workspace/changes';
-import { cn } from '@/lib/utils';
-import { useShell } from '@/app/shell-context';
 
 /**
  * "Changes on this thread": each workspace path a tool call named, and what was

@@ -24,6 +24,7 @@ import {
   putEvalDataset,
   runEvalDataset,
 } from '@/api/client';
+import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/api/types';
 import { AgentSelect } from '@/components/agent-select';
 import { ErrorNotice } from '@/components/error-notice';
 import { compact, usd } from '@/components/harness/activity';
@@ -40,7 +41,6 @@ import {
 import { ReadFailure, withAge } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
 import { cn } from '@/lib/utils';
-import type { EvalComparison, EvalDataset, EvalDatasetItem, EvalRun, Rubric } from '@/api/types';
 
 /**
  * Eval workbench — the `/eval` offline-benchmark surface as a `/harness` page.

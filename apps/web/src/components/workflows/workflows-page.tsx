@@ -29,6 +29,8 @@ import {
   saveWorkflow,
   WorkflowRouteError,
 } from '@/api/client';
+import type { WorkflowKind, WorkflowRecord, WorkflowRun, WorkflowRunSummary } from '@/api/types';
+import { useOptionalShell } from '@/app/shell-context';
 import { ErrorNotice } from '@/components/error-notice';
 import { keepAgent } from '@/components/harness/harness-agent';
 import {
@@ -73,8 +75,6 @@ import {
   WORKFLOW_ID_PATTERN,
 } from '@/lib/workflows/workflow-draft';
 import { STEP_STATE_WORD, stepsOf } from '@/lib/workflows/workflow-layout';
-import { useOptionalShell } from '@/app/shell-context';
-import type { WorkflowKind, WorkflowRecord, WorkflowRun, WorkflowRunSummary } from '@/api/types';
 
 /**
  * Authored workflows as a `/harness` page (`felix/workflows/`): the list, then one workflow's graph

@@ -4,8 +4,8 @@ import { Textarea } from '@felix/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@felix/ui/tooltip';
 import { ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
 import type { TurnFeedback } from '@/api/types';
+import { cn } from '@/lib/utils';
 
 /** Where a thumbs-down goes when it is also saved as an eval case, unless renamed. */
 export const DEFAULT_FEEDBACK_DATASET = 'chat-feedback';

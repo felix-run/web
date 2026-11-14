@@ -1,7 +1,7 @@
 import { formatElapsed } from '@felix/client';
+import type { Turn } from '@/api/types';
 import { useElapsed } from '@/hooks/use-elapsed';
 import { cn } from '@/lib/utils';
-import type { Turn } from '@/api/types';
 
 type Tone = NonNullable<Turn['runStatus']>;
 

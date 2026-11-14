@@ -4,12 +4,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/c
 import { Skeleton } from '@felix/ui/skeleton';
 import { ChevronRightIcon, CircleAlertIcon } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect, useId, useRef } from 'react';
+import { useOptionalShellPick } from '@/app/shell-context';
 import { ErrorBoundary, PanelErrorFallback } from '@/components/error-boundary';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageEmpty, PageHeader, READING_MEASURE } from '@/components/harness/panel';
-import { forgetHarnessRead, isTransientFailure, reportHarnessRead } from '@/lib/harness/harness-health';
+import {
+  forgetHarnessRead,
+  isTransientFailure,
+  reportHarnessRead,
+} from '@/lib/harness/harness-health';
 import { cn } from '@/lib/utils';
-import { useOptionalShellPick } from '@/app/shell-context';
 
 /**
  * The pieces every harness panel is built from.

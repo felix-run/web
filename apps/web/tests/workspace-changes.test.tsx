@@ -5,10 +5,10 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { FilesView } from '../src/components/pane/files-view';
 import { ThreadChanges } from '../src/components/workspace/changes-list';
 import { collectChanges, countLines, durableRunInFlight } from '../src/lib/workspace/changes';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * "Changes on this thread": what each workspace path had done to it, claimed

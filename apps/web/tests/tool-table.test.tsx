@@ -2,8 +2,8 @@
 import { act, cleanup, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Tool } from '../src/components/chat/tool';
 import type { ToolCall } from '../src/api/types';
+import { Tool } from '../src/components/chat/tool';
 
 /**
  * A tool result that is a table is drawn as one, and only then: a failure stays

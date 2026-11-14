@@ -6,6 +6,7 @@ import { StrictMode, useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { Message } from '../src/components/chat/message';
 import { resetEditNotice } from '../src/components/pane/edit-notice';
 import { FilesView } from '../src/components/pane/files-view';
@@ -13,14 +14,6 @@ import { PaneDivider } from '../src/components/pane/pane-divider';
 import { invalidPath, suggestedName } from '../src/components/pane/save-to-workspace';
 import { SidePane } from '../src/components/pane/side-pane';
 import { ThemeProvider } from '../src/components/theme-provider';
-import {
-  isMarkdown,
-  languageFor,
-  PREVIEW_LIMIT,
-  previewOf,
-  previewOfBytes,
-  sniffMedia,
-} from '../src/lib/workspace/file-preview';
 import { resetPresence } from '../src/lib/conversation/presence';
 import {
   closePaneItem,
@@ -30,7 +23,14 @@ import {
   resetPanes,
   updatePaneFile,
 } from '../src/lib/navigation/side-pane';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
+import {
+  isMarkdown,
+  languageFor,
+  PREVIEW_LIMIT,
+  previewOf,
+  previewOfBytes,
+  sniffMedia,
+} from '../src/lib/workspace/file-preview';
 
 /**
  * What the operator opens beside the conversation.

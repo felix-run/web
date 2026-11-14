@@ -8,9 +8,9 @@ import {
   useMessageScroller,
 } from '@felix/ui/message-scroller';
 import { type ComponentProps, type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
-import { VIEW_WILL_CHANGE } from '@/lib/navigation/view-change';
 import { useShell } from '@/app/shell-context';
+import { VIEW_WILL_CHANGE } from '@/lib/navigation/view-change';
+import { cn } from '@/lib/utils';
 
 /**
  * The transcript's scroller, built around the turn rather than the bottom edge.

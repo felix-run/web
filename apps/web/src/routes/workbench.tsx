@@ -5,6 +5,8 @@ import { LogOutIcon, UnplugIcon } from 'lucide-react';
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInRouterContext, useSearchParams } from 'react-router';
 import { listAgentSkills } from '@/api/client';
+import type { Turn, TurnFeedback } from '@/api/types';
+import { type ShellValue, useShell } from '@/app/shell-context';
 import { ApprovalBanner } from '@/components/chat/approval-banner';
 import { contextFill, NEARLY_FULL } from '@/components/chat/context-meter';
 import { Conversation, ConversationItem } from '@/components/chat/conversation';
@@ -23,15 +25,13 @@ import { WATCHING_REFUSAL, WatchingBanner } from '@/components/chat/watching-ban
 import { DRAWER_MOTION, PaneColumn, PaneOverlay } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
 import { RailPresence } from '@/components/rail-presence';
-import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { usePoll } from '@/hooks/use-poll';
-import { changesByReply, landedPaths } from '@/lib/workspace/changes';
+import { INSTRUMENT_INLINE } from '@/hooks/use-rails';
 import { DEFAULT_MANIFEST } from '@/lib/harness/manifests';
 import { openInPane, usePaneState } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
-import { type ShellValue, useShell } from '@/app/shell-context';
-import type { Turn, TurnFeedback } from '@/api/types';
+import { changesByReply, landedPaths } from '@/lib/workspace/changes';
 
 /**
  * The run instrument loads with its first showing, not with the app. Below 1280

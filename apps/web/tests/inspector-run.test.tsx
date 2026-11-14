@@ -6,13 +6,13 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import {
   Inspector,
   inFlightTool,
   runState,
   threadTokens,
 } from '../src/components/inspector/inspector';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * The right rail is headed "This thread", and two things keep its readout true.

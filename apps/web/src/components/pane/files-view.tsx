@@ -1,6 +1,7 @@
 import { Button } from '@felix/ui/button';
 import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useShell } from '@/app/shell-context';
 import { ItemHeader } from '@/components/pane/pane-parts';
 import {
   FolderActionDialog,
@@ -10,14 +11,18 @@ import {
 import { HarnessFilesSection } from '@/components/workspace/harness-files';
 import { ThreadRepoSection } from '@/components/workspace/thread-repo';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
-import { changeSource, collectChanges, treePath } from '@/lib/workspace/changes';
-import { hasMount, mountTree, supportsDirectoryPicker, vfs } from '@/lib/workspace/cowork';
-import { disconnectFolder, mountFolder, reconnectFolder, useMount } from '@/lib/workspace/mount-state';
 import { lastOpenedFile, requestFileAction, usePaneState } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
+import { changeSource, collectChanges, treePath } from '@/lib/workspace/changes';
+import { hasMount, mountTree, supportsDirectoryPicker, vfs } from '@/lib/workspace/cowork';
+import {
+  disconnectFolder,
+  mountFolder,
+  reconnectFolder,
+  useMount,
+} from '@/lib/workspace/mount-state';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace/workspace-events';
 import { inBrowser, onHarness, useWorkspaceTools } from '@/lib/workspace/workspace-tools';
-import { useShell } from '@/app/shell-context';
 
 /**
  * How many entries the browser's tree reads. It used to be 200, which a mounted

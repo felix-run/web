@@ -4,8 +4,9 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AuditEvent, UsageThreadItem } from '../src/api/types';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { ActivityLedger, repricedRoutes } from '../src/components/harness/activity-ledger';
-import { clockTime, middleTruncate } from '../src/lib/format';
 import {
   buildLedger,
   cutTurns,
@@ -21,9 +22,8 @@ import {
   spendState,
   toolTally,
 } from '../src/lib/conversation/ledger';
+import { clockTime, middleTruncate } from '../src/lib/format';
 import { navSearch } from '../src/routes/harness';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
-import type { AuditEvent, UsageThreadItem } from '../src/api/types';
 
 /**
  * The Activity page as a ledger: one entry per thread.

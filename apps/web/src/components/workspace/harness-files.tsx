@@ -2,12 +2,12 @@ import type { HarnessWorkspaceTree } from '@felix/client';
 import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { workspaceTree } from '@/api/client';
+import { useShell } from '@/app/shell-context';
 import { requestFolderAction } from '@/components/workspace/folder-action';
 import { WorkspaceFileTree } from '@/components/workspace/workspace-section';
 import { lastOpenedFile, requestFileAction, usePaneState } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace/workspace-events';
-import { useShell } from '@/app/shell-context';
 
 const OPEN_KEY = 'felix.sidebar.harnessFilesOpen';
 

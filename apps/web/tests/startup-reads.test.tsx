@@ -4,8 +4,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import App from '../src/app/app';
 import { listManifestEntries, primeManifestEntries } from '../src/api/client';
+import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
 
 /** Every route answers empty; the test counts what was asked. */

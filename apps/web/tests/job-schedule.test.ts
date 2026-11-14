@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '../src/lib/harness/job-schedule';
+import {
+  nextAfter,
+  parseSchedule,
+  ScheduleError,
+  scheduleLabel,
+} from '../src/lib/harness/job-schedule';
 
 /**
  * The harness's schedule grammar (`felix/jobs/schedule.py`), held to its semantics: an empty

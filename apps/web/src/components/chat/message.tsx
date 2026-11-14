@@ -27,11 +27,11 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import type { Turn, TurnFeedback } from '@/api/types';
+import { useOptionalShellPick } from '@/app/shell-context';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { MIN_RUN } from '@/lib/conversation/tool-run';
 import { cn } from '@/lib/utils';
-import { useOptionalShellPick } from '@/app/shell-context';
-import type { Turn, TurnFeedback } from '@/api/types';
 import { MessageActions } from './message-actions';
 import { PlanCard } from './plan-card';
 import { RateTurn } from './rate-turn';

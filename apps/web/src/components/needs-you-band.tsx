@@ -4,13 +4,13 @@ import { InboxIcon } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { listJobs } from '@/api/client';
+import { useShellPick } from '@/app/shell-context';
 import { CutId } from '@/components/cut-id';
 import { useSharedPoll } from '@/hooks/use-shared-poll';
-import { JOBS_POLL_KEY } from '@/lib/harness/harness-glances';
 import { NEEDS_YOU_VISIBLE, needsYouRows, rowKey } from '@/lib/conversation/needs-you';
+import { JOBS_POLL_KEY } from '@/lib/harness/harness-glances';
 import { whenMounted } from '@/lib/navigation/shortcuts';
 import { cn } from '@/lib/utils';
-import { useShellPick } from '@/app/shell-context';
 
 /** Characters of an id a band row draws, as the thread list's rows do. */
 const ID_CHARS = 30;

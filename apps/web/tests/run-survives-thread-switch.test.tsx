@@ -4,11 +4,11 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ImageAttachment, Turn } from '../src/api/types';
 import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { uploadImages } from '../src/lib/conversation/image-upload';
 import { loadTurns } from '../src/lib/conversation/threads';
-import type { ImageAttachment, Turn } from '../src/api/types';
 
 // The upload is the window under test: held open by the test, so the operator
 // can switch threads between the click and the run starting.

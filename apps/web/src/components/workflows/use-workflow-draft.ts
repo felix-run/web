@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { checkWorkflow, saveWorkflow, WorkflowRouteError } from '@/api/client';
+import type {
+  WorkflowCheck,
+  WorkflowDefinition,
+  WorkflowPortRef,
+  WorkflowRecord,
+} from '@/api/types';
 import { heightsOf } from '@/components/workflows/workflow-canvas';
 import { connect, WHEN, withPositions } from '@/lib/workflows/workflow-draft';
-import type { WorkflowCheck, WorkflowDefinition, WorkflowPortRef, WorkflowRecord } from '@/api/types';
 
 /** How long the editor waits after an edit before asking the harness what the draft means. */
 const CHECK_DELAY_MS = 250;

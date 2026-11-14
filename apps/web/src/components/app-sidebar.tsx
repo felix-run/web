@@ -20,15 +20,16 @@ import {
 } from 'lucide-react';
 import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
+import { useShellPick } from '@/app/shell-context';
 import { BrandToggle, Wordmark } from '@/components/brand-mark';
 import { ThreadList } from '@/components/chat/thread-list';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { NeedsYouBand, NeedsYouIcon } from '@/components/needs-you-band';
 import { WorkspaceRow } from '@/components/workspace/workspace-section';
 import { useRecentAudit } from '@/hooks/use-recent-audit';
+import { readPins, writePins } from '@/lib/conversation/threads';
 import { glanceWindow, rowOutcomes, threadOutcomes } from '@/lib/harness/harness-glances';
 import { ariaShortcut, isMacPlatform, shortcutLabel } from '@/lib/navigation/shortcuts';
-import { readPins, writePins } from '@/lib/conversation/threads';
 import { cn } from '@/lib/utils';
 import {
   GROUPS,
@@ -41,7 +42,6 @@ import {
   useNavGlances,
   walkNav,
 } from '@/routes/harness';
-import { useShellPick } from '@/app/shell-context';
 
 /**
  * The app sidebar: every door this client has, in one place on both addresses.

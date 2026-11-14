@@ -11,9 +11,9 @@ import {
   getJobState,
   putJobPreferences,
 } from '@/api/client';
+import type { JobPreferences, JobStateEntry } from '@/api/types';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
-import type { JobPreferences, JobStateEntry } from '@/api/types';
 
 /**
  * A job's two writer-only parts (`felix-run/felix` 0.19): the reader's preferences every firing

@@ -5,10 +5,10 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Turn } from '../src/api/types';
 import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { loadTurns } from '../src/lib/conversation/threads';
-import type { Turn } from '../src/api/types';
 
 /**
  * The address, and what the shell does about it.

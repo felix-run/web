@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { WorkflowDefinition, WorkflowRun } from '../src/api/types';
 import {
   COL_WIDTH,
   levelsOf,
@@ -12,7 +13,6 @@ import {
   wiresOf,
   wireTaken,
 } from '../src/lib/workflows/workflow-layout';
-import type { WorkflowDefinition, WorkflowRun } from '../src/api/types';
 
 /**
  * Where a workflow's nodes land, and which wires a run took. The canvas reads every one of these

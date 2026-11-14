@@ -2,10 +2,10 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { ToolCall, Turn } from '../src/api/types';
 import { Message } from '../src/components/chat/message';
 import { Tool } from '../src/components/chat/tool';
 import { summarizeRun } from '../src/lib/conversation/tool-run';
-import type { ToolCall, Turn } from '../src/api/types';
 
 /**
  * The Trace-based patterns in a turn: a run of routine calls folded into one line, a search

@@ -4,11 +4,11 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { FilesView } from '../src/components/pane/files-view';
 import { WorkspaceRow } from '../src/components/workspace/workspace-section';
-import { resetMountState } from '../src/lib/workspace/mount-state';
 import { paneState, resetPanes } from '../src/lib/navigation/side-pane';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
+import { resetMountState } from '../src/lib/workspace/mount-state';
 
 /**
  * The workspace in two places: one sidebar row that says what is mounted and

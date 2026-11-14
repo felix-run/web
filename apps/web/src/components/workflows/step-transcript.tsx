@@ -1,9 +1,9 @@
 import { eventsToTurns, snapshotToEvents } from '@felix/client';
 import { useEffect, useMemo, useState } from 'react';
 import { getWorkflowStepThread, WorkflowRouteError } from '@/api/client';
+import type { SessionSnapshot } from '@/api/types';
 import { Message } from '@/components/chat/message';
 import { ErrorNotice } from '@/components/error-notice';
-import type { SessionSnapshot } from '@/api/types';
 
 type Loaded =
   | { kind: 'loading' }

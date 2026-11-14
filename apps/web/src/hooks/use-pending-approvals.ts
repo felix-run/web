@@ -1,8 +1,11 @@
 import type { ApprovalRequest } from '@felix/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rememberDecidedHere } from '@/lib/conversation/denials';
+import {
+  forgetPendingApprovalsRead,
+  readPendingApprovals,
+} from '@/lib/conversation/pending-approvals-read';
 import { forgetHarnessRead, reportHarnessRead } from '@/lib/harness/harness-health';
-import { forgetPendingApprovalsRead, readPendingApprovals } from '@/lib/conversation/pending-approvals-read';
 
 /** This poll's id in the shell's harness-health store. */
 const HEALTH_SOURCE = 'approvals';

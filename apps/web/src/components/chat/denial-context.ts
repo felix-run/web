@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import type { DenialRecord } from '@/lib/conversation/denials';
 import type { ToolCall } from '@/api/types';
+import type { DenialRecord } from '@/lib/conversation/denials';
 
 /**
  * What the transcript on screen knows about its denied calls, for the tool card

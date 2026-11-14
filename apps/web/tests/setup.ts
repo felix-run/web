@@ -27,8 +27,8 @@ import { afterEach } from 'vitest';
 import { forgetPrimedManifestEntries } from '../src/api/client';
 import { resetSkillQueryClient } from '../src/components/skills/query-root';
 import { resetSharedPolls } from '../src/hooks/use-shared-poll';
-import { resetOpenedIdentity } from '../src/lib/harness/opened-identity';
 import { forgetPendingApprovalsRead } from '../src/lib/conversation/pending-approvals-read';
+import { resetOpenedIdentity } from '../src/lib/harness/opened-identity';
 
 afterEach(() => {
   resetSharedPolls();

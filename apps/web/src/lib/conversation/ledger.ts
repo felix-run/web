@@ -1,7 +1,7 @@
 import { threadSuffix } from '@felix/client';
+import type { AuditEvent, UsageThreadItem } from '@/api/types';
 import { tsToMs } from '@/components/inspector/primitives';
 import { type EventOutcome, eventOutcome, isFailureOutcome } from '@/lib/harness/audit-outcome';
-import type { AuditEvent, UsageThreadItem } from '@/api/types';
 
 /**
  * The Activity page as a ledger: one entry per thread, in the operator's unit.

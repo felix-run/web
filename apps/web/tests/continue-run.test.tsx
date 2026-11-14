@@ -4,10 +4,10 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Turn } from '../src/api/types';
 import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { continueOffer } from '../src/lib/conversation/continue-run';
-import type { Turn } from '../src/api/types';
 
 /**
  * "Continue run" is `POST /chat/continue`: it picks up a turn that stopped short, and the

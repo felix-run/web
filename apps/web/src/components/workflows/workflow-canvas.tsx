@@ -16,6 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { CrosshairIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { WorkflowPortRef, WorkflowRecord, WorkflowRun, WorkflowStepStatus } from '@/api/types';
 import { Controls } from '@/components/ai-elements/controls';
 import {
   nodeHeight,
@@ -37,7 +38,6 @@ import {
   wireState,
   wiresOf,
 } from '@/lib/workflows/workflow-layout';
-import type { WorkflowPortRef, WorkflowRecord, WorkflowRun, WorkflowStepStatus } from '@/api/types';
 
 const NODE_TYPES = { step: StepNode };
 const ARROWS: Record<string, Direction | undefined> = {

@@ -1,10 +1,10 @@
 /** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { Greeting } from '../src/components/chat/greeting';
 import { itemMessage, pullsOnly } from '../src/components/chat/start-from-item';
 import { resetMountState } from '../src/lib/workspace/mount-state';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * The empty thread: a welcome headline, the agent's starter cards, and a one-line

@@ -5,12 +5,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { listUsage } from '@/api/client';
+import { type ClientDiagnostics, type EngineReport, useShell } from '@/app/shell-context';
 import { DebugId } from '@/components/chat/turn-debug';
 import { ReadFailure, tsToMs } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/use-poll';
 import { clockTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { type ClientDiagnostics, type EngineReport, useShell } from '@/app/shell-context';
 
 /** How many of the thread's metered calls the tab reads. */
 export const DEBUG_CALLS = 20;

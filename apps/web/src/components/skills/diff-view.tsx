@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { type DiffLine, diffChunks, diffLines } from '@/lib/workspace/diff';
 import { cn } from '@/lib/utils';
+import { type DiffLine, diffChunks, diffLines } from '@/lib/workspace/diff';
 
 /**
  * Two texts as a unified line diff: what was removed, what was added, and the

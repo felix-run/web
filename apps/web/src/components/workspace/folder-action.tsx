@@ -12,17 +12,17 @@ import { Input } from '@felix/ui/input';
 import { type FormEvent, useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { workspaceDeleteFolder, workspaceRenameFolder, workspaceTree } from '@/api/client';
+import { type EditNotice, useOptionalShellPick } from '@/app/shell-context';
 import { outcomeLine, useTellAgent } from '@/components/pane/edit-notice';
 import { invalidPath } from '@/components/pane/save-to-workspace';
+import { closePaneItem, isDirty, usePaneState } from '@/lib/navigation/side-pane';
 import {
   deleteWorkspaceFolder,
   filesUnderWorkspaceFolder,
   getMountLabel,
   renameWorkspaceFolder,
 } from '@/lib/workspace/cowork';
-import { closePaneItem, isDirty, usePaneState } from '@/lib/navigation/side-pane';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace/workspace-events';
-import { type EditNotice, useOptionalShellPick } from '@/app/shell-context';
 
 export interface FolderRequest {
   path: string;

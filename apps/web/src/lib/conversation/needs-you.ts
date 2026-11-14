@@ -1,7 +1,7 @@
 import type { ThreadMeta } from '@felix/client';
-import { failing } from '@/lib/harness/harness-glances';
-import { threadLabel } from '@/lib/conversation/threads';
 import type { ApprovalRequest, JobRecord } from '@/api/types';
+import { threadLabel } from '@/lib/conversation/threads';
+import { failing } from '@/lib/harness/harness-glances';
 
 /**
  * What the sidebar's Needs-you band lists: what is live, or ran with nobody

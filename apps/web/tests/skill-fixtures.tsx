@@ -4,9 +4,9 @@ import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { expect, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import SkillPaneView from '../src/components/skills/skill-pane-view';
 import { openInPane, type PaneItemInput, usePaneState } from '../src/lib/navigation/side-pane';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * Shared by the skill library suites: a fake harness at the `fetch` seam and a

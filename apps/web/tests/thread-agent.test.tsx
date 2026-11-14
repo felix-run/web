@@ -4,9 +4,9 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, type NavigateFunction, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Turn } from '../src/api/types';
 import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
-import type { Turn } from '../src/api/types';
 
 /**
  * Which agent a thread is talking to, as the composer says it.

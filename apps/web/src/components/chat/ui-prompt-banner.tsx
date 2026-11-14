@@ -10,8 +10,8 @@ import {
   QuestionnaireTitle,
 } from '@felix/ui/questionnaire';
 import { useCallback, useRef } from 'react';
-import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 import type { PendingUiRequest } from '@/api/types';
+import { DECISION_BUTTON } from '@/components/approval/approval-decision';
 
 /**
  * The third answer, and it is not "No".

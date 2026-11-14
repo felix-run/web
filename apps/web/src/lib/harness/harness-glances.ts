@@ -1,8 +1,8 @@
 import { threadSuffix } from '@felix/client';
-import { isFailure, tsToMs } from '@/components/inspector/primitives';
-import { eventOutcome, isFailureOutcome, type OutcomeEvent } from '@/lib/harness/audit-outcome';
-import { buildLedger, type FailureTally, failureTally } from '@/lib/conversation/ledger';
 import type { AuditEvent } from '@/api/types';
+import { isFailure, tsToMs } from '@/components/inspector/primitives';
+import { buildLedger, type FailureTally, failureTally } from '@/lib/conversation/ledger';
+import { eventOutcome, isFailureOutcome, type OutcomeEvent } from '@/lib/harness/audit-outcome';
 
 /**
  * What the sidebar's glances read, apart from the pages that also read it.

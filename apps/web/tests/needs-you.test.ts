@@ -1,7 +1,7 @@
 import type { ThreadMeta } from '@felix/client';
 import { describe, expect, it } from 'vitest';
-import { needsYouRows, rowKey } from '../src/lib/conversation/needs-you';
 import type { JobRecord } from '../src/api/types';
+import { needsYouRows, rowKey } from '../src/lib/conversation/needs-you';
 
 /**
  * What the sidebar's Needs-you band lists, and in what order: what waits on a

@@ -7,11 +7,11 @@ import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
+import type { ClientDiagnostics } from '../src/app/shell-context';
 import { findSlashCommand, matchSlashCommands } from '../src/components/chat/slash-commands';
 import { debugReport, redact, threadCalls } from '../src/components/inspector/debug-section';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { resetPresence } from '../src/lib/conversation/presence';
-import type { ClientDiagnostics } from '../src/app/shell-context';
 
 /**
  * The View setting is a ladder. Everyday is the daily surface; harness view

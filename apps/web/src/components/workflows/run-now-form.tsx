@@ -6,8 +6,8 @@ import { Textarea } from '@felix/ui/textarea';
 import { LoaderIcon, PlayIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import { startWorkflowRun, WorkflowRouteError } from '@/api/client';
-import { ErrorNotice } from '@/components/error-notice';
 import type { WorkflowRecord, WorkflowRun } from '@/api/types';
+import { ErrorNotice } from '@/components/error-notice';
 
 type Field =
   | { kind: 'text' }

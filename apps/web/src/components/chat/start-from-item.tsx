@@ -4,8 +4,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { GitPullRequestIcon, Loader2Icon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getRepoItem, listRepoItems, type RepoItemDetail, type RepoItems } from '@/api/client';
-import { refusalText } from '@/components/workspace/thread-repo';
 import { useShellPick } from '@/app/shell-context';
+import { refusalText } from '@/components/workspace/thread-repo';
 
 /** How long the filter waits after a keystroke before asking GitHub again. */
 const FILTER_DEBOUNCE_MS = 250;

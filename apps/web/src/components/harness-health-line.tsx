@@ -1,7 +1,11 @@
 import { relativeTime } from '@felix/client';
 import { Button } from '@felix/ui/button';
 import { useEffect, useState } from 'react';
-import { retryHarnessReads, type TransientKind, useHarnessHealth } from '@/lib/harness/harness-health';
+import {
+  retryHarnessReads,
+  type TransientKind,
+  useHarnessHealth,
+} from '@/lib/harness/harness-health';
 
 /** The cause, in the product's words. Named for the mechanism, not the status code. */
 const CAUSE: Record<TransientKind, string> = {

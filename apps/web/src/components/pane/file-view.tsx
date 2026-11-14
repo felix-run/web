@@ -4,6 +4,8 @@ import { RotateCwIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { workspaceDelete, workspaceRead, workspaceRename, workspaceWrite } from '@/api/client';
+import type { EditNotice } from '@/app/shell-context';
+import { useOptionalShellPick } from '@/app/shell-context';
 import { HighlightedCode } from '@/components/highlighted-code';
 import {
   outcomeLine,
@@ -23,6 +25,18 @@ import {
 } from '@/components/pane/pane-parts';
 import { DiffView } from '@/components/skills/diff-view';
 import {
+  cleanFile,
+  clearFileRequest,
+  closePaneItem,
+  hasConflict,
+  isDirty,
+  openInPane,
+  type PaneItem,
+  updatePaneFile,
+  usePaneState,
+} from '@/lib/navigation/side-pane';
+import { cn } from '@/lib/utils';
+import {
   deleteWorkspaceFile,
   getMountLabel,
   readWorkspaceBytes,
@@ -36,21 +50,7 @@ import {
   type Preview,
   previewOfBytes,
 } from '@/lib/workspace/file-preview';
-import {
-  cleanFile,
-  clearFileRequest,
-  closePaneItem,
-  hasConflict,
-  isDirty,
-  openInPane,
-  type PaneItem,
-  updatePaneFile,
-  usePaneState,
-} from '@/lib/navigation/side-pane';
-import { cn } from '@/lib/utils';
 import { WORKSPACE_WRITTEN } from '@/lib/workspace/workspace-events';
-import type { EditNotice } from '@/app/shell-context';
-import { useOptionalShellPick } from '@/app/shell-context';
 
 // The skill library's renderer, because it is the one that already trusts its
 // input less than the transcript does: no inline HTML becomes an element, and no

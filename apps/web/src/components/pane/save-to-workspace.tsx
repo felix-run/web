@@ -4,9 +4,9 @@ import { FilePlusIcon } from 'lucide-react';
 import { type FormEvent, useId, useState } from 'react';
 import { toast } from 'sonner';
 import { savedLine, useTellAgent, useTellsAgent, utf8Bytes } from '@/components/pane/edit-notice';
-import { getMountLabel, readWorkspaceBytes, writeWorkspaceFile } from '@/lib/workspace/cowork';
 import { openInPane } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
+import { getMountLabel, readWorkspaceBytes, writeWorkspaceFile } from '@/lib/workspace/cowork';
 
 /**
  * The control that turns content the pane was handed — a reply's code block,

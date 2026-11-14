@@ -29,6 +29,7 @@ import {
   type ThreadRepo,
   type ThreadRepoFiles,
 } from '@/api/client';
+import { useOptionalShellPick } from '@/app/shell-context';
 import { ConfirmButton } from '@/components/confirm-button';
 import type { FileRowAction } from '@/components/workspace/file-row-menu';
 import { requestFolderAction } from '@/components/workspace/folder-action';
@@ -36,7 +37,6 @@ import { RepoFileTree } from '@/components/workspace/repo-files';
 import { getSession, subscribeCredentials } from '@/lib/auth/auth';
 import { requestFileAction } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
-import { useOptionalShellPick } from '@/app/shell-context';
 
 /** How often a cloning checkout is asked about. A clone is seconds to a few minutes. */
 const CLONING_POLL_MS = 2_000;

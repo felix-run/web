@@ -6,12 +6,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { AppSidebar } from '../src/components/app-sidebar';
 import { Inspector } from '../src/components/inspector/inspector';
 import { FilesView } from '../src/components/pane/files-view';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { Workbench } from '../src/routes/workbench';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * The three-zone shell, at the two seams that can strand a control.

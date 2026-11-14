@@ -2,9 +2,15 @@ import { PanelRightOpenIcon } from 'lucide-react';
 import { type ComponentProps, type ElementType, type ReactNode, useEffect, useState } from 'react';
 import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
-import { loadedPlugins, loadPlugins, needsMath, needsRaw, pluginsFor } from '@/lib/markdown/reply-plugins';
-import { cn } from '@/lib/utils';
 import { useOptionalShellPick } from '@/app/shell-context';
+import {
+  loadedPlugins,
+  loadPlugins,
+  needsMath,
+  needsRaw,
+  pluginsFor,
+} from '@/lib/markdown/reply-plugins';
+import { cn } from '@/lib/utils';
 
 /**
  * Streamed assistant markdown. Tolerates incomplete fences mid-stream.

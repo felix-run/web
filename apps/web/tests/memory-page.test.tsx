@@ -3,8 +3,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ShellValue } from '../src/app/shell-context';
 import type { MemoryHit, MemoryRecord } from '../src/api/types';
+import type { ShellValue } from '../src/app/shell-context';
 
 /**
  * The Memory page as a place to hunt a fact down.

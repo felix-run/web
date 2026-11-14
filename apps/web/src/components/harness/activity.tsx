@@ -4,9 +4,10 @@ import { Badge } from '@felix/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@felix/ui/collapsible';
 import { ChevronRightIcon } from 'lucide-react';
 import { Link } from 'react-router';
+import type { AuditEvent, UsageSummary } from '@/api/types';
 import { Field, isFailure, relTime, StatusDot, tsToMs } from '@/components/inspector/primitives';
-import { type EventOutcome, eventOutcome, isFailureOutcome } from '@/lib/harness/audit-outcome';
 import { clockTime, middleTruncate } from '@/lib/format';
+import { type EventOutcome, eventOutcome, isFailureOutcome } from '@/lib/harness/audit-outcome';
 import {
   ACTIVITY_FETCH,
   ACTIVITY_GLANCE_SPAN,
@@ -14,7 +15,6 @@ import {
   recentFailures,
 } from '@/lib/harness/harness-glances';
 import { cn } from '@/lib/utils';
-import type { AuditEvent, UsageSummary } from '@/api/types';
 
 // The window, its keys and the glance's count live where the rail can import
 // them without loading this page; re-exported so the page's readers are unchanged.
