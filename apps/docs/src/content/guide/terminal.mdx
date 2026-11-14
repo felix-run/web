@@ -405,3 +405,23 @@ the terminal has been restored — is the thread you were in and the command tha
 felix: Proxy worker routing
   rejoin with: felix --thread 0f9c1e7a-…
 ```
+
+
+## Coding with code
+
+Start the TUI from the project folder, with a harness API key configured:
+
+```bash
+bun /path/to/felix-web/apps/tui/dist/felix.js --manifest code --shell
+```
+
+The harness must have the `code` manifest available. Code reads repository
+instructions, implements changes and checks the results. `--shell` enables real `/bin/sh`
+commands for builds, tests and Git. Each command shows its full text and absolute working
+directory for confirmation, including when `--yes` skips file-write prompts. Without
+`--shell`, only the existing emulated file commands are available.
+
+Commands start inside the project, but **are not sandboxed**: an approved command has your
+account's filesystem and network access. stdin is closed; interactive programs are unsupported.
+Output is capped at 200 kB and commands time out after four minutes. Stop cancels the process
+group. `local_open` displays text files through `$PAGER`; web URLs appear as links to open manually.

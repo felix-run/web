@@ -382,3 +382,134 @@ describe('local_delete and local_rename on the working directory', () => {
     expect(existsSync(join(root, 'a.md'))).toBe(false);
   });
 });
+
+describe('coding workspace', () => {
+  it('honors cwd in emulated shell commands', async () => {
+    const result = await permissive().execute(
+      call('local_shell', { command: 'cat api.ts', cwd: 'src' }),
+    );
+    expect(result.content).toBe('export const x = 1;\n');
+  });
+
+  it('refuses a shell cwd outside the workspace', async () => {
+    const result = await permissive().execute(
+      call('local_shell', { command: 'pwd', cwd: outside }),
+    );
+    expect(result.error).toBe(true);
+  });
+
+  it('marks unsupported commands as errors', async () => {
+    const result = await permissive().execute(call('local_shell', { command: 'git status' }));
+    expect(result.error).toBe(true);
+  });
+
+  it('runs a real command in cwd only after its own confirmation', async () => {
+    const confirmShell = vi.fn(async (_summary: string) => true);
+    const ws = createWorkspace({ root, shell: true, confirm: allow, confirmShell });
+    const result = await ws.execute(
+      call('local_shell', { command: 'pwd; printf hello >&2', cwd: 'src' }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain(join(root, 'src'));
+    expect(result.content).toContain('hello');
+    expect(confirmShell.mock.calls[0]?.[0]).toContain('pwd; printf hello >&2');
+  });
+
+  it('refuses commands even when file writes are allowed without asking', async () => {
+    const ws = createWorkspace({
+      root,
+      shell: true,
+      confirm: allow,
+      confirmShell: async () => false,
+    });
+    const result = await ws.execute(call('local_shell', { command: 'touch never.txt' }));
+    expect(result.error).toBe(true);
+    expect(existsSync(join(root, 'never.txt'))).toBe(false);
+  });
+
+  it('reports a nonzero exit and keeps stderr', async () => {
+    const ws = createWorkspace({ root, shell: true, confirm: allow });
+    const result = await ws.execute(call('local_shell', { command: 'printf failure >&2; exit 7' }));
+    expect(result.error).toBe(true);
+    expect(result.content).toContain('failure');
+    expect(result.content).toContain('code 7');
+  });
+
+  it('cancels a command and permits a later turn', async () => {
+    const ws = createWorkspace({ root, shell: true, confirm: allow });
+    const pending = ws.execute(call('local_shell', { command: 'sleep 2; touch never.txt' }));
+    await Bun.sleep(50);
+    ws.cancel();
+    expect((await pending).error).toBe(true);
+    expect((await ws.execute(call('local_shell', { command: 'printf next' }))).content).toBe(
+      'next',
+    );
+    await Bun.sleep(2100);
+    expect(existsSync(join(root, 'never.txt'))).toBe(false);
+  });
+
+  it('does not write when confirmation arrives after cancellation', async () => {
+    let answer: (ok: boolean) => void = () => {};
+    const ws = createWorkspace({
+      root,
+      confirm: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const pending = ws.execute(call('local_write', { path: 'never.txt', content: 'late' }));
+    await Bun.sleep(30);
+    ws.cancel();
+    expect((await pending).error).toBe(true);
+    answer(true);
+    await Bun.sleep(30);
+    expect(existsSync(join(root, 'never.txt'))).toBe(false);
+  });
+});
+
+describe('local_open', () => {
+  it('shows a contained text file through the viewer', async () => {
+    const openFile = vi.fn(async (_body: string, _name: string) => {});
+    const result = await createWorkspace({ root, confirm: allow, openFile }).execute(
+      call('local_open', { target: 'src/api.ts' }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(openFile).toHaveBeenCalledWith('export const x = 1;\n', 'api.ts');
+  });
+  it('refuses an escaped file without calling the viewer', async () => {
+    const openFile = vi.fn(async () => {});
+    const result = await createWorkspace({ root, confirm: allow, openFile }).execute(
+      call('local_open', { target: join(outside, 'secret') }),
+    );
+    expect(result.error).toBe(true);
+    expect(openFile).not.toHaveBeenCalled();
+  });
+  it('returns web links without launching a process', async () => {
+    const result = await permissive().execute(
+      call('local_open', { target: 'https://example.com/docs' }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('https://example.com/docs');
+  });
+});
+
+it('bounds native command output without blocking the child', async () => {
+  const ws = createWorkspace({ root, shell: true, confirm: allow });
+  const result = await ws.execute(call('local_shell', { command: 'yes x | head -c 210000' }));
+  expect(result.error).toBeUndefined();
+  expect(result.content).toContain('output truncated at 200000 bytes');
+  expect(result.content.length).toBeLessThan(200100);
+});
+
+it('reports viewer errors to the model', async () => {
+  const ws = createWorkspace({
+    root,
+    confirm: allow,
+    openFile: async () => {
+      throw new Error('pager failed');
+    },
+  });
+  const result = await ws.execute(call('local_open', { target: 'src/api.ts' }));
+  expect(result.error).toBe(true);
+  expect(result.content).toContain('pager failed');
+});

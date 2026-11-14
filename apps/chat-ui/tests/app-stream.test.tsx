@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { ThemeProvider } from '../src/components/theme-provider';
+import * as cowork from '../src/lib/cowork';
 
 /**
  * The chat surface, driven the way a person drives it.
@@ -500,4 +501,45 @@ describe('the header with every mode on and a run blocked', () => {
     // The header holds no door to `/harness`: the sidebar lists its pages.
     expect(header.querySelector('a[href^="/harness"]')).toBeNull();
   });
+});
+
+it('Stop cancels the current engine’s browser tool executor', async () => {
+  let signal: AbortSignal | undefined;
+  let finish: (result: { content: string; error?: boolean }) => void = () => {};
+  const execute = vi.spyOn(cowork, 'executeClientTool').mockImplementation((_req, _open, abort) => {
+    signal = abort;
+    return new Promise((resolve) => {
+      finish = resolve;
+      abort?.addEventListener('abort', () => resolve({ content: 'error: aborted', error: true }), {
+        once: true,
+      });
+    });
+  });
+  try {
+    stubFetch([
+      {
+        event: 'tool_request',
+        data: { id: 'blocked-read', name: 'local_read', args: { path: 'code.ts' } },
+      },
+    ]);
+    mount();
+    await send();
+    await waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(signal).toBeDefined();
+    const stop = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>('[aria-label="Stop generating"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    await act(async () => {
+      await userEvent.click(stop);
+    });
+    await waitFor(() => expect(signal?.aborted).toBe(true));
+    await waitFor(() =>
+      expect(document.querySelector('[aria-label="Send message"]')).not.toBeNull(),
+    );
+  } finally {
+    finish({ content: 'cleanup' });
+    execute.mockRestore();
+  }
 });

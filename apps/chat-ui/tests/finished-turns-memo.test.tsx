@@ -86,6 +86,11 @@ describe('finished turns', () => {
     };
     await send('one');
     await screen.findByText('first answer', undefined, { timeout: 3000 });
+    // The final delta is visible before DONE. Do not count the first run's
+    // own completion as an extra layout during the second run.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Stop generating' })).toBeNull(),
+    );
 
     laidOut.length = 0;
     await send('two');

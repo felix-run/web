@@ -24,6 +24,8 @@ export interface Config {
   manifest: string;
   /** Skip the confirmation prompt before a client tool writes. */
   yes: boolean;
+  /** Opt in to real shell commands, confirmed individually. */
+  shell?: boolean;
   /** Resume this thread instead of starting a new one. */
   thread?: string;
   /** Send the key to a plaintext non-loopback origin anyway. */
@@ -130,7 +132,7 @@ export function readConfigFile(path: string): Partial<Config> {
  * `--yes` and sends "the worker" — a message quietly missing its first word,
  * which is worse than an error.
  */
-const SWITCHES = new Set(['yes', 'help', 'h', 'insecure']);
+const SWITCHES = new Set(['yes', 'help', 'h', 'insecure', 'shell']);
 
 export interface ParsedArgs {
   flags: Record<string, string | true>;
@@ -203,6 +205,7 @@ export function resolveConfig(
       ...(apiKey ? { apiKey } : {}),
       manifest: str('manifest') ?? env.FELIX_MANIFEST?.trim() ?? file.manifest ?? DEFAULT_MANIFEST,
       yes: flags.yes === true || flags.yes === 'true',
+      shell: flags.shell === true || flags.shell === 'true',
       insecure: flags.insecure === true || flags.insecure === 'true',
       ...(str('thread') ? { thread: str('thread') } : {}),
     },
@@ -249,6 +252,7 @@ usage: felix [options] [message]
   --manifest <name>   agent manifest (default ${DEFAULT_MANIFEST})
   --thread <id>       resume a thread instead of starting a new one
   --yes               do not ask before a client tool writes a file
+  --shell             enable real shell commands (always confirmed; not sandboxed)
   --insecure          allow the key over plaintext http to a remote origin
   --help              this
 

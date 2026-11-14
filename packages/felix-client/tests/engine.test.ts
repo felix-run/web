@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createChatEngine } from '../src/engine';
+import { classifyToolResult } from '../src/tool-results';
 import { createFelixClient } from '../src/transport';
 
 /**
@@ -1228,5 +1229,186 @@ describe('inspect', () => {
     expect(engine.inspect().cursor).toBe('8');
     // The stream has ended, so nothing is open to be quiet.
     expect(engine.inspect().stream).toBeNull();
+  });
+});
+
+describe('client tool lifecycle', () => {
+  it('does not post a late tool result to another thread', async () => {
+    let thread = 't1';
+    let finish!: (result: { content: string }) => void;
+    const execute = vi.fn(
+      () =>
+        new Promise<{ content: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const engine = engineOn([], { threadId: () => thread, clientTools: { execute } });
+    const pending = engine.applyEvent({
+      event: 'tool_request',
+      data: { id: 'late', name: 'local_shell', args: {} },
+    });
+    thread = 't2';
+    engine.reset();
+    finish({ content: 'old output' });
+    await pending;
+    expect(posted.some((p) => p.url.includes('/chat/tool_result'))).toBe(false);
+    expect(engine.state.turns).toEqual([]);
+  });
+
+  it('cancels local work on abort and ignores the late result', async () => {
+    let finish!: (result: { content: string }) => void;
+    const cancel = vi.fn();
+    const execute = () =>
+      new Promise<{ content: string }>((resolve) => {
+        finish = resolve;
+      });
+    const engine = engineOn([], { clientTools: { execute, cancel } });
+    const pending = engine.applyEvent({
+      event: 'tool_request',
+      data: { id: 'aborted', name: 'local_shell', args: {} },
+    });
+    engine.abort();
+    finish({ content: 'late' });
+    await pending;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(posted.some((p) => p.url.includes('/chat/tool_result'))).toBe(false);
+  });
+
+  it('posts an executor exception as a failed tool result', async () => {
+    const engine = engineOn([], {
+      clientTools: {
+        execute: async () => {
+          throw new Error('disk unavailable');
+        },
+      },
+    });
+    await engine.applyEvent({
+      event: 'tool_request',
+      data: { id: 'failed', name: 'local_read', args: {} },
+    });
+    expect(posted.find((p) => p.url.includes('/chat/tool_result'))?.body).toMatchObject({
+      thread_id: 't1',
+      error: true,
+      content: 'error: disk unavailable',
+    });
+  });
+
+  it('does not declare a stream dead while its reader awaits a local command', async () => {
+    let finish!: (result: { content: string }) => void;
+    const execute = vi.fn(
+      () =>
+        new Promise<{ content: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const engine = engineOn([], { clientTools: { execute } });
+    stubFetch((url) =>
+      url.endsWith('/chat/stream')
+        ? new Response(
+            ': keep-alive\n\ndata: ' +
+              JSON.stringify({
+                event: 'tool_request',
+                data: { id: 'slow', name: 'local_shell', args: {} },
+              }) +
+              '\n\ndata: [DONE]\n\n',
+            { headers: { 'content-type': 'text/event-stream' } },
+          )
+        : new Response('{}'),
+    );
+    const pending = run(engine);
+    await until(() => execute.mock.calls.length === 1);
+    try {
+      expect(engine.checkLiveness(Date.now() + 60_000)).toBe(false);
+    } finally {
+      finish({ content: 'done' });
+      await pending;
+    }
+  });
+});
+
+it('draws an explicitly failed client command as failed even with diagnostic output first', async () => {
+  const engine = engineOn(
+    [{ event: 'tool_request', data: { id: 'bad-build', name: 'local_shell', args: {} } }],
+    {
+      clientTools: {
+        execute: async () => ({ content: 'compiling...\ncommand exited with code 1', error: true }),
+      },
+    },
+  );
+  await run(engine);
+  const tool = engine.state.turns.at(-1)?.tools?.[0];
+  expect(tool).toBeDefined();
+  expect(classifyToolResult(tool!.name, tool!.output)?.kind).toBe('failed');
+  expect(posted.find((p) => p.url.includes('/chat/tool_result'))?.body).toMatchObject({
+    error: true,
+  });
+});
+
+describe('starting a later coding turn', () => {
+  it('permits the same model tool-call id in a later turn', async () => {
+    const execute = vi.fn(async () => ({ content: 'ok' }));
+    const frame = {
+      event: 'tool_request',
+      data: { id: 'reused', name: 'local_read', args: { path: 'code.ts' } },
+    };
+    const engine = engineOn([frame, frame], { clientTools: { execute } });
+    await run(engine);
+    await run(engine);
+    expect(execute).toHaveBeenCalledTimes(2); // one per turn, despite each stream's duplicate
+  });
+
+  it('forgets consumed request ids when the thread is reset', async () => {
+    const execute = vi.fn(async () => ({ content: 'ok' }));
+    const engine = engineOn([], { clientTools: { execute } });
+    const frame = {
+      event: 'tool_request' as const,
+      data: { id: 'reused', name: 'local_read', args: {} },
+    };
+    await engine.applyEvent(frame);
+    engine.reset();
+    await engine.applyEvent(frame);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let an aborted send finishing late settle the next send', async () => {
+    const finish: Array<(result: { content: string }) => void> = [];
+    const execute = vi.fn(
+      () =>
+        new Promise<{ content: string }>((resolve) => {
+          finish.push(resolve);
+        }),
+    );
+    const engine = engineOn([], { clientTools: { execute } });
+    let stream = 0;
+    stubFetch((url) =>
+      url.endsWith('/chat/stream')
+        ? sse([
+            {
+              event: 'tool_request',
+              data: { id: `call-${++stream}`, name: 'local_shell', args: {} },
+            },
+          ])
+        : new Response('{}'),
+    );
+    const old = run(engine);
+    await until(() => execute.mock.calls.length === 1);
+    engine.abort();
+    engine.setTurns([{ id: 'a2', role: 'assistant', content: '', tools: [] }]);
+    const next = engine.send({
+      manifest: 'code',
+      assistantId: 'a2',
+      messages: [{ role: 'user', content: 'next task' }],
+    });
+    await until(() => execute.mock.calls.length === 2);
+    try {
+      finish[0]?.({ content: 'old output' });
+      await old;
+      expect(engine.state.streaming).toBe(true);
+      expect(engine.state.turns[0]?.tools?.[0]?.done).toBe(false);
+    } finally {
+      finish[1]?.({ content: 'new output' });
+      await next;
+    }
+    expect(engine.state.streaming).toBe(false);
   });
 });

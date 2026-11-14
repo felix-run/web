@@ -2,6 +2,7 @@ import {
   type ClientToolOptions,
   type ClientToolRequest,
   type ClientToolResult,
+  DEFAULT_CLIENT_TOOL_TIMEOUT_MS,
   isLocalFileTool,
   type LocalFs,
   runLocalFileTool,
@@ -9,6 +10,7 @@ import {
 } from '@felix/client';
 import {
   clearMount,
+  getMountIdentity,
   getMountLabel,
   hasMount,
   mountList,
@@ -33,7 +35,13 @@ function joinPath(cwd: string, p: string): string {
   return `${cwd.replace(/\/$/, '')}/${p}`.replace(/^\.\//, '');
 }
 
-async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Promise<string> {
+async function runLocalShell(
+  command: string,
+  cwd: string,
+  vfs: VirtualFs,
+  check: () => void,
+): Promise<string> {
+  check();
   const trimmed = command.trim();
   if (!trimmed) return '';
 
@@ -59,12 +67,12 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
       return mounted ? await mountRead(join(arg)) : vfs.read(join(arg));
     }
     case 'echo': {
-      if (rest.includes('>')) {
-        const idx = rest.indexOf('>');
-        const text = rest.slice(0, idx).join(' ');
-        const path = rest.slice(idx + 1).join(' ');
+      const redirect = /^(.*?)>\s*(\S.*)$/.exec(rest.join(' '));
+      if (redirect) {
+        const text = redirect[1]?.trim() ?? '';
+        const path = (redirect[2] ?? '').trim().replace(/^['"]|['"]$/g, '');
         if (!path) return 'usage: echo text > path';
-        if (mounted) await mountWrite(join(path), `${text}\n`);
+        if (mounted) await mountWrite(join(path), `${text}\n`, false, check);
         else vfs.write(join(path), `${text}\n`);
         return '';
       }
@@ -72,7 +80,7 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
     }
     case 'mkdir': {
       if (!arg) return 'usage: mkdir <path>';
-      if (mounted) await mountMkdir(join(arg));
+      if (mounted) await mountMkdir(join(arg), check);
       else vfs.mkdir(join(arg));
       return '';
     }
@@ -83,7 +91,8 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
         if (mounted) await mountRead(path);
         else vfs.read(path);
       } catch {
-        if (mounted) await mountWrite(path, '');
+        check();
+        if (mounted) await mountWrite(path, '', false, check);
         else vfs.write(path, '');
       }
       return '';
@@ -106,22 +115,32 @@ async function runLocalShell(command: string, cwd: string, vfs: VirtualFs): Prom
  * `local_edit`, `local_delete` and `local_rename` with an approval, so a write reaches this point only after a person said
  * yes on the banner, which is where the diff is drawn.
  */
-export function workspaceFs(vfs: VirtualFs): LocalFs {
+export function workspaceFs(vfs: VirtualFs, check: () => void = () => {}): LocalFs {
+  const checked = async <T>(work: () => T | Promise<T>): Promise<T> => {
+    check();
+    const result = await work();
+    check();
+    return result;
+  };
   return {
-    list: async (path) => (hasMount() ? await mountList(path || '.') : vfs.list(path || '.')),
-    read: async (path) => (hasMount() ? await mountRead(path) : vfs.read(path)),
+    list: async (path) =>
+      checked(() => (hasMount() ? mountList(path || '.') : vfs.list(path || '.'))),
+    read: async (path) => checked(() => (hasMount() ? mountRead(path) : vfs.read(path))),
     write: async (path, content, { append }) => {
-      if (hasMount()) await mountWrite(path, content, append);
+      check();
+      if (hasMount()) await mountWrite(path, content, append, check);
       else vfs.write(path, content, append);
     },
     // Files only, never overwriting — the same rules the operator's pane
     // follows, through the same helpers, gated by the same approval rule.
     remove: async (path) => {
-      if (hasMount()) await mountRemove(path);
+      check();
+      if (hasMount()) await mountRemove(path, check);
       else vfs.remove(path);
     },
     rename: async (path, toPath) => {
-      if (hasMount()) await mountRename(path, toPath);
+      check();
+      if (hasMount()) await mountRename(path, toPath, check);
       else vfs.rename(path, toPath);
     },
   };
@@ -149,22 +168,57 @@ export async function executeClientTool(
   vfs: VirtualFs,
   opts: BrowserToolOptions = {},
 ): Promise<ClientToolResult> {
-  const { openFile, ...settle } = opts;
-  return settleClientTool(req, () => runClientTool(req, vfs, openFile), settle);
+  const controller = new AbortController();
+  const signal = opts.signal
+    ? AbortSignal.any([opts.signal, controller.signal])
+    : controller.signal;
+  const mount = getMountIdentity();
+  const check = () => {
+    signal.throwIfAborted();
+    if (getMountIdentity() !== mount)
+      throw new Error('workspace changed while the tool was running');
+  };
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_CLIENT_TOOL_TIMEOUT_MS;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    const result = await settleClientTool(
+      req,
+      () => runClientTool(req, vfs, opts.openFile, check),
+      { signal, timeoutMs },
+    );
+    return timedOut
+      ? { content: `error: ${req.name} timed out after ${timeoutMs}ms`, error: true }
+      : result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function runClientTool(
   req: ClientToolRequest,
   vfs: VirtualFs,
-  openFile?: (path: string) => void,
+  openFile: ((path: string) => void) | undefined,
+  check: () => void,
 ): Promise<ClientToolResult> {
   try {
-    if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workspaceFs(vfs));
+    check();
+    if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workspaceFs(vfs, check));
     if (req.name === 'local_shell') {
       const command = asString(req.args.command);
       const cwd = asString(req.args.cwd);
-      const content = await runLocalShell(command, cwd, vfs);
-      return { content: content || '(ok)' };
+      const content = await runLocalShell(command, cwd, vfs, check);
+      return {
+        content: content || '(ok)',
+        ...(content.startsWith('unsupported') ||
+        content.startsWith('usage:') ||
+        content.startsWith('error:')
+          ? { error: true }
+          : {}),
+      };
     }
     if (req.name === 'local_open') {
       const target = asString(req.args.target);
@@ -182,6 +236,7 @@ async function runClientTool(
       if ((await readExisting(cleaned, vfs)) === null) {
         return { content: `error: no such file: ${cleaned}`, error: true };
       }
+      check();
       openFile(cleaned);
       return { content: JSON.stringify({ opened: cleaned, kind: 'file', in: 'side_pane' }) };
     }

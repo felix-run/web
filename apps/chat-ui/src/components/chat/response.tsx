@@ -1,5 +1,5 @@
 import { PanelRightOpenIcon } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ComponentProps, type ElementType, type ReactNode, useEffect, useState } from 'react';
 import remarkBreaks from 'remark-breaks';
 import { defaultRemarkPlugins, Streamdown, type StreamdownProps } from 'streamdown';
 import { loadedPlugins, loadPlugins, needsMath, needsRaw, pluginsFor } from '@/lib/reply-plugins';
@@ -76,34 +76,36 @@ const HEADING = {
   h6: 'mt-4 mb-1 text-sm font-semibold text-muted-foreground',
 } as const;
 
+type MarkdownProps<Tag extends ElementType> = ComponentProps<Tag> & { node?: unknown };
+
 export const responseComponents: Components = {
-  h1: ({ node: _node, className, ...props }) => (
+  h1: ({ node: _node, className, ...props }: MarkdownProps<'h1'>) => (
     <h1 className={cn(HEADING.h1, 'first:mt-0', className)} {...props} />
   ),
-  h2: ({ node: _node, className, ...props }) => (
+  h2: ({ node: _node, className, ...props }: MarkdownProps<'h2'>) => (
     <h2 className={cn(HEADING.h2, 'first:mt-0', className)} {...props} />
   ),
-  h3: ({ node: _node, className, ...props }) => (
+  h3: ({ node: _node, className, ...props }: MarkdownProps<'h3'>) => (
     <h3 className={cn(HEADING.h3, 'first:mt-0', className)} {...props} />
   ),
-  h4: ({ node: _node, className, ...props }) => (
+  h4: ({ node: _node, className, ...props }: MarkdownProps<'h4'>) => (
     <h4 className={cn(HEADING.h4, 'first:mt-0', className)} {...props} />
   ),
-  h5: ({ node: _node, className, ...props }) => (
+  h5: ({ node: _node, className, ...props }: MarkdownProps<'h5'>) => (
     <h5 className={cn(HEADING.h5, 'first:mt-0', className)} {...props} />
   ),
-  h6: ({ node: _node, className, ...props }) => (
+  h6: ({ node: _node, className, ...props }: MarkdownProps<'h6'>) => (
     <h6 className={cn(HEADING.h6, 'first:mt-0', className)} {...props} />
   ),
-  ul: ({ node: _node, className, ...props }) => (
+  ul: ({ node: _node, className, ...props }: MarkdownProps<'ul'>) => (
     <ul className={cn(LIST, 'list-disc', className)} {...props} />
   ),
-  ol: ({ node: _node, className, ...props }) => (
+  ol: ({ node: _node, className, ...props }: MarkdownProps<'ol'>) => (
     <ol className={cn(LIST, 'list-decimal', className)} {...props} />
   ),
   // `task-list-item` arrives from remark-gfm. GitHub drops the marker on those for
   // the reason it is dropped here: the checkbox is the marker.
-  li: ({ node: _node, className, ...props }) => (
+  li: ({ node: _node, className, ...props }: MarkdownProps<'li'>) => (
     <li
       className={cn(
         'py-1 [&>p]:inline',

@@ -352,3 +352,23 @@ assert that a failed tool card is still red or a dim line still dim.
 - **One prompt owns the keyboard.** `useKeyboard` is a global subscription, so two banners on
   screen means one `y` answers both. `App` renders exactly one, and a handler that answers a
   key calls `preventDefault` so it does not also reach the composer.
+
+
+## Coding with code
+
+Start the TUI from the project folder, with a harness API key configured:
+
+```bash
+bun /path/to/felix-web/apps/tui/dist/felix.js --manifest code --shell
+```
+
+The harness must have the `code` manifest available. Code reads repository
+instructions, implements changes and checks the results. `--shell` enables real `/bin/sh`
+commands for builds, tests and Git. Each command shows its full text and absolute working
+directory for confirmation, including when `--yes` skips file-write prompts. Without
+`--shell`, only the existing emulated file commands are available.
+
+Commands start inside the project, but **are not sandboxed**: an approved command has your
+account's filesystem and network access. stdin is closed; interactive programs are unsupported.
+Output is capped at 200 kB and commands time out after four minutes. Stop cancels the process
+group. `local_open` displays text files through `$PAGER`; web URLs appear as links to open manually.
