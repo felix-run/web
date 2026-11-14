@@ -30,7 +30,7 @@ type checker, test layout and runner, line length, Python version. Run the proje
 do not invent `make test` if the repo doesn't have it.
 
 Local dev, as referenced from this repo: `make up && make migrate` brings the harness up on
-`:8080`, which is what `pnpm chat:dev` proxies to.
+`:8080`, which is what `pnpm web:dev` proxies to.
 
 ## The contract you must not break casually
 
@@ -55,7 +55,7 @@ The browser clients hand-mirror the harness's wire format. These are load-bearin
 When you change any of these, name the felix-web files that must change with it — the shared
 `packages/felix-protocol` (wire types and the SSE reader, one copy for both apps), each app's own
 `src/api.ts`, and the engine `switch` in `@felix/client` — and use the `api-contract-change` skill to land
-the client side. Route changes also want `apps/chat-ui/harness-openapi.json` refreshed, which
+the client side. Route changes also want `apps/web/harness-openapi.json` refreshed, which
 `pnpm check-api-drift` enforces.
 
 ## Engineering rules

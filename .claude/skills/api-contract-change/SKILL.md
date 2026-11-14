@@ -20,8 +20,8 @@ that hides missing handlers. Follow this in order.
 | `packages/felix-client/src/http.ts` | The credentialed `chatFetch`/`rawFetch` both halves share |
 | `packages/felix-client/src/transport.ts` | The chat verbs |
 | `packages/felix-client/src/management/*.ts` | The read-only operator reads — audit, usage, memory, plans, artifacts — types beside their fetcher |
-| `apps/chat-ui/src/api.ts` | `apiFetch` + the browser-only **write** surface: eval, manifests, jobs, agent card |
-| `apps/chat-ui/src/types.ts` | chat-ui-only: `Turn`, and the write-surface shapes |
+| `apps/web/src/api/client.ts` | `apiFetch` + the browser-only **write** surface: eval, manifests, jobs, agent card |
+| `apps/web/src/api/types.ts` | chat-ui-only: `Turn`, and the write-surface shapes |
 
 Plus the consumer: `packages/felix-client/src/engine.ts`, where the `switch` over `StreamEvent` lives — one switch for every client, and the file `check-protocol-parity` reads.
 
@@ -60,7 +60,7 @@ catalog and the flows each frame belongs to.
 3. **Add the client function**, if it is a REST call, in the file that matches who needs it. A route
    any client would want goes in `packages/felix-client/` — a chat verb in `transport.ts`, an
    operator read in `management/`, with its row type declared beside it. A browser-only write stays
-   in `apps/chat-ui/src/api.ts`. Match the house style: go through the area's wrapper (`chatFetch`
+   in `apps/web/src/api/client.ts`. Match the house style: go through the area's wrapper (`chatFetch`
    in the package, `apiFetch` in chat-ui — never bare `fetch`), check `res.ok`, throw
    `` `${route}: ${res.status} ${detail.slice(0, 200)}` `` on failure. That spelling is load-bearing:
    `describeError` reads the status back out of it with `/:\s*(\d{3})\b/`.
@@ -80,17 +80,17 @@ catalog and the flows each frame belongs to.
 
 5. **Decide about the unattended path.** A frame the run blocks on has to reach an operator who is
    not looking: a durable run carries no frames at all, so anything blocking needs a `/approvals`-style
-   poll and a `setPresence('blocked')` (`src/lib/presence.ts`), not just a banner.
+   poll and a `setPresence('blocked')` (`src/lib/conversation/presence.ts`), not just a banner.
 
 6. **Verify.** `pnpm check-types && pnpm lint` proves nothing about the frame itself — trigger it
-   against a live harness (`pnpm chat:dev`) and confirm the UI reacts. Use the `preflight` skill for
+   against a live harness (`pnpm web:dev`) and confirm the UI reacts. Use the `preflight` skill for
    the full loop.
 
    For an SSE change run `pnpm check-protocol-parity`, which fails when a `StreamEvent` arm has no
    handler in either app — the failure mode the open union arm hides.
 
    For a REST change also run `pnpm check-api-drift`, which diffs every client call site's path and
-   verb against `apps/chat-ui/harness-openapi.json`. If the harness gained the route you are calling,
+   verb against `apps/web/harness-openapi.json`. If the harness gained the route you are calling,
    refresh that snapshot in the same PR — instructions are in `scripts/check-api-drift.mjs`.
 
 7. **Document it** if the change is user-visible or operator-relevant: `apps/docs/src/content/`

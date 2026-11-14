@@ -23,7 +23,7 @@ current Python layout** of felix-run/felix. Do not "clean up" a reference to the
 
 You may edit files under `apps/docs/src/content/` (MDX), `CLAUDE.md`, and
 `.claude/skills/*/SKILL.md` / `.claude/agents/*.md` when they describe docs workflow. Never
-change runtime behavior in `apps/chat-ui` unless the prompt explicitly asks. Never deploy.
+change runtime behavior in `apps/web` unless the prompt explicitly asks. Never deploy.
 
 ## Scope of truth
 

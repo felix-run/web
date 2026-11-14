@@ -48,7 +48,7 @@ scanned.
 Scope to one package when the change is contained — it is much faster:
 
 ```bash
-pnpm --filter @felix/chat-ui check-types
+pnpm --filter @felix/web check-types
 pnpm --filter @felix/docs build
 ```
 
@@ -61,14 +61,14 @@ These checks pass on code that is still broken. If your change is in one of thes
 report that it is unverified, or exercise it manually:
 
 - **Runtime behavior of anything touching `/api/*`.** Needs the Python harness on `:8080`
-  (`make up && make migrate` in felix-run/felix), then `pnpm chat:dev`.
+  (`make up && make migrate` in felix-run/felix), then `pnpm web:dev`.
 - **A new SSE event with no `switch` case.** `StreamEvent` has an open catch-all arm, so this
   type-checks and does nothing. Verify by triggering the frame.
-- **Dev/prod proxy divergence.** Nothing mechanically checks that `apps/chat-ui/worker/index.ts`
-  and the `/api` rewrite in `apps/chat-ui/vite.config.ts` still describe the same contract. Read
+- **Dev/prod proxy divergence.** Nothing mechanically checks that `apps/web/worker/index.ts`
+  and the `/api` rewrite in `apps/web/vite.config.ts` still describe the same contract. Read
   both when you touch either.
 - **The unattended path.** A background run carries no SSE frames, so a blocking state reaches the
-  operator only through the `/approvals` poll and `src/lib/presence.ts`. Streaming green says
+  operator only through the `/approvals` poll and `src/lib/conversation/presence.ts`. Streaming green says
   nothing about it.
 - **The Workers themselves.** `vite build` does not exercise `worker/index.ts`. Use `wrangler dev`
   in the app directory.

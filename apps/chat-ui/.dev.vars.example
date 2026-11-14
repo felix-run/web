@@ -1,4 +1,0 @@
-# Local dev secrets (gitignored as .dev.vars). The deployed Worker takes none:
-# browsers sign in to the harness. `pnpm chat:dev` sends this key upstream in
-# place of a sign-in — the one `make up` generated in felix-run/felix.
-FELIX_API_KEY=

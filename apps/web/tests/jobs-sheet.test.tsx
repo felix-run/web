@@ -1,0 +1,906 @@
+/** @vitest-environment happy-dom */
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * The two payload fields a job has and the form did not: the prompt each firing
+ * sends, and `fresh_thread`, which gives each firing a thread of its own.
+ *
+ * Both live inside the job's free-form `payload`, which is why nothing mechanical
+ * noticed they were missing — `check-payload-shapes` reads the row's keys and
+ * `payload` is one key. What is pinned here is the wire: the form sends exactly
+ * the keys that were set, and a stored job says which mode it runs in.
+ */
+
+afterEach(cleanup);
+beforeEach(() => {
+  vi.resetModules();
+});
+
+const job = (over: Record<string, unknown> = {}) => ({
+  tenant_id: 'default',
+  name: 'nightly-digest',
+  schedule: '0 9 * * *',
+  manifest_id: 'quick',
+  enabled: true,
+  last_status: '',
+  last_error: '',
+  created_at: 1,
+  payload: {},
+  ...over,
+});
+
+async function sheet(
+  jobs: unknown[] = [],
+  opts: {
+    runJobNow?: () => Promise<unknown>;
+    runs?: unknown[];
+    spend?: unknown;
+    audit?: unknown[];
+    workflows?: unknown[];
+    /** The address the page opens on, for its `?job=` link. */
+    at?: string;
+    /** `GET /jobs/{name}/preferences`, or the error it throws. */
+    preferences?: unknown;
+    /** `GET /jobs/{name}/state`, or the error it throws. */
+    state?: unknown;
+  } = {},
+) {
+  const answer = (v: unknown) => () =>
+    v instanceof Error ? Promise.reject(v) : Promise.resolve(v);
+  const prefs = {
+    name: 'nightly-digest',
+    preferences: null,
+    updated_at: null,
+    updated_by: null,
+    required: false,
+  };
+  const putJobPreferences = vi.fn((_n: string, text: string) =>
+    Promise.resolve({ ...prefs, preferences: text, updated_at: 1, updated_by: 'blake' }),
+  );
+  const deleteJobPreferences = vi.fn().mockResolvedValue(prefs);
+  const clearJobState = vi.fn().mockResolvedValue(1);
+  const deleteJobStateKey = vi.fn().mockResolvedValue(undefined);
+  const upsertJob = vi.fn().mockResolvedValue(job());
+  const runJobNow = vi.fn(opts.runJobNow ?? (() => Promise.resolve({})));
+  vi.doMock('../src/api/client', () => ({
+    listJobs: vi.fn().mockResolvedValue(jobs),
+    listJobRuns: vi.fn().mockResolvedValue(opts.runs ?? []),
+    upsertJob,
+    runJobNow,
+    deleteJob: vi.fn(),
+    // `null` is a harness without `/usage/threads`: the rows say nothing about spend.
+    listUsageByThread: vi.fn().mockResolvedValue(opts.spend ?? null),
+    // The audit read the sidebar's Activity glance polls; a job's thread outcome rides it.
+    listAudit: vi.fn().mockResolvedValue(opts.audit ?? []),
+    listWorkflows: vi.fn().mockResolvedValue(opts.workflows ?? []),
+    getJobPreferences: vi.fn(answer(opts.preferences ?? prefs)),
+    putJobPreferences,
+    deleteJobPreferences,
+    getJobState: vi.fn(answer(opts.state ?? [])),
+    clearJobState,
+    deleteJobStateKey,
+  }));
+  const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
+  render(
+    <MemoryRouter initialEntries={[opts.at ?? '/harness/jobs']}>
+      <JobsSheet manifest="quick" manifestOptions={['quick']} />
+    </MemoryRouter>,
+  );
+  return {
+    upsertJob,
+    runJobNow,
+    putJobPreferences,
+    deleteJobPreferences,
+    clearJobState,
+    deleteJobStateKey,
+  };
+}
+
+/** The form is behind a disclosure now; open it the way an operator would. */
+async function openForm() {
+  fireEvent.click(await screen.findByRole('button', { name: /New job/ }));
+  return waitFor(() => screen.getByLabelText('Name'));
+}
+
+describe('the page reads as a list first', () => {
+  it('keeps the create form closed until asked, and counts jobs in the header', async () => {
+    await sheet([job()]);
+    await waitFor(() => expect(screen.getByText('1 job')).toBeTruthy());
+    expect(screen.getByRole('heading', { name: 'Jobs' })).toBeTruthy();
+    expect(screen.queryByLabelText(/Job name/)).toBeNull();
+    const toggle = screen.getByRole('button', { name: /New job/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText('Name')).toBeTruthy();
+  });
+});
+
+describe('creating a job', () => {
+  it('sends the prompt and fresh_thread only when they were set', async () => {
+    const { upsertJob } = await sheet();
+    const name = await openForm();
+    fireEvent.change(name, { target: { value: 'triage' } });
+    fireEvent.change(screen.getByLabelText('Prompt'), {
+      target: { value: 'Take the next ticket.' },
+    });
+    fireEvent.click(screen.getByLabelText(/Fresh thread each run/));
+    fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob).toHaveBeenCalledWith({
+      name: 'triage',
+      schedule: '0 9 * * *',
+      manifest_id: 'quick',
+      payload: { prompt: 'Take the next ticket.', fresh_thread: true },
+      // A new job is enabled unless the form says to start it paused.
+      enabled: true,
+    });
+  });
+
+  it('sends an empty payload for the default job, not an explicit false', async () => {
+    // The scheduler reads `payload.get("fresh_thread")`; a stored `false` is a
+    // key on every row that says nothing.
+    const { upsertJob } = await sheet();
+    const name = await openForm();
+    fireEvent.change(name, { target: { value: 'digest' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].payload).toEqual({});
+  });
+});
+
+describe('a stored job says how it runs', () => {
+  it('names the fresh-thread mode and the prompt when the job has them', async () => {
+    await sheet([
+      job({ name: 'triage', payload: { prompt: 'Take the next ticket.', fresh_thread: true } }),
+    ]);
+    await waitFor(() => expect(screen.getByText('triage')).toBeTruthy());
+    expect(screen.getByText(/fresh thread each run/)).toBeTruthy();
+    expect(screen.getByText(/Take the next ticket\./)).toBeTruthy();
+  });
+
+  it('says nothing about the mode for a job on the default', async () => {
+    // Restating the default on every row is what makes the exception vanish.
+    await sheet([job()]);
+    await waitFor(() => expect(screen.getByText('nightly-digest')).toBeTruthy());
+    expect(screen.queryByText(/fresh thread each run/)).toBeNull();
+  });
+});
+
+describe('a failed read after a good one', () => {
+  it('keeps the jobs under one line, as every polled page does, not an error box', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const listJobs = vi
+      .fn()
+      .mockResolvedValueOnce([job({ name: 'digest' })])
+      .mockRejectedValue(new Error('jobs : 500 {"error":"internal"}'));
+    vi.doMock('../src/api/client', () => ({
+      listJobs,
+      listJobRuns: vi.fn().mockResolvedValue([]),
+      upsertJob: vi.fn(),
+      deleteJob: vi.fn(),
+      listUsageByThread: vi.fn().mockResolvedValue(null),
+      listAudit: vi.fn().mockResolvedValue([]),
+    }));
+    const { JobsSheet } = await import('../src/components/jobs/jobs-sheet');
+    render(
+      <MemoryRouter>
+        <JobsSheet manifest="quick" manifestOptions={['quick']} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('digest')).toBeTruthy());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4100);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').parentElement?.textContent).toMatch(/Showing what it said/),
+    );
+    expect(screen.getByText('digest')).toBeTruthy();
+    vi.useRealTimers();
+  });
+});
+
+describe('running a job now', () => {
+  it('says it is running, then opens the history with what the agent answered', async () => {
+    let finish: (run: unknown) => void = () => {};
+    const run = {
+      job_name: 'nightly-digest',
+      run_id: 'r1',
+      status: 'ok',
+      error: '',
+      started_at: Date.now(),
+      finished_at: Date.now(),
+      result: { status: 'ok', answer: 'Three PRs merged today.', trigger: 'manual' },
+    };
+    const { runJobNow } = await sheet([job()], {
+      runJobNow: () => new Promise((r) => (finish = r)),
+      runs: [run],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
+    expect(runJobNow).toHaveBeenCalledWith('nightly-digest');
+    // Named for its job, and counting while the turn runs.
+    expect(await screen.findByText(/Running ·/)).toBeTruthy();
+
+    await act(async () => finish(run));
+    expect(await screen.findByText('Three PRs merged today.')).toBeTruthy();
+    expect(screen.getByText('run by hand')).toBeTruthy();
+    expect(screen.queryByText(/Running ·/)).toBeNull();
+    expect(screen.getByRole('status').textContent).toMatch(/^nightly-digest ran/);
+  });
+
+  it('says why when the harness refuses it', async () => {
+    await sheet([job()], {
+      runJobNow: () => Promise.reject(new Error('jobs /nightly-digest/run: 403 missing scope')),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
+    expect(await screen.findByText(/not allowed to/)).toBeTruthy();
+  });
+
+  // `felix-run/felix#635`: no scope lets someone run a job another person saved.
+  it('says who may run it when the harness refuses a non-writer', async () => {
+    await sheet([job()], {
+      runJobNow: () =>
+        Promise.reject(new Error('jobs /nightly-digest/run: 403 {"detail":"not_job_writer"}')),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Run nightly-digest now$/ }));
+    expect(await screen.findByText(/only whoever last saved this job/)).toBeTruthy();
+  });
+});
+
+/**
+ * An empty schedule is manual only (`felix-run/felix#629`). Through Felix 0.13.1 it meant every
+ * 60 seconds, and the page said so; from the release that changed it, it was saying a job ran
+ * 1,440 times a day that never ran on its own.
+ */
+describe('a schedule says what the harness will do', () => {
+  it('labels an empty schedule manual, and gives it no next run', async () => {
+    await sheet([job({ schedule: '', next_run_at: null })]);
+    await waitFor(() => expect(screen.getByText('manual')).toBeTruthy());
+    expect(screen.queryByText('every 1m')).toBeNull();
+    expect(screen.queryByText('first run at the next sweep')).toBeNull();
+  });
+
+  it('says a job the scheduler has not claimed yet runs at the next sweep', async () => {
+    await sheet([job({ next_run_at: null })]);
+    await waitFor(() => expect(screen.getByText('first run at the next sweep')).toBeTruthy());
+  });
+
+  it('says a time already past is due, not "next just now"', async () => {
+    await sheet([job({ next_run_at: Date.now() - 5_000 })]);
+    await waitFor(() => expect(screen.getByText('due now')).toBeTruthy());
+  });
+
+  it('refuses a schedule the harness would refuse, before it is sent', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'daily' } });
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '0 9 * *' } });
+    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByText(/Not a schedule/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '' } });
+    expect(screen.getByText(/Manual only: it runs when you press Run now/)).toBeTruthy();
+    expect(upsertJob).not.toHaveBeenCalled();
+  });
+
+  it('puts the form away on Escape', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByLabelText('Name')).toBeNull());
+  });
+});
+
+/**
+ * The sidebar's Needs-you band links a failing job as `?job=<name>`. It landed at
+ * the top of the list, and the operator hunted for the job the row had named.
+ */
+describe('a link to one job', () => {
+  it('opens that job’s runs, and only that one', async () => {
+    await sheet([job(), job({ name: 'triage', last_status: 'error' })], {
+      at: '/harness/jobs?job=triage',
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Runs of triage' }).getAttribute('aria-expanded'),
+      ).toBe('true'),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Runs of nightly-digest' }).getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  it('leaves a closed job closed once the link has been followed', async () => {
+    await sheet([job({ name: 'triage', last_status: 'error' })], {
+      at: '/harness/jobs?job=triage',
+    });
+    const toggle = await screen.findByRole('button', { name: 'Runs of triage' });
+    await waitFor(() => expect(toggle.getAttribute('aria-expanded')).toBe('true'));
+    fireEvent.click(toggle);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('a job’s run history', () => {
+  it('says when it was cut, and how long each run took', async () => {
+    const runs = Array.from({ length: 20 }, (_, i) => ({
+      run_id: `r${i}`,
+      status: 'ok',
+      started_at: 1_000_000 + i,
+      finished_at: 1_000_000 + i + 4_200,
+    }));
+    await sheet([job()], { runs });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    await waitFor(() => expect(screen.getByText('The latest 20 runs.')).toBeTruthy());
+    expect(screen.getAllByText('4.2s')).toHaveLength(20);
+  });
+});
+
+/**
+ * `PUT /jobs/{name}` is an upsert. Create on an existing name replaced its schedule, agent and
+ * prompt and turned a paused job back on, with nothing on screen to say so.
+ */
+describe('a name that already exists', () => {
+  it('says what it replaces, relabels the button, and keeps the job paused', async () => {
+    const { upsertJob } = await sheet([job({ name: 'digest', enabled: false })]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'digest' } });
+    expect(screen.getByText(/exists\. Replace changes its schedule and what it runs/)).toBeTruthy();
+    expect(screen.getByText(/and it stays paused/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].enabled).toBe(false);
+  });
+});
+
+describe('pausing', () => {
+  it('pauses and resumes a job by sending the same record with enabled flipped', async () => {
+    const { upsertJob } = await sheet([job({ payload: { prompt: 'Digest.' } })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toEqual({
+      name: 'nightly-digest',
+      schedule: '0 9 * * *',
+      manifest_id: 'quick',
+      payload: { prompt: 'Digest.' },
+      enabled: false,
+      timezone: null,
+      preferences_required: false,
+    });
+  });
+
+  it('says a paused job is paused on its name line, and offers Resume', async () => {
+    await sheet([job({ enabled: false })]);
+    await waitFor(() => expect(screen.getByText('paused')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Resume nightly-digest' })).toBeTruthy();
+  });
+
+  it('can create a job paused, so it does not run at the next sweep', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'staged' } });
+    fireEvent.click(screen.getByLabelText('Start paused'));
+    expect(screen.getByText(/^Starts paused/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].enabled).toBe(false);
+  });
+});
+
+describe('what a job costs', () => {
+  it('sums the job’s threads over a day and links to its Activity entry', async () => {
+    await sheet([job()], {
+      spend: {
+        since_ms: 0,
+        until_ms: 1,
+        truncated: false,
+        totals: {},
+        items: [
+          { thread_id: 'default:job:nightly-digest', calls: 3, cost_usd: 0.12 },
+          { thread_id: 'default:job:nightly-digest-2', calls: 9, cost_usd: 9 },
+        ],
+      },
+    });
+    const link = await screen.findByRole('link', { name: /\$0\.120 · 3 calls · 24h/ });
+    expect(link.getAttribute('href')).toBe('/harness/activity?since=24h&thread=nightly-digest');
+  });
+
+  it('says nothing about cost on a harness without per-thread spend', async () => {
+    await sheet([job()]);
+    await waitFor(() => expect(screen.getByText('nightly-digest')).toBeTruthy());
+    expect(screen.queryByText(/· 24h/)).toBeNull();
+  });
+});
+
+/**
+ * The scheduler's `last_status` says the firing returned. A job whose turn ended
+ * on a broken call read `last ● OK` beside a thread the Activity page led with as
+ * failed. The thread's newest turn, from the audit read the sidebar already
+ * polls, now says what the run did — and only for the run the row is about.
+ */
+describe('how the last run went on its thread', () => {
+  const ranAt = Date.now() - 10 * 60_000;
+  const turn = (status: string, at = ranAt) => [
+    {
+      id: `u${at}`,
+      event_type: 'user_input',
+      status: 'ok',
+      ts: (at + 1_000) / 1000,
+      payload: { thread_id: 'default:job:nightly-digest' },
+    },
+    {
+      id: `c${at}`,
+      event_type: 'tool_call',
+      status,
+      ts: (at + 5_000) / 1000,
+      payload: { thread_id: 'default:job:nightly-digest', tool: 'run' },
+    },
+  ];
+
+  it('says the last run failed when its turn did, and links to its failures', async () => {
+    await sheet([job({ last_status: 'ok', last_run_at: ranAt })], { audit: turn('error') });
+    const outcome = await waitFor(() => {
+      const el = document.querySelector('[data-slot="job-thread-outcome"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(outcome.textContent).toContain('Failed');
+    expect(screen.queryByText('OK')).toBeNull();
+    const link = document.querySelector('[data-slot="job-thread-failures"]') as HTMLAnchorElement;
+    expect(link.textContent).toBe('1 thread failed · 7d');
+    expect(link.getAttribute('href')).toBe(
+      '/harness/activity?since=7d&failed=1&thread=nightly-digest',
+    );
+  });
+
+  it('keeps the scheduler’s word when the turn went fine, or belongs to an older run', async () => {
+    await sheet(
+      [
+        job({ last_status: 'ok', last_run_at: ranAt }),
+        // Its newest audited turn is a day older than its last firing: unknown.
+        job({ name: 'weekly', last_status: 'ok', last_run_at: ranAt }),
+      ],
+      {
+        audit: [
+          ...turn('ok'),
+          ...turn('error', ranAt - 86_400_000).map((e) => ({
+            ...e,
+            id: `w${e.id}`,
+            payload: { ...e.payload, thread_id: 'default:job:weekly' },
+          })),
+        ],
+      },
+    );
+    await waitFor(() => expect(screen.getAllByText('OK')).toHaveLength(2));
+    expect(document.querySelector('[data-slot="job-thread-outcome"]')).toBeNull();
+    // But the week behind it is said: `weekly` failed a day ago and its `last ● OK`
+    // alone hid that, which is the row the Activity page was leading with.
+    const failures = [...document.querySelectorAll('[data-slot="job-thread-failures"]')];
+    expect(failures.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['1 thread failed · 7d', '/harness/activity?since=7d&failed=1&thread=weekly'],
+    ]);
+  });
+});
+
+/**
+ * "Failed" counts threads on every surface. A job that keeps one thread has one to
+ * fail; a job that starts a fresh thread per run has one per run, each named by a
+ * suffix of its own, so they are matched on the full thread id.
+ */
+describe('a job’s week of failures, in threads', () => {
+  const at = Date.now() - 60 * 60_000;
+  const call = (thread: string, id: string, status = 'error') => ({
+    id,
+    event_type: 'tool_call',
+    status,
+    ts: at / 1000,
+    payload: { thread_id: `default:${thread}`, tool: 'run' },
+  });
+
+  it('counts each failed run of a fresh-thread job as a thread, and links to the week', async () => {
+    await sheet([job({ last_status: 'ok', payload: { fresh_thread: true } })], {
+      audit: [
+        call('job:nightly-digest:aaa', 'a1'),
+        call('job:nightly-digest:aaa', 'a2'),
+        call('job:nightly-digest:bbb', 'b1'),
+        call('job:nightly-digest:ccc', 'c1', 'ok'),
+        // Another job's thread is not this one's.
+        call('job:nightly-digest-2:ddd', 'd1'),
+      ],
+    });
+    const link = await waitFor(() => {
+      const el = document.querySelector('[data-slot="job-thread-failures"]');
+      expect(el).not.toBeNull();
+      return el as HTMLAnchorElement;
+    });
+    expect(link.textContent).toBe('2 threads failed · 7d');
+    expect(link.getAttribute('href')).toBe('/harness/activity?since=7d&failed=1');
+  });
+});
+
+describe('schedules the operator should notice', () => {
+  it('marks a stored schedule the scheduler refuses, and gives it no next time', async () => {
+    await sheet([job({ schedule: '0 9 * *', next_run_at: Date.now() - 60_000 })]);
+    await waitFor(() => expect(screen.getByText('invalid schedule')).toBeTruthy());
+    expect(screen.queryByText('due now')).toBeNull();
+  });
+
+  it('says what an every-minute schedule costs in turns, before it is created', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: 'every:1m' } });
+    expect(screen.getByText(/every 1m — about 1,440 agent turns a day/)).toBeTruthy();
+  });
+
+  it('hands focus back to New job when the form is put away', async () => {
+    await sheet([]);
+    await openForm();
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' });
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-controls')).toBe('job-create'),
+    );
+  });
+});
+
+describe('a job waiting on a person', () => {
+  it('says so when an approval row names the job’s thread, as the client spells it', async () => {
+    vi.doMock('../src/app/shell-context', () => ({
+      useOptionalShell: () => ({
+        tenantApprovals: {
+          pending: [{ id: 'a1', tool: 'write_file', thread_id: 'nightly-digest' }],
+        },
+      }),
+    }));
+    await sheet([job()]);
+    await waitFor(() =>
+      expect(screen.getByText(/Waiting on an approval — see the attention line/)).toBeTruthy(),
+    );
+  });
+});
+
+/**
+ * A job can run a workflow instead of an agent (`felix-run/felix#642`), held to the revision
+ * it was saved over. Pause used to send the record back without the workflow, which saved a
+ * workflow job as one that runs nothing.
+ */
+describe('a job that runs a workflow', () => {
+  const wfJob = (over: Record<string, unknown> = {}) =>
+    job({
+      name: 'triage',
+      manifest_id: '',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r1',
+      created_by: 'blake',
+      payload: { inputs: { repo: 'felix' } },
+      ...over,
+    });
+
+  it('keeps its workflow and revision through a pause', async () => {
+    const { upsertJob } = await sheet([wfJob()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause triage' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toEqual({
+      name: 'triage',
+      schedule: '0 9 * * *',
+      manifest_id: '',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r1',
+      payload: { inputs: { repo: 'felix' } },
+      enabled: false,
+      timezone: null,
+      preferences_required: false,
+    });
+  });
+
+  it('names its workflow and whose scopes it runs on, instead of "no agent"', async () => {
+    await sheet([wfJob()]);
+    const link = await screen.findByRole('link', { name: 'workflow triage-flow' });
+    expect(link.getAttribute('href')).toBe('/harness/workflows?workflow=triage-flow');
+    expect(screen.getByText('runs as blake')).toBeTruthy();
+    expect(screen.queryByText(/no agent/)).toBeNull();
+  });
+
+  it('offers to move a job held to an old revision onto the current one, which pins no revision', async () => {
+    const { upsertJob } = await sheet([
+      wfJob({
+        last_status: 'error',
+        last_error:
+          'workflow triage-flow changed since this job was written; re-save the job to run it',
+      }),
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Run the current revision' }));
+    // Armed: the confirmation says whose scopes it will run on.
+    expect(screen.getByText(/as it is now, on your scopes/)).toBeTruthy();
+    const confirm = screen
+      .getAllByRole('button', { name: 'Run the current revision' })
+      .at(-1) as HTMLElement;
+    fireEvent.click(confirm);
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    const sent = upsertJob.mock.calls[0][0];
+    expect(sent.workflow_id).toBe('triage-flow');
+    expect(sent.workflow_revision).toBeUndefined();
+  });
+
+  it('links a run to the workflow run it started', async () => {
+    await sheet([wfJob()], {
+      runs: [
+        {
+          run_id: 'j1',
+          status: 'ok',
+          started_at: Date.now() - 5_000,
+          finished_at: Date.now(),
+          result: { status: 'ok', workflow_id: 'triage-flow', workflow_run_id: 'run-9' },
+        },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of triage' }));
+    const link = await screen.findByRole('link', { name: 'workflow run' });
+    expect(link.getAttribute('href')).toBe(
+      '/harness/workflows?workflow=triage-flow&view=run&run=run-9',
+    );
+  });
+
+  it('creates one from the form, with its inputs and the revision on screen', async () => {
+    const user = userEvent.setup();
+    const { upsertJob } = await sheet([], {
+      workflows: [
+        {
+          id: 'triage-flow',
+          name: 'Triage',
+          description: '',
+          version: 2,
+          revision: 'r2',
+          step_count: 3,
+          updated_at: 1,
+          updated_by: 'ops',
+        },
+      ],
+    });
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'triage' } });
+    await user.click(screen.getByRole('button', { name: 'Runs a workflow' }));
+    expect(screen.queryByLabelText('Prompt')).toBeNull();
+    const create = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    expect(screen.getByText('Choose a workflow.')).toBeTruthy();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Workflow' }));
+    await user.click(await screen.findByRole('option', { name: /Triage/ }));
+    fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: '[1]' } });
+    expect(screen.getByText(/must be a JSON object/)).toBeTruthy();
+    expect(create.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: '{"repo":"felix"}' } });
+    expect(create.disabled).toBe(false);
+
+    fireEvent.click(create);
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    const sent = upsertJob.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      name: 'triage',
+      workflow_id: 'triage-flow',
+      workflow_revision: 'r2',
+      payload: { inputs: { repo: 'felix' } },
+    });
+    expect(sent.manifest_id).toBeUndefined();
+  });
+});
+
+/**
+ * What 0.19 added to a job (`felix-run/felix`): the zone its cron is read in, the health watch's
+ * incidents, and two parts only its writer or an operator may read — the reader's preferences and
+ * the state its runs keep. `PUT /jobs/{name}` replaces the whole job, so a pause that left the
+ * zone out put the job back on UTC; that is pinned at the call.
+ */
+describe('a job’s zone, health, preferences and saved state', () => {
+  it('keeps the zone and the preferences requirement through a pause', async () => {
+    const { upsertJob } = await sheet([
+      job({ timezone: 'America/New_York', preferences_required: true, preferences_set: true }),
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0]).toMatchObject({
+      timezone: 'America/New_York',
+      preferences_required: true,
+    });
+  });
+
+  it('names a zone off UTC on the schedule badge', async () => {
+    await sheet([job({ timezone: 'Europe/Berlin' })]);
+    await waitFor(() => expect(screen.getByText(/· Europe\/Berlin/)).toBeTruthy());
+  });
+
+  it('says an open incident on the row and ranks the job first', async () => {
+    await sheet([
+      job({ name: 'quiet' }),
+      job({ name: 'stalled', health: { overdue: { since: Date.now() - 3_600_000 } } }),
+    ]);
+    const incident = await screen.findByText(/^overdue since/);
+    expect(incident.closest('[data-job]')?.getAttribute('data-job')).toBe('stalled');
+    const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(names.indexOf('stalled')).toBeLessThan(names.indexOf('quiet'));
+  });
+
+  it('says nothing for a healthy job, whose health is {}', async () => {
+    await sheet([job({ health: {} })]);
+    await screen.findByText('nightly-digest');
+    expect(document.querySelector('[data-slot="job-incident"]')).toBeNull();
+  });
+
+  it('says runs are skipped while required preferences are missing', async () => {
+    await sheet([job({ preferences_required: true, preferences_set: false })]);
+    expect(await screen.findByText('Runs skipped until preferences are written')).toBeTruthy();
+  });
+
+  it('writes preferences from the opened job, and refreshes the row', async () => {
+    const { putJobPreferences } = await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    const field = await screen.findByLabelText('Preferences for nightly-digest');
+    const save = screen.getByRole('button', { name: 'Save preferences' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(field, { target: { value: 'Skip weekends.' } });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(putJobPreferences).toHaveBeenCalledWith('nightly-digest', 'Skip weekends.'),
+    );
+    expect(await screen.findByText(/saved .* by blake/)).toBeTruthy();
+  });
+
+  it('refuses preferences over the harness’s 8 KiB before sending', async () => {
+    await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    const field = await screen.findByLabelText('Preferences for nightly-digest');
+    fireEvent.change(field, { target: { value: 'x'.repeat(8 * 1024 + 1) } });
+    expect(
+      (screen.getByRole('button', { name: 'Save preferences' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('says who may see them when the harness refuses a non-writer', async () => {
+    await sheet([job()], {
+      preferences: new Error('jobs /nightly-digest/preferences: 403 {"detail":"missing_scopes"}'),
+      state: new Error('jobs /nightly-digest/state: 403 {"detail":"missing_scopes"}'),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    expect(await screen.findByText(/can see its preferences/)).toBeTruthy();
+    expect(await screen.findByText(/can see its saved state/)).toBeTruthy();
+  });
+
+  it('offers no preferences for a workflow job, whose runs have no prompt', async () => {
+    await sheet([job({ manifest_id: '', workflow_id: 'flow' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    await screen.findByText(/Its runs have saved nothing/);
+    expect(screen.queryByLabelText('Preferences for nightly-digest')).toBeNull();
+  });
+
+  it('removes one saved key, and clears them all', async () => {
+    const { deleteJobStateKey, clearJobState } = await sheet([job()], {
+      state: [
+        { key: 'cursor', value: '2026-10-29', bytes: 10, updated_at: 1 },
+        { key: 'seen', value: '[1,2]', bytes: 5, updated_at: 1 },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Runs of nightly-digest' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove cursor' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }));
+    await waitFor(() => expect(deleteJobStateKey).toHaveBeenCalledWith('nightly-digest', 'cursor'));
+    await waitFor(() => expect(screen.queryByText('2026-10-29')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+    expect(screen.getByText(/Clear all 1 key\?/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved state' }));
+    await waitFor(() => expect(clearJobState).toHaveBeenCalledWith('nightly-digest'));
+    expect(await screen.findByText(/Its runs have saved nothing/)).toBeTruthy();
+  });
+
+  it('can create a job that waits for preferences', async () => {
+    const { upsertJob } = await sheet([]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'brief' } });
+    fireEvent.click(screen.getByLabelText('Skip runs until preferences are written'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+    expect(upsertJob.mock.calls[0][0].preferences_required).toBe(true);
+  });
+
+  it('says Replace puts a zoned job on UTC, since the form writes a UTC schedule', async () => {
+    await sheet([job({ timezone: 'Asia/Tokyo' })]);
+    await openForm();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'nightly-digest' } });
+    expect(screen.getByText(/runs in Asia\/Tokyo now; Replace puts it on UTC/)).toBeTruthy();
+  });
+});
+
+/**
+ * What wrote a job. `payload.scheduled_by` is what marks a person's task or heartbeat, and a
+ * re-save from anyone else makes it an ordinary job of theirs, so Pause has to ask.
+ */
+describe('a job no operator wrote', () => {
+  const task = job({
+    name: 'task-a1',
+    schedule: 'at:2099-01-01T09:00:00Z',
+    created_by: 'github:42',
+    next_run_at: 4070941200000,
+    payload: {
+      prompt: 'Check the build.',
+      title: 'Build check',
+      scheduled_by: { tool: 'schedule_task', manifest: 'quick', thread_id: 'default:thread-a' },
+    },
+  });
+
+  it('says an agent scheduled it, links its conversation, and reads a one-shot as valid', async () => {
+    await sheet([task]);
+    expect(await screen.findByText(/Scheduled by an agent · Build check/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'its conversation' }).getAttribute('href')).toBe(
+      '/t/thread-a',
+    );
+    expect(screen.queryByText('invalid schedule')).toBeNull();
+    expect(screen.getByText(/^once · /)).toBeTruthy();
+  });
+
+  it('says nothing once a one-shot has fired, rather than promising the next sweep', async () => {
+    await sheet([{ ...task, next_run_at: null, last_run_at: 1 }]);
+    await screen.findByText(/Scheduled by an agent/);
+    expect(screen.queryByText('first run at the next sweep')).toBeNull();
+  });
+
+  it('asks before Pause, naming whose it stays', async () => {
+    const { upsertJob } = await sheet([task]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause task-a1' }));
+    expect(screen.getByText(/Unless you are github:42, this takes it over/)).toBeTruthy();
+    expect(upsertJob).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+  });
+
+  it('pauses an ordinary job at once', async () => {
+    const { upsertJob } = await sheet([job()]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause nightly-digest' }));
+    await waitFor(() => expect(upsertJob).toHaveBeenCalledTimes(1));
+  });
+
+  it('reads a mark naming another manifest as an ordinary job, as the harness does', async () => {
+    const moved = { ...task, manifest_id: 'other' };
+    await sheet([moved]);
+    await screen.findByText('task-a1');
+    expect(screen.queryByText(/Scheduled by an agent/)).toBeNull();
+  });
+
+  it('names a heartbeat, and what deleting it does', async () => {
+    const heartbeat = job({
+      name: 'hb-quick-abc',
+      created_by: 'github:42',
+      payload: { scheduled_by: { tool: 'heartbeat', manifest: 'quick', thread_id: 't-hb' } },
+    });
+    await sheet([heartbeat]);
+    expect(await screen.findByText('Heartbeat')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Delete hb-quick-abc/ }));
+    expect(screen.getByText(/turns off github:42's heartbeat/)).toBeTruthy();
+  });
+
+  it('shows a source a run could not reach, and a report that has not landed', async () => {
+    await sheet([job()], {
+      at: '/harness/jobs?job=nightly-digest',
+      runs: [
+        {
+          run_id: 'r1',
+          status: 'ok',
+          started_at: 1,
+          finished_at: 2,
+          result: {
+            answer: 'Nothing new.',
+            report: 'queued',
+            unavailable_sources: { quick: ['github'], child: ['github', 'linear'] },
+          },
+        },
+      ],
+    });
+    expect(await screen.findByText('could not reach github, linear')).toBeTruthy();
+    expect(screen.getByText('report waiting for the run in its conversation')).toBeTruthy();
+  });
+});

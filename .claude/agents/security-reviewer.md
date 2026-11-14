@@ -16,7 +16,7 @@ exploitable in this architecture — describe the attack, not the category.
 **Browser → proxy Worker → Python harness → model → back out again.** Two of those hops carry
 attacker-influenceable content, and one carries credentials.
 
-### 1. The proxy Worker (`apps/chat-ui/worker/index.ts`)
+### 1. The proxy Worker (`apps/web/worker/index.ts`)
 
 - **No credential of its own.** The Worker forwards a browser's bearer untouched and attaches
   nothing. Any change that makes it add a credential to a request — an injected key, a service

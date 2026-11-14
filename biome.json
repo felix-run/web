@@ -12,7 +12,7 @@
       "!**/.wrangler",
       "!**/dist",
       "!**/node_modules",
-      "!apps/chat-ui/harness-openapi.json",
+      "!apps/web/harness-openapi.json",
       "!scripts/harness-events.json",
       "!scripts/harness-payloads.json",
       "!scripts/harness-tool-results.json",
@@ -57,7 +57,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/ui/src/**", "apps/chat-ui/src/components/**"],
+      "includes": ["packages/ui/src/**", "apps/web/src/components/**"],
       "linter": {
         "rules": {
           "a11y": {

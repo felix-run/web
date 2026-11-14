@@ -289,7 +289,7 @@ cadence. The ground is stone, never cream, and the face is a sans.
 ## Colors
 
 Two warm neutral levels and a four-hue state ramp, all authored in `oklch` in
-`apps/chat-ui/src/index.css` and tuned for contrast, not picked by name. Neutral chroma stays
+`apps/web/src/styles/index.css` and tuned for contrast, not picked by name. Neutral chroma stays
 under 0.01 at hue 55–75, so the warmth reads as stone rather than paper.
 
 ### Primary
@@ -360,7 +360,7 @@ no brand accent; warmth lives in the neutrals' hue, never in a fifth colour.
 **The Stone-Not-Cream Rule.** Neutral chroma stays under 0.01. Above that the ground reads as
 paper and the surface drifts into the editorial register it is not.
 
-**The Two-Client Rule.** The ramp is authored as `oklch()` in `apps/chat-ui/src/index.css` and
+**The Two-Client Rule.** The ramp is authored as `oklch()` in `apps/web/src/styles/index.css` and
 frozen as sRGB hex in `packages/design/src/tokens.ts`, because neither a terminal nor
 `RGBA.fromHex` takes `oklch()`. `pnpm check-state-palette` fails when they disagree. The
 stylesheet is the authored form; never edit the hex to match a change.

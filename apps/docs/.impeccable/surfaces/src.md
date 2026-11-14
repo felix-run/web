@@ -41,7 +41,7 @@ home page is a front door, not a landing page.
   `astro.config.mjs`. `markdown.processedDirs` must keep covering `src/content/` or asides and
   heading anchors silently stop rendering.
 - `src/styles/theme.css` is generated from `@felix/design`; hand edits are hook-blocked.
-- chat-ui links into these pages by heading; `apps/chat-ui/tests/docs-links.test.ts` fails on a
+- chat-ui links into these pages by heading; `apps/web/tests/docs-links.test.ts` fails on a
   renamed heading.
 - `/reference/` must keep reading `starlight-theme` before paint and keep its way back.
 

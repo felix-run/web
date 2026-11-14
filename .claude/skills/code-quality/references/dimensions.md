@@ -23,12 +23,12 @@ sweep looks in the right place instead of grepping the whole tree.
 
 ## 2. Test quality and coverage
 
-- Two configs: `apps/chat-ui/vitest.config.ts` and `packages/cowork-client/vitest.config.ts`. No
+- Two configs: `apps/web/vitest.config.ts` and `packages/cowork-client/vitest.config.ts`. No
   root config, no coverage tool.
 - Contract-level behavior lives in `packages/test-kit/src/proxy-worker.ts` and
-  `packages/test-kit/src/sse.ts`, invoked from `apps/chat-ui/tests/`. The suites are parameterized
+  `packages/test-kit/src/sse.ts`, invoked from `apps/web/tests/`. The suites are parameterized
   on an injected implementation, which is what lets the contract be stated independently of its
-  caller — see `apps/chat-ui/tests/sse.test.ts`.
+  caller — see `apps/web/tests/sse.test.ts`.
 - Covered today: the VFS, the SSE reader, the proxy Worker, and chat-ui's thread store, theme
   provider, `usePoll`, presence, Gate, the engine, and `App.tsx`. **Uncovered: the composer, the inspector
   panels.**
@@ -42,7 +42,7 @@ sweep looks in the right place instead of grepping the whole tree.
   code as a clean bill.
 - Strictness is not uniform, and code moving between tiers can lose a guarantee:
 
-  | Flag | root / `packages/*` | `apps/chat-ui` |
+  | Flag | root / `packages/*` | `apps/web` |
   |---|---|---|
   | `strict` | on | on |
   | `noUncheckedIndexedAccess` | **on** | **off** |
@@ -56,7 +56,7 @@ sweep looks in the right place instead of grepping the whole tree.
   arm. A new frame type compiles with no handler and silently does nothing, so "the types pass" says
   nothing about SSE completeness. Cross-check the arms against the `switch` in `@felix/client`.
 - Widening a shared package's surface is a commitment: the `exports` map **and** the `paths` block
-  in `apps/chat-ui/tsconfig.json` both have to change. A helper with a single call site does not
+  in `apps/web/tsconfig.json` both have to change. A helper with a single call site does not
   belong in a shared package.
 
 ## 4. Dependency and bundle hygiene

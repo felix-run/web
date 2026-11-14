@@ -2,7 +2,7 @@
 
 Reference for `api-contract-change`. Source of truth is the Python harness
 ([felix-run/felix](https://github.com/felix-run/felix)); this file records what the browser clients
-currently implement, in `apps/chat-ui/src/{api,types}.ts`.
+currently implement, in `apps/web/src/{api,types}.ts`.
 
 ## Transport
 
@@ -45,7 +45,7 @@ accepted by the compiler and ignored at runtime.
 - `POST /chat/rewind` — move the active leaf to an earlier event
 - `POST /chat/abort`, `POST /chat/steer`, `POST /chat/continue`, thinking-level set
 - `GET /chat/history/{thread_id}` — **rejects anonymous callers**; hence the `localStorage` mirror in
-  `src/lib/threads.ts`
+  `src/lib/conversation/threads.ts`
 
 **Inspector and management** (tenant-scoped; anonymous callers resolve to tenant `default`)
 - `GET /v1/models` — manifest list for the switcher

@@ -5,7 +5,7 @@ max_score: 40
 na_heuristics: 
 p0_count: 0
 p1_count: 3
-target_identity: "file:/Users/blake/Projects/felix-web/apps/chat-ui/src"
+target_identity: "file:/Users/blake/Projects/felix-web/apps/web/src"
 timestamp: 2026-09-26T14-01-32Z
 slug: apps-chat-ui-src
 ---

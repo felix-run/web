@@ -2,7 +2,7 @@
 
 Reference for `threat-review`.
 
-## Proxy Worker — `apps/chat-ui/worker/index.ts`
+## Proxy Worker — `apps/web/worker/index.ts`
 
 - [ ] The Worker attaches no credential of its own on any upstream path
 - [ ] `host` and the `cf-*` headers still stripped (they are trusted signals upstream)
@@ -13,10 +13,10 @@ Reference for `threat-review`.
       a documented, intentional pass-through mode
 - [ ] Streaming preserved: body passed through, `duplex: 'half'`, `redirect: 'manual'`, no buffering
 - [ ] Response headers not reconstructed in a way that drops or adds sensitive headers
-- [ ] The dev proxy in `apps/chat-ui/vite.config.ts` changed with it — it is a second copy of the
+- [ ] The dev proxy in `apps/web/vite.config.ts` changed with it — it is a second copy of the
       same contract, and a fix in only one leaves dev and production disagreeing
 
-## Gate and identity — `src/lib/auth.ts`, `components/gate.tsx`
+## Gate and identity — `src/lib/auth/auth.ts`, `components/gate.tsx`
 
 - [ ] The session is the only credential; no shared key or service token has come back
 - [ ] Stored only in `localStorage` under the known key; not sent anywhere but `/api/*`
@@ -54,7 +54,7 @@ Reference for `threat-review`.
 
 - [ ] `wrangler.jsonc` `vars` contains only `FELIX_ORIGIN`
 - [ ] `.dev.vars` gitignored; only `.dev.vars.example` tracked, with empty values
-- [ ] Both tracked `wrangler.jsonc` files (`apps/chat-ui`, `apps/docs`) stay free of account and
+- [ ] Both tracked `wrangler.jsonc` files (`apps/web`, `apps/docs`) stay free of account and
       resource ids; CI deploys them as they are
 - [ ] No secret in `index.html`, in a `VITE_`-prefixed env var, or in `dist/`
 - [ ] No source maps published that expose more than intended

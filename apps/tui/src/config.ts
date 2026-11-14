@@ -44,7 +44,7 @@ export function configPath(env: NodeJS.ProcessEnv = process.env): string {
 /**
  * The harness key a checkout already has.
  *
- * `apps/chat-ui/.dev.vars` is this repo's one local secrets file — `wrangler
+ * `apps/web/.dev.vars` is this repo's one local secrets file — `wrangler
  * dev` reads it, and so does the Vite dev proxy, deliberately, so that local
  * development has one such file rather than two. This client ignoring it made
  * that three: `pnpm tui:dev` 401'd on every call until the key was exported by
@@ -60,7 +60,7 @@ export function devVarsPath(from = fileURLToPath(import.meta.url)): string | nul
   let dir = dirname(from);
   // apps/tui/src → apps/tui → apps → <root>, with room for a build layout.
   for (let up = 0; up < 6; up++) {
-    const candidate = join(dir, 'apps', 'chat-ui', '.dev.vars');
+    const candidate = join(dir, 'apps', 'web', '.dev.vars');
     try {
       readFileSync(candidate, 'utf8');
       return candidate;
@@ -172,7 +172,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 export interface ConfigSources {
   /** `~/.config/felix/config.json`. */
   userConfig?: (path: string) => Partial<Config>;
-  /** The checkout's `apps/chat-ui/.dev.vars`, if this is running from one. */
+  /** The checkout's `apps/web/.dev.vars`, if this is running from one. */
   devVars?: () => Partial<Config>;
 }
 
@@ -259,7 +259,7 @@ usage: felix [options] [message]
 The key is read from the environment or a file by preference: an argument to
 --key is visible in ps(1) to every user on this machine.
 
-Sources, in order: flag, environment, the checkout's apps/chat-ui/.dev.vars
+Sources, in order: flag, environment, the checkout's apps/web/.dev.vars
 (when running from one), then ~/.config/felix/config.json —
 {"origin":…,"apiKey":…,"manifest":…}
 `;

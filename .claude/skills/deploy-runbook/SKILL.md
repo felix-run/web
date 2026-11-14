@@ -20,7 +20,7 @@ around it.
 
 | App | Script | Route |
 |---|---|---|
-| `@felix/chat-ui` | `pnpm chat:deploy` | `make.felix.run` |
+| `@felix/web` | `pnpm web:deploy` | `make.felix.run` |
 | `@felix/docs` | `pnpm docs:deploy` | `docs.felix.run` |
 
 Each `*:deploy` script is `pnpm build && wrangler deploy` inside that package.
@@ -55,14 +55,14 @@ harness must have one on before this deploy. A Worker deployed before the shared
 retired still holds `CHAT_UI_KEY` and `FELIX_API_KEY`; they are ignored — delete them:
 
 ```bash
-pnpm --filter @felix/chat-ui exec wrangler secret delete CHAT_UI_KEY
-pnpm --filter @felix/chat-ui exec wrangler secret delete FELIX_API_KEY
+pnpm --filter @felix/web exec wrangler secret delete CHAT_UI_KEY
+pnpm --filter @felix/web exec wrangler secret delete FELIX_API_KEY
 ```
 
 ## 3. Deploy
 
 ```bash
-pnpm chat:deploy     # or docs:deploy
+pnpm web:deploy     # or docs:deploy
 ```
 
 ## 4. Verify — actually check, don't assume

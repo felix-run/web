@@ -8,7 +8,7 @@ slug: apps-chat-ui-src
 ---
 # Critique: chat-ui (whole app)
 
-Target `apps/chat-ui/src`, inspected live against the harness on `:8080`. The previous critique scoped to the two rails; this one covers the surfaces that work never touched: composer, transcript, tool cards, greeting, and the interrupt banners.
+Target `apps/web/src`, inspected live against the harness on `:8080`. The previous critique scoped to the two rails; this one covers the surfaces that work never touched: composer, transcript, tool cards, greeting, and the interrupt banners.
 
 ## Design Health Score
 
@@ -30,7 +30,7 @@ Up from 18/40. The eight points came from the rails work; the remaining debt sit
 
 ## Anti-Patterns Verdict
 
-**Deterministic scan:** `detect.mjs` over `apps/chat-ui/src` returns **0 findings**, as it did last time. No gradient text, no side stripes, no purple-cyan palette, no hero metrics.
+**Deterministic scan:** `detect.mjs` over `apps/web/src` returns **0 findings**, as it did last time. No gradient text, no side stripes, no purple-cyan palette, no hero metrics.
 
 **LLM assessment:** one genuine tell has become systemic. `text-xs font-medium uppercase tracking-wide text-muted-foreground` now appears **13 times across 9 files**: the greeting's manifest name, both interrupt banners, the banner's Before/After labels, tool card Input/Output, the history rail's Server group, and four sheets. That recipe is the app's default answer to "this is a label", which is exactly the point at which a kicker stops being voice and becomes grammar. It is also, at 11px uppercase and tracked, the least readable text in the product.
 
