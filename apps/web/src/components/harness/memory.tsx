@@ -27,7 +27,7 @@ import {
 } from '@/components/harness/panel';
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { endTruncate, middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useShell } from '@/app/shell-context';

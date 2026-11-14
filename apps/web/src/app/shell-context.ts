@@ -18,6 +18,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import type { ImageAttachment, ThinkingLevel, TurnFeedback } from '@/api/types';
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input';
 import type { KeptMessage } from '@/components/chat/multimodal-input';
 import type { SlashCommand } from '@/components/chat/slash-commands';
@@ -25,7 +26,6 @@ import type { Driver } from '@/components/chat/watching-banner';
 import type { MessageQueue } from '@/hooks/use-message-queue';
 import type { PendingApprovals } from '@/hooks/use-pending-approvals';
 import type { PaneItemInput } from '@/lib/navigation/side-pane';
-import type { ImageAttachment, ThinkingLevel, TurnFeedback } from '@/api/types';
 
 /**
  * Engine-sourced fields are derived rather than re-declared, so a change to the

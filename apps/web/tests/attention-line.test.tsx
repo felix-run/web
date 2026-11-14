@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttentionLine } from '../src/components/attention-line';
 import { HarnessHealthLine } from '../src/components/harness-health-line';
 import { DECIDED_GRACE_MS, usePendingApprovals } from '../src/hooks/use-pending-approvals';
-import { usePoll } from '../src/hooks/usePoll';
+import { usePoll } from '../src/hooks/use-poll';
 import { resetHarnessHealth } from '../src/lib/harness/harness-health';
 
 /**

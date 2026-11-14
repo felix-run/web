@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { listJobs } from '@/api/client';
 import { JobCreateForm } from '@/components/jobs/job-create-form';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { useSharedPoll } from '@/hooks/use-shared-poll';
 import { JOBS_POLL_KEY } from '@/lib/harness/harness-glances';
 
 /**

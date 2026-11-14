@@ -11,7 +11,7 @@ import { getAgentSkill, listAgentSkills, recentSkillActivations } from '@/api/cl
 import { ErrorNotice } from '@/components/error-notice';
 import { PageSection, plural } from '@/components/harness/panel';
 import { relTime, SectionBody } from '@/components/inspector/primitives';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { middleTruncate } from '@/lib/format';
 import { threadLabel } from '@/lib/conversation/threads';
 import { cn } from '@/lib/utils';

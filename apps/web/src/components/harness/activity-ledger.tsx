@@ -34,7 +34,7 @@ import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
 import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
 import { useWeekFailures } from '@/hooks/use-recent-audit';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { toastError } from '@/lib/error-toast';
 import { middleTruncate } from '@/lib/format';
 import {

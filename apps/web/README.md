@@ -104,6 +104,16 @@ Application setup and routing live in `src/app/`, the harness client and app typ
 with route screens in `src/routes/`, hooks in `src/hooks/`, and supporting logic in
 `src/lib/`. Tests live in `tests/`; the Cloudflare gateway lives in `worker/`.
 
+The shell stays mounted across route changes. `src/app/app-shell.tsx` composes the
+layout and `src/app/shell-header.tsx` renders its header. `src/app/use-app-controller.ts`
+coordinates conversations and actions; its `hooks/` folder owns view preferences,
+manifest discovery and rollouts, the thread index, workspace panes, approval polling,
+run clocks and recovery notices, side questions, and browser notifications. Keep these
+hooks above the route outlet so a route change cannot tear down a live run.
+
+Shared hooks in `src/hooks/` use kebab-case filenames (`use-media-query.ts`,
+`use-poll.ts`, `use-shared-poll.ts`); exported hook names remain camelCase.
+
 Supporting logic in `src/lib/` is grouped by responsibility:
 
 | Folder | Responsibility |
@@ -140,7 +150,7 @@ from the repository root. The deployed Worker keeps its existing
 | `src/components/chat/thread-list.tsx` | The conversation-history left rail |
 | `src/lib/conversation/threads.ts` | Multi-thread localStorage + event-log → transcript rebuild |
 | `packages/ui` (`@felix/ui`) | Shared shadcn/ui primitives, imported as raw source |
-| `src/hooks/usePoll.ts` | Interval poller used by the Inspector tabs |
+| `src/hooks/use-poll.ts` | Interval poller used by the Inspector tabs |
 | `components.json`, `src/styles/index.css` | shadcn config + Tailwind v4 theme tokens |
 
 ## Notes

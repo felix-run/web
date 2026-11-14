@@ -1,5 +1,5 @@
 import { listAudit } from '@/api/client';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { useSharedPoll } from '@/hooks/use-shared-poll';
 import {
   ACTIVITY_FETCH,
   AUDIT_ERRORS_POLL_KEY,

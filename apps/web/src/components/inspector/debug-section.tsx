@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { listUsage } from '@/api/client';
 import { DebugId } from '@/components/chat/turn-debug';
 import { ReadFailure, tsToMs } from '@/components/inspector/primitives';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { clockTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { type ClientDiagnostics, type EngineReport, useShell } from '@/app/shell-context';

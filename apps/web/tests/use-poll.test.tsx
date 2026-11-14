@@ -3,7 +3,7 @@
 import { describeError } from '@felix/client';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { usePoll } from '../src/hooks/usePoll';
+import { usePoll } from '../src/hooks/use-poll';
 
 /**
  * Every Inspector tab polls through this hook. The behavior that matters is

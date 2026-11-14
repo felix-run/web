@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
 import { resetSkillQueryClient } from '../src/components/skills/query-root';
 import { ThemeProvider } from '../src/components/theme-provider';
-import { resetSharedPolls } from '../src/hooks/useSharedPoll';
+import { resetSharedPolls } from '../src/hooks/use-shared-poll';
 import { resetHarnessHealth, transientKind } from '../src/lib/harness/harness-health';
 import { resetPresence } from '../src/lib/conversation/presence';
 import { resetPanes } from '../src/lib/navigation/side-pane';

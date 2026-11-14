@@ -14,7 +14,7 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import { Fact, Facts, PageSection } from '@/components/harness/panel';
 import { isFailure, SectionBody } from '@/components/inspector/primitives';
-import { usePoll } from '@/hooks/usePoll';
+import { usePoll } from '@/hooks/use-poll';
 import { missingSources } from '@/lib/harness/job-origin';
 import { zonedScheduleLabel } from '@/lib/harness/job-schedule';
 

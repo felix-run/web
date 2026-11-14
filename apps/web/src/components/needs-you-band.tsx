@@ -5,7 +5,7 @@ import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef, useState } 
 import { Link, useNavigate } from 'react-router';
 import { listJobs } from '@/api/client';
 import { CutId } from '@/components/cut-id';
-import { useSharedPoll } from '@/hooks/useSharedPoll';
+import { useSharedPoll } from '@/hooks/use-shared-poll';
 import { JOBS_POLL_KEY } from '@/lib/harness/harness-glances';
 import { NEEDS_YOU_VISIBLE, needsYouRows, rowKey } from '@/lib/conversation/needs-you';
 import { whenMounted } from '@/lib/navigation/shortcuts';
