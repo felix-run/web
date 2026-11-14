@@ -115,7 +115,7 @@ describe('the empty thread', () => {
       expect(shows(frame, 'Reads it freely; asks before it writes')).toBe(true);
       expect(shows(frame, '1  List the workspace')).toBe(true);
       expect(shows(frame, '2  Find TODOs')).toBe(true);
-      expect(shows(frame, '/start 1–2 puts one in the composer')).toBe(true);
+      expect(shows(frame, 'Enter a number or /start 1–2')).toBe(true);
       // Titles, not prompts.
       expect(frame).not.toContain('List the top-level files.');
     } finally {

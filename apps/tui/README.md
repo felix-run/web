@@ -87,6 +87,12 @@ $PAGER     /artifact <n> [file] · /skills /skill <name> (read-only)
 client     /refresh the thread list · /quit
 ```
 
+Type `/` in the composer to browse commands, or keep typing to filter them. Use ↑/↓ to
+choose and Enter to insert; the next Enter runs a complete command. Commands with arguments
+leave a space for you to keep typing. Escape dismisses suggestions without clearing the draft.
+Tab still opens threads. Suggestions hide while a blocking prompt or another overlay owns
+the keyboard, and on terminals too short to fit the menu above the editor.
+
 ## The shape of the screen
 
 Three things worth knowing before moving anything.
@@ -143,10 +149,23 @@ on the prompt that asks before a write, which is the moment it counts.
 
 ## Colour
 
-`src/theme.ts` holds what the colours *mean* — waiting, danger, failed, running, ready, faint —
-and the five hues come from `@felix/design`, which owns this repo's palette. It had only a
-neutral scale before this: right for surfaces, useless for status, because "waiting on you" and
-"this failed" cannot be told apart in greys.
+`src/theme.ts` holds what the colours mean. State hues come from `@felix/design`:
+green for success, amber for a decision, red for failures, and blue for work in progress.
+The terminal adds cyan for tools and navigation, violet for the agent, and blue for your
+prompts. The ready composer, connected host, successful tools, and completed plan steps
+use green. Replies have a violet side rail; code frames and selected navigation use cyan.
+The status line colours the agent, connection, directory, permission mode, and active phase
+separately while keeping its single-row width budget.
+
+The composer says **Ask Felix** when idle and **Steer the agent** during a run. Its placeholder
+suggests a coding task or pasted error, then a correction or next step while the agent works.
+These hints occupy the existing editor and border rather than taking transcript rows.
+
+Tool cards show search scope, rename destinations, and shell working directories when supplied.
+Their names, arguments, and activity labels share a width budget so long local calls stay on
+one row. Successful shell previews show the final two nonempty output lines, where build and
+test summaries usually appear; a leading ellipsis marks omitted output. Artifact handles stay
+cyan and reserve their space beside the preview. `/artifact <n>` opens the full spilled result.
 
 **When the palette applies is the interesting part.** A named colour is not a request for the
 terminal's palette: `parseColor` resolves `"magenta"` to the literal `#FF00FF`, so the sixteen

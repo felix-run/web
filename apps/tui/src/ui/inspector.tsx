@@ -78,7 +78,7 @@ export function Inspector({
       backgroundColor={theme.surface}
       border
       borderStyle="rounded"
-      borderColor={theme.ready}
+      borderColor={theme.accent}
       title="inspector"
       bottomTitle={oneLine(section.description, 60)}
       paddingLeft={1}
@@ -104,7 +104,7 @@ export function Inspector({
         selectedBackgroundColor={theme.surface}
         textColor={theme.faint}
         focusedTextColor={theme.faint}
-        selectedTextColor={theme.ready}
+        selectedTextColor={theme.accent}
         selectedDescriptionColor={theme.faint}
         ref={stripRef}
       />

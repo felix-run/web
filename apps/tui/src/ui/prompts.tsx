@@ -184,9 +184,13 @@ export function ApprovalPrompt({
               this banner a person must read. Only the grant window, which
               explains, is dim. */}
           <text>
-            y approve · n deny
-            {onEdit ? ' · e edit args' : ''}
-            {left === null ? '' : ` · auto-denied in ${formatCountdown(left)}`}
+            <span fg={theme.ready}>y approve</span>
+            {' · '}
+            <span fg={theme.failed}>n deny</span>
+            {onEdit ? <span fg={theme.accent}>{' · e edit args'}</span> : null}
+            {left === null ? null : (
+              <span fg={theme.blocked}>{` · auto-denied in ${formatCountdown(left)}`}</span>
+            )}
           </text>
           {left === null ? null : (
             <text attributes={DIM}>approving also allows this exact call until then</text>
@@ -280,7 +284,12 @@ export function UiPrompt({
           onSelect={(_index, option) => onRespond(option?.value ?? '')}
         />
       ) : pending.kind === 'confirm' ? (
-        <text>y yes · n no · esc cancel</text>
+        <text>
+          <span fg={theme.ready}>y yes</span>
+          {' · '}
+          <span fg={theme.failed}>n no</span>
+          <span fg={theme.faint}>{' · esc cancel'}</span>
+        </text>
       ) : (
         // A real editor: a cursor, word motion, undo, and a paste that arrives
         // whole. The version this replaces read single-character key names, so

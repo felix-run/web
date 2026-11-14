@@ -36,6 +36,88 @@ async function composer(props: { history?: string[]; streaming?: boolean } = {})
   return { ...ui, submitted };
 }
 
+describe('command discovery', () => {
+  it('completes a prefix before a second Enter executes the command', async () => {
+    const ui = await composer();
+    ui.resize(80, 14);
+    try {
+      await ui.keys.typeText('/pl');
+      await ui.until(() => shows(ui.frame(), 'Toggle plan mode'));
+      await ui.keys.pressEnter();
+      await ui.until(() => shows(ui.frame(), '/plan') && !shows(ui.frame(), 'Commands ·'));
+      expect(ui.submitted).toEqual([]);
+      await ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length === 1);
+      expect(ui.submitted).toEqual(['/plan']);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('uses arrows to choose a command instead of recalling prompt history', async () => {
+    const ui = await composer({ history: ['old prompt'] });
+    ui.resize(80, 14);
+    try {
+      await ui.keys.typeText('/');
+      await ui.until(() => shows(ui.frame(), 'Commands ·'));
+      await ui.keys.pressArrow('down');
+      await ui.until(() => shows(ui.frame(), '› /plan'));
+      await ui.keys.pressEnter();
+      await ui.until(() => !shows(ui.frame(), 'Commands ·'));
+      await ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length === 1);
+      expect(ui.submitted).toEqual(['/plan']);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('leaves argument commands editable after completion', async () => {
+    const ui = await composer();
+    ui.resize(80, 14);
+    try {
+      await ui.keys.typeText('/ar');
+      await ui.until(() => shows(ui.frame(), '/artifact'));
+      await ui.keys.pressEnter();
+      await ui.until(() => !shows(ui.frame(), 'Commands ·'));
+      expect(ui.submitted).toEqual([]);
+      await ui.keys.typeText('1');
+      await ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length === 1);
+      expect(ui.submitted).toEqual(['/artifact 1']);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('dismisses suggestions with Escape and preserves the draft', async () => {
+    const ui = await composer();
+    ui.resize(80, 14);
+    try {
+      await ui.keys.typeText('/pl');
+      await ui.until(() => shows(ui.frame(), 'Commands ·'));
+      await ui.keys.pressEscape();
+      await ui.until(() => !shows(ui.frame(), 'Commands ·'));
+      expect(shows(ui.frame(), '/pl')).toBe(true);
+      expect(ui.submitted).toEqual([]);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('runs a complete command directly even when another command extends it', async () => {
+    const ui = await composer();
+    try {
+      await ui.keys.typeText('/skill');
+      await ui.keys.pressEnter();
+      await ui.until(() => ui.submitted.length === 1);
+      expect(ui.submitted).toEqual(['/skill']);
+    } finally {
+      ui.stop();
+    }
+  });
+});
+
 describe('the composer under a paste', () => {
   it('sends a pasted paragraph as one line, once Enter is pressed', async () => {
     const ui = await composer();

@@ -15,6 +15,9 @@ import { resolveTheme } from '../src/theme';
 
 const hex = (c: unknown) => RGBA.prototype.toString.call(c);
 const roles = [
+  'accent',
+  'agent',
+  'input',
   'notice',
   'blocked',
   'danger',

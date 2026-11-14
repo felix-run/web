@@ -10,6 +10,7 @@
  */
 
 import type { ThreadMeta } from '@felix/client';
+import type { ColorInput } from '@opentui/core';
 import { useTerminalDimensions } from '@opentui/react';
 import { oneLine } from '../text.js';
 import { BOLD, DIM, type Theme } from '../theme.js';
@@ -133,7 +134,7 @@ export function ThreadPicker({
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor={theme.ready}
+      borderColor={theme.accent}
       // The count goes in the frame, where a header row used to be, and the
       // keys go in the bottom edge. Both were rows of the list before.
       title={filter ? `/${filter} · ${threads.length}/${all}` : ` threads · ${all} `}
@@ -163,7 +164,7 @@ export function ThreadPicker({
           // biome-ignore lint/a11y/noStaticElementInteractions: terminal renderable, keyboard path is tab + enter
           <text
             key={thread.id}
-            fg={selected ? theme.ready : undefined}
+            fg={selected ? theme.accent : active ? theme.ready : undefined}
             attributes={active ? BOLD : undefined}
             onMouseDown={onPick ? () => onPick(thread.id) : undefined}
           >
@@ -271,9 +272,24 @@ export function StatusLine({
       : connection === 'rejected'
         ? 'key rejected'
         : shortOrigin(origin);
-  const state = `${manifest}${mode ? ` · ${MODE_WORD[mode] ?? mode}` : ''} · ${where} · ${basename(root)}${
-    phase && phase !== 'idle' ? ` · ${phase}` : ''
-  }`;
+  const parts: Array<{ text: string; color: ColorInput }> = [
+    { text: manifest, color: theme.agent },
+    ...(mode
+      ? [{ text: MODE_WORD[mode] ?? mode, color: mode === 'bypass' ? theme.danger : theme.blocked }]
+      : []),
+    {
+      text: where,
+      color:
+        connection === 'rejected'
+          ? theme.failed
+          : connection === 'unreachable'
+            ? theme.blocked
+            : theme.ready,
+    },
+    { text: basename(root), color: theme.accent },
+    ...(phase && phase !== 'idle' ? [{ text: phase, color: theme.running }] : []),
+  ];
+  const state = parts.map((part) => part.text).join(' · ');
 
   // The state half is served first, and that ordering is the point. Which
   // directory the agent is pointed at is not discoverable anywhere else; the
@@ -287,6 +303,15 @@ export function StatusLine({
   // a visible gap when both are full — `space-between` gives none when they add
   // up to exactly the row.
   const keys = hint ? oneLine(hint, Math.max(0, width - left.length - 4)) : '';
+  // Slice the same fitted string across coloured spans, so colour never
+  // changes the row's width or hides its truncation marker.
+  let offset = 0;
+  const fitted = parts.map((part, i) => {
+    const text = `${i ? ' · ' : ''}${part.text}`;
+    const visible = left.slice(offset, offset + text.length);
+    offset += text.length;
+    return { ...part, visible };
+  });
 
   return (
     // Same reason as the composer: the transcript must not be able to take
@@ -298,15 +323,12 @@ export function StatusLine({
           what landed rather than a reply still being written. */}
       {reattaching ? <text fg={theme.running}>rejoining the thread…</text> : null}
       <box flexDirection="row" justifyContent="space-between">
-        {/* Dim only while all is well. `key rejected` is a failure waiting will
-            not cure, so it is red; `unreachable` usually means the harness is
-            not running yet, which passes, so it is the plain foreground —
-            undimmed, so it still stands out from the row it replaced. */}
-        <text
-          {...(connection === 'ok' ? { attributes: DIM } : {})}
-          {...(connection === 'rejected' ? { fg: theme.failed } : {})}
-        >
-          {left}
+        <text>
+          {fitted.map((part, i) => (
+            <span key={i} fg={part.color}>
+              {part.visible}
+            </span>
+          ))}
         </text>
         {keys ? <text attributes={DIM}>{keys}</text> : null}
       </box>

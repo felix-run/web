@@ -17,9 +17,9 @@
  * every role falls back to an ANSI **index**, which is a reference into the
  * user's own sixteen and is themed by them rather than by us.
  *
- * The five hues come from `@felix/design`, which owns this repo's palette and
- * until now had only a neutral scale — right for surfaces, useless for status,
- * because "waiting on you" and "this failed" cannot be told apart in greys.
+ * State hues come from `@felix/design`. Three additional terminal roles
+ * distinguish navigation and tools (cyan), agent identity (violet), and the
+ * operator's input (blue), with separate light and dark variants.
  */
 
 import {
@@ -55,6 +55,12 @@ export const DIM_ITALIC = createTextAttributes({ dim: true, italic: true });
  * rather than spread across the components.
  */
 export interface Theme {
+  /** Navigation, commands, and tool names. */
+  accent: ColorInput;
+  /** Agent identity, separate from the state of a run. */
+  agent: ColorInput;
+  /** Your prompts in the transcript. The ready editor uses green. */
+  input: ColorInput;
   /**
    * A transient message in the status area: a confirmation, a listing, `/help`.
    * The terminal's own foreground, never `blocked` — amber means a person is
@@ -114,6 +120,9 @@ export interface Theme {
  * respecting a solarized terminal and painting over it.
  */
 const INDEXED: Theme = {
+  accent: RGBA.fromIndex(6),
+  agent: RGBA.fromIndex(5),
+  input: RGBA.fromIndex(4),
   notice: RGBA.defaultForeground(),
   blocked: RGBA.fromIndex(3),
   danger: RGBA.fromIndex(9),
@@ -148,7 +157,11 @@ function tint(state: string, base: string, amount: number): RGBA {
 }
 
 function fromPalette(state: StatePalette, neutral: ThemePalette): Theme {
+  const light = neutral === LIGHT;
   return {
+    accent: RGBA.fromHex(light ? '#0e7490' : '#67d4e8'),
+    agent: RGBA.fromHex(light ? '#7e22ce' : '#c4a5f5'),
+    input: RGBA.fromHex(light ? '#1d4ed8' : '#93b4ff'),
     notice: RGBA.defaultForeground(),
     blocked: RGBA.fromHex(state.blocked),
     danger: RGBA.fromHex(state.danger),
