@@ -22,8 +22,8 @@ import {
   FileTreeIcon,
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
-import { ancestorsOf, buildTree, type TreeNode } from '@/lib/workspace/file-tree';
 import { cn } from '@/lib/utils';
+import { ancestorsOf, buildTree, type TreeNode } from '@/lib/workspace/file-tree';
 import { type FileRowAction, useFileRowMenu } from './file-row-menu';
 
 /** git's status as one letter beside the name, and in words for a screen reader. */

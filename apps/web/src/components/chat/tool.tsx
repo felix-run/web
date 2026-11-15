@@ -23,14 +23,19 @@ import {
 } from 'lucide-react';
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { getArtifact } from '@/api/client';
+import {
+  type ArtifactRef,
+  classifyToolResult,
+  parseArtifactMarker,
+  type ToolCall,
+} from '@/api/types';
+import { useOptionalShellPick } from '@/app/shell-context';
 import { HighlightedCode, stripAnsi } from '@/components/highlighted-code';
 import { useDrawableUrl } from '@/hooks/use-drawable-url';
 import { type DenialRecord, denialSubject } from '@/lib/conversation/denials';
-import { clockTime } from '@/lib/format';
 import { parseSkillCall } from '@/lib/conversation/skill-calls';
+import { clockTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useOptionalShellPick } from '@/app/shell-context';
-import { type ArtifactRef, classifyToolResult, parseArtifactMarker, type ToolCall } from '@/api/types';
 import { useDenial } from './denial-context';
 import { StackTraceView } from './stack-trace';
 import { SubagentCalls } from './subagent-calls';

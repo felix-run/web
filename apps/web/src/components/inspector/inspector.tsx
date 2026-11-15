@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@felix/ui/tabs';
 import { GaugeIcon, ListTodoIcon, XIcon } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
 import { deletePlan, getToolMetrics, listPlans } from '@/api/client';
+import type { Plan, Turn } from '@/api/types';
+import { type ShellValue, useOptionalShellPick, useShell } from '@/app/shell-context';
 import { ConfirmButton } from '@/components/confirm-button';
 import {
   PanelModeProvider,
@@ -17,8 +19,6 @@ import { ThreadChanges } from '@/components/workspace/changes-list';
 import { usePoll } from '@/hooks/use-poll';
 import { callTarget } from '@/lib/conversation/call-target';
 import { cn } from '@/lib/utils';
-import { type ShellValue, useOptionalShellPick, useShell } from '@/app/shell-context';
-import type { Plan, Turn } from '@/api/types';
 import { DebugSection } from './debug-section';
 import { PlanEditor } from './plan-editor';
 

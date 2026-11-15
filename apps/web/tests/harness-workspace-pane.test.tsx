@@ -4,10 +4,10 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { FilesView } from '../src/components/pane/files-view';
 import { SidePane } from '../src/components/pane/side-pane';
 import { openInPane, paneState, resetPanes } from '../src/lib/navigation/side-pane';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * The thread's workspace on the harness, in the sidebar and the side pane.

@@ -1,8 +1,8 @@
 import type { FieldSize } from '@felix/ui/lib/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@felix/ui/select';
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 import { useOptionalShell } from '@/app/shell-context';
+import { cn } from '@/lib/utils';
 
 /**
  * One choice in a pick list: its name, and under it what the harness says about it that the name

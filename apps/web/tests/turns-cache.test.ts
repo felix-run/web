@@ -1,7 +1,6 @@
 /** @vitest-environment happy-dom */
 import type { Turn } from '@felix/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { forgetIdentityState } from '../src/lib/harness/identity-state';
 import {
   clearTurns,
   loadTurns,
@@ -9,6 +8,7 @@ import {
   scheduleSaveTurns,
   TURNS_SAVE_MS,
 } from '../src/lib/conversation/threads';
+import { forgetIdentityState } from '../src/lib/harness/identity-state';
 
 const turns = (content: string): Turn[] => [{ id: 'a', role: 'assistant', content }];
 

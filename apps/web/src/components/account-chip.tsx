@@ -26,7 +26,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@felix/ui/popover';
 import { RefreshCwIcon } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router';
-import { type GitHubConnectionState, getGitHubConnection, removeGitHubConnection } from '@/api/client';
+import {
+  type GitHubConnectionState,
+  getGitHubConnection,
+  removeGitHubConnection,
+} from '@/api/client';
 import { type GitHubSession, getSession, setSession, subscribeCredentials } from '@/lib/auth/auth';
 import { redirectToGoogle, useDeviceLogin } from '@/lib/auth/github-login';
 import { leave } from '@/lib/conversation/leave';

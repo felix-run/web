@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getWorkflowRun, WorkflowRouteError, watchWorkflowRun } from '@/api/client';
-import { RUN_LIVE } from '@/components/workflows/workflow-inspector';
 import type { WorkflowRun } from '@/api/types';
+import { RUN_LIVE } from '@/components/workflows/workflow-inspector';
 
 /** Pauses before reconnecting a dropped stream, longer each time it drops without a frame. */
 const RECONNECT_MS = [1_000, 2_000, 5_000, 15_000];

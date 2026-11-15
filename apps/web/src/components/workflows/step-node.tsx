@@ -8,9 +8,9 @@ import {
   WrenchIcon,
 } from 'lucide-react';
 import { memo } from 'react';
+import type { WorkflowPort, WorkflowStepStatus } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { STEP_STATE_WORD, type StateTone, stepTone } from '@/lib/workflows/workflow-layout';
-import type { WorkflowPort, WorkflowStepStatus } from '@/api/types';
 
 /** What a node draws. Built per render from the definition and, in run mode, the run. */
 export type StepNodeData = {

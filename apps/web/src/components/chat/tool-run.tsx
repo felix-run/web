@@ -8,8 +8,8 @@ import {
   TraceTitle,
 } from '@felix/ui/trace';
 import { LayersIcon } from 'lucide-react';
-import { summarizeRun } from '@/lib/conversation/tool-run';
 import type { ToolCall } from '@/api/types';
+import { summarizeRun } from '@/lib/conversation/tool-run';
 import { isShellCall, Tool } from './tool';
 
 /**

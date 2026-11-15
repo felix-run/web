@@ -27,16 +27,18 @@ import {
 } from 'react';
 import { Link, Navigate, NavLink, type NavLinkRenderProps, Outlet, useMatch } from 'react-router';
 import { listJobs, listSkillReviewQueue } from '@/api/client';
+import { useOptionalShell } from '@/app/shell-context';
 import { useHarnessAgent } from '@/components/harness/harness-agent';
 import { DOCS_ORIGIN, PageBack, PageDocs, useMeasure } from '@/components/harness/panel';
 import { relTime } from '@/components/inspector/primitives';
 import { PaneColumn, PaneOverlay, type PaneZoneProps } from '@/components/pane/pane-zone';
 import { usePaneLayout } from '@/components/pane/use-pane-layout';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { WORKSPACE_INLINE } from '@/hooks/use-rails';
 import { useWeekFailures } from '@/hooks/use-recent-audit';
-import { useMediaQuery } from '@/hooks/use-media-query';
 import { useSharedPoll } from '@/hooks/use-shared-poll';
-import { landedPaths } from '@/lib/workspace/changes';
+import { setPresencePlace } from '@/lib/conversation/presence';
+import { threadLabel } from '@/lib/conversation/threads';
 import {
   ACTIVITY_GLANCE_SPAN,
   failing,
@@ -44,11 +46,9 @@ import {
   SKILL_QUEUE_GLANCE_LIMIT,
   SKILL_QUEUE_POLL_KEY,
 } from '@/lib/harness/harness-glances';
-import { setPresencePlace } from '@/lib/conversation/presence';
 import { usePaneState } from '@/lib/navigation/side-pane';
-import { threadLabel } from '@/lib/conversation/threads';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/app/shell-context';
+import { landedPaths } from '@/lib/workspace/changes';
 
 /**
  * `/harness`: the route table's half that the sidebar also reads — the ten

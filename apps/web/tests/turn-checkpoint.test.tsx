@@ -3,9 +3,9 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Turn } from '../src/api/types';
 import { ContextMeter, contextFill } from '../src/components/chat/context-meter';
 import { TurnCheckpoint } from '../src/components/chat/turn-checkpoint';
-import type { Turn } from '../src/api/types';
 
 afterEach(cleanup);
 

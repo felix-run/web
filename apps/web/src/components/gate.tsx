@@ -25,7 +25,12 @@
 import { Spinner } from '@felix/ui/spinner';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AUTH_TIMEOUT_MS, getAuthMethods, githubAuthorizeUrl, primeManifestEntries } from '@/api/client';
+import {
+  AUTH_TIMEOUT_MS,
+  getAuthMethods,
+  githubAuthorizeUrl,
+  primeManifestEntries,
+} from '@/api/client';
 import {
   authHeaders,
   clearSession,

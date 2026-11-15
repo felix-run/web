@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { WorkflowDefinition } from '../src/api/types';
 import {
   addInput,
   addStep,
@@ -22,7 +23,6 @@ import {
   wouldCycle,
 } from '../src/lib/workflows/workflow-draft';
 import { COL_WIDTH, ORIGIN, TRIGGER } from '../src/lib/workflows/workflow-layout';
-import type { WorkflowDefinition } from '../src/api/types';
 
 /**
  * Every edit the workflow editor makes. A regression here is a draft that loses a wire, keeps one

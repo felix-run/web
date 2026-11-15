@@ -17,8 +17,8 @@
  */
 
 import { type ThreadMeta, titleFromText, UNTITLED_THREAD_TITLE } from '@felix/client';
-import { beforeForgetIdentity } from '@/lib/harness/identity-state';
 import type { Turn } from '@/api/types';
+import { beforeForgetIdentity } from '@/lib/harness/identity-state';
 
 const INDEX_KEY = 'felix.threads';
 const TURNS_PREFIX = 'felix.turns:';

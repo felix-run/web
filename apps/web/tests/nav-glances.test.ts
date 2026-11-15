@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { AuditEvent } from '../src/api/types';
 import { errorCodeOf, eventHelp, recentFailures } from '../src/components/harness/activity';
+import { buildLedger, failureLabel, failureTally } from '../src/lib/conversation/ledger';
 import {
   ACTIVITY_FETCH,
   glanceWindow,
@@ -8,9 +10,7 @@ import {
   rowOutcomes,
   threadOutcomes,
 } from '../src/lib/harness/harness-glances';
-import { buildLedger, failureLabel, failureTally } from '../src/lib/conversation/ledger';
 import { draftGlance, glanceOf } from '../src/routes/harness';
-import type { AuditEvent } from '../src/api/types';
 
 /**
  * The rail's glances. Absence is the rail's all-clear, so every way a read can

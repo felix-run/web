@@ -1,8 +1,8 @@
 /** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { UiPromptBanner } from '../src/components/chat/ui-prompt-banner';
 import type { PendingUiRequest } from '../src/api/types';
+import { UiPromptBanner } from '../src/components/chat/ui-prompt-banner';
 
 /**
  * The agent's question, and the two ways it can go wrong on screen.

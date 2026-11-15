@@ -13,7 +13,15 @@ import {
 } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
-import { exportAudit, getUsageSummary, listAuditWindow, listUsage, listUsageByThread } from '@/api/client';
+import {
+  exportAudit,
+  getUsageSummary,
+  listAuditWindow,
+  listUsage,
+  listUsageByThread,
+} from '@/api/client';
+import type { AuditEvent, UsageEvent, UsageSummary } from '@/api/types';
+import { useShell } from '@/app/shell-context';
 import {
   ActivityRow,
   byModel,
@@ -33,10 +41,8 @@ import {
 import { keepAgent } from '@/components/harness/harness-agent';
 import { PageEmpty, PageHeader, PanelBody, plural } from '@/components/harness/panel';
 import { relTime, SectionBody, tsToMs, withAge } from '@/components/inspector/primitives';
-import { useWeekFailures } from '@/hooks/use-recent-audit';
 import { usePoll } from '@/hooks/use-poll';
-import { toastError } from '@/lib/error-toast';
-import { middleTruncate } from '@/lib/format';
+import { useWeekFailures } from '@/hooks/use-recent-audit';
 import {
   buildLedger,
   denialSentence,
@@ -63,11 +69,11 @@ import {
   type Worst,
   writeLastVisit,
 } from '@/lib/conversation/ledger';
-import { saveText } from '@/lib/workspace/save-text';
 import { threadLabel } from '@/lib/conversation/threads';
+import { toastError } from '@/lib/error-toast';
+import { middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useShell } from '@/app/shell-context';
-import type { AuditEvent, UsageEvent, UsageSummary } from '@/api/types';
+import { saveText } from '@/lib/workspace/save-text';
 
 /**
  * Activity, as a ledger: one entry per thread, saying what happened on it, what

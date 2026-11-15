@@ -1,11 +1,11 @@
 import { lazy, type ReactNode, Suspense, useState, useSyncExternalStore } from 'react';
+import { useShell } from '@/app/shell-context';
 import { CutId } from '@/components/cut-id';
 import { getSession, subscribeCredentials } from '@/lib/auth/auth';
+import { cn } from '@/lib/utils';
 import { getMountLabel, supportsDirectoryPicker } from '@/lib/workspace/cowork';
 import { mountFolder, reconnectFolder, useMount } from '@/lib/workspace/mount-state';
-import { cn } from '@/lib/utils';
 import { inBrowser, onHarness } from '@/lib/workspace/workspace-tools';
-import { useShell } from '@/app/shell-context';
 import { StarterPrompts } from './starter-prompts';
 
 // Both are drawn only for a GitHub sign-in with an agent that works on the harness, so they

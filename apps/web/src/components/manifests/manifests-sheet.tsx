@@ -18,6 +18,7 @@ import {
   listTenantManifests,
   setManifestCanary,
 } from '@/api/client';
+import type { ManifestSummary, ManifestVersionMeta, ManifestVersionRow } from '@/api/types';
 import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
@@ -32,7 +33,6 @@ import {
   plural,
 } from '@/components/harness/panel';
 import { ReadFailure, withAge } from '@/components/inspector/primitives';
-import type { ManifestSummary, ManifestVersionMeta, ManifestVersionRow } from '@/api/types';
 
 /**
  * Manifest lifecycle workbench — the `/manifests` surface as a `/harness` page.

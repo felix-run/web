@@ -6,11 +6,11 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { ThemeProvider } from '../src/components/theme-provider';
 import { ReplyChanges } from '../src/components/workspace/changes-list';
-import { changesByReply, collectChanges, countChangedFiles } from '../src/lib/workspace/changes';
 import { openInPane, paneState, resetPanes } from '../src/lib/navigation/side-pane';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
+import { changesByReply, collectChanges, countChangedFiles } from '../src/lib/workspace/changes';
 
 /**
  * "N files changed · Review" under a reply. The everyday surface has no run

@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router';
-import { AgentSelect } from '@/components/agent-select';
 import { useShell, useShellPick } from '@/app/shell-context';
+import { AgentSelect } from '@/components/agent-select';
 
 /**
  * The agent `/harness` is looking at.

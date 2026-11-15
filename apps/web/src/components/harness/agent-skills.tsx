@@ -8,14 +8,14 @@ import { ChevronRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { getAgentSkill, listAgentSkills, recentSkillActivations } from '@/api/client';
+import { useShell } from '@/app/shell-context';
 import { ErrorNotice } from '@/components/error-notice';
 import { PageSection, plural } from '@/components/harness/panel';
 import { relTime, SectionBody } from '@/components/inspector/primitives';
 import { usePoll } from '@/hooks/use-poll';
-import { middleTruncate } from '@/lib/format';
 import { threadLabel } from '@/lib/conversation/threads';
+import { middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useShell } from '@/app/shell-context';
 
 /** Active skills change as a run switches them; a page left open follows at this pace. */
 const POLL_MS = 30_000;

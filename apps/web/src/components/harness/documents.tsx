@@ -7,6 +7,8 @@ import { BookOpenIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { addDocument, deleteDocument, listDocuments, searchDocuments } from '@/api/client';
+import type { DocumentHit, DocumentRecord } from '@/api/types';
+import { DOCUMENT_LIMITS } from '@/api/types';
 import { ConfirmButton } from '@/components/confirm-button';
 import { keepAgent } from '@/components/harness/harness-agent';
 import {
@@ -19,8 +21,6 @@ import {
 import { Section, SectionBody } from '@/components/inspector/primitives';
 import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/use-poll';
-import type { DocumentHit, DocumentRecord } from '@/api/types';
-import { DOCUMENT_LIMITS } from '@/api/types';
 
 /**
  * The corpus the agent retrieves from.

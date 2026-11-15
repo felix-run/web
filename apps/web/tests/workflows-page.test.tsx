@@ -216,7 +216,9 @@ async function page(
       </MemoryRouter>
     </TooltipProvider>,
   );
-  const getThread = (await import('../src/api/client')).getWorkflowStepThread as ReturnType<typeof vi.fn>;
+  const getThread = (await import('../src/api/client')).getWorkflowStepThread as ReturnType<
+    typeof vi.fn
+  >;
   const mocked = await import('../src/api/client');
   return {
     decideApproval,

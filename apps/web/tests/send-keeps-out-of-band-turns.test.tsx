@@ -6,9 +6,9 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/app/app';
 import { ThemeProvider } from '../src/components/theme-provider';
-import { vfs } from '../src/lib/workspace/cowork';
 import { resetPresence } from '../src/lib/conversation/presence';
 import { openInPane, resetPanes } from '../src/lib/navigation/side-pane';
+import { vfs } from '../src/lib/workspace/cowork';
 
 /**
  * A send builds on the transcript as the engine holds it, not as the composer

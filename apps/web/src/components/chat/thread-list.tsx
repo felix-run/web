@@ -32,12 +32,17 @@ import {
   useState,
 } from 'react';
 import { searchSessions } from '@/api/client';
+import type { ThreadIndexStatus } from '@/app/shell-context';
 import { CutId } from '@/components/cut-id';
+import {
+  groupThreads,
+  matchExcerpt,
+  type ThreadGroupKey,
+  threadLabel,
+} from '@/lib/conversation/threads';
 import type { RowOutcome } from '@/lib/harness/harness-glances';
 import { isTransientFailure } from '@/lib/harness/harness-health';
-import { groupThreads, matchExcerpt, type ThreadGroupKey, threadLabel } from '@/lib/conversation/threads';
 import { cn } from '@/lib/utils';
-import type { ThreadIndexStatus } from '@/app/shell-context';
 
 const NO_BLOCKED: ReadonlySet<string> = new Set();
 const NO_PINS: ReadonlySet<string> = new Set();

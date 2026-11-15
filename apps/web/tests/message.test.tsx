@@ -3,8 +3,8 @@ import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, fireEvent, render as rtlRender, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Message } from '../src/components/chat/message';
 import type { Turn } from '../src/api/types';
+import { Message } from '../src/components/chat/message';
 
 /**
  * `interleaveTurn` is unit-tested next door; this covers the half that suite

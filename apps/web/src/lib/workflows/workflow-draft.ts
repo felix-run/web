@@ -9,6 +9,8 @@
  * of the JSON requires — an id the schema accepts, an edge that names real nodes, no edge listed
  * twice — so a draft never fails to parse on its way to the check.
  */
+
+import type { WorkflowDefinition, WorkflowStepDef } from '@/api/types';
 import {
   COL_WIDTH,
   DEFAULT_NODE_HEIGHT,
@@ -20,7 +22,6 @@ import {
   TRIGGER,
   wiresOf,
 } from '@/lib/workflows/workflow-layout';
-import type { WorkflowDefinition, WorkflowStepDef } from '@/api/types';
 
 type Point = { x: number; y: number };
 type Edge = NonNullable<WorkflowDefinition['edges']>[number];

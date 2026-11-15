@@ -1,6 +1,7 @@
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@felix/ui/sidebar';
 import { FileIcon, FolderIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShell } from '@/app/shell-context';
 import {
   FileTree,
   FileTreeFile,
@@ -9,12 +10,11 @@ import {
   FileTreeName,
 } from '@/components/ai-elements/file-tree';
 import { type FileRowAction, useFileRowMenu } from '@/components/workspace/file-row-menu';
-import { ancestorsOf, buildTree, type TreeNode } from '@/lib/workspace/file-tree';
-import { reconnectFolder, useMount } from '@/lib/workspace/mount-state';
 import { FILES_KEY, usePaneState } from '@/lib/navigation/side-pane';
 import { cn } from '@/lib/utils';
+import { ancestorsOf, buildTree, type TreeNode } from '@/lib/workspace/file-tree';
+import { reconnectFolder, useMount } from '@/lib/workspace/mount-state';
 import { hasWorkspace, inBrowser, useWorkspaceTools } from '@/lib/workspace/workspace-tools';
-import { useShell } from '@/app/shell-context';
 
 /**
  * The workspace, as one sidebar row: what the agent works on, and the door to

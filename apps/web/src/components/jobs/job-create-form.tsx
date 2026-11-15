@@ -5,13 +5,13 @@ import { Select, SelectContent, SelectTrigger, SelectValue } from '@felix/ui/sel
 import { Textarea } from '@felix/ui/textarea';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listWorkflows, upsertJob } from '@/api/client';
+import type { JobRecord, WorkflowSummary } from '@/api/types';
 import { AgentSelect, OPTION_LIST_BOUNDS, OptionItem } from '@/components/agent-select';
 import { ErrorNotice } from '@/components/error-notice';
 import { ViewSwitch } from '@/components/harness/panel';
 import { WhyDisabled } from '@/components/why-disabled';
 import { nextAfter, parseSchedule, ScheduleError, scheduleLabel } from '@/lib/harness/job-schedule';
 import { cn } from '@/lib/utils';
-import type { JobRecord, WorkflowSummary } from '@/api/types';
 
 /**
  * The form that writes a new job (`PUT /jobs/{name}`): the Jobs page's, behind New job,

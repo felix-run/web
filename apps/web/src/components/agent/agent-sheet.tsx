@@ -3,6 +3,7 @@ import { Button } from '@felix/ui/button';
 import { BotIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { getAgentCard, getResolvedManifest } from '@/api/client';
+import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/api/types';
 import { ErrorNotice } from '@/components/error-notice';
 import {
   Fact,
@@ -17,7 +18,6 @@ import {
 } from '@/components/harness/panel';
 import { SectionBody, TransientRead } from '@/components/inspector/primitives';
 import { isTransientFailure } from '@/lib/harness/harness-health';
-import type { AgentCard, AgentCardSkill, ResolvedManifest } from '@/api/types';
 
 /**
  * Agent spec panel — "what is this agent". Shows the resolved manifest spec for

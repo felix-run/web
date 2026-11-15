@@ -1,7 +1,7 @@
 import { promptTokens } from '@felix/protocol';
 import { toast } from 'sonner';
-import { middleTruncate } from '@/lib/format';
 import type { Turn } from '@/api/types';
+import { middleTruncate } from '@/lib/format';
 
 const nf = new Intl.NumberFormat();
 

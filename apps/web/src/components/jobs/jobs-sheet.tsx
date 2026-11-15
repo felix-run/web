@@ -12,7 +12,16 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { deleteJob, listJobRuns, listJobs, listUsageByThread, runJobNow, upsertJob } from '@/api/client';
+import {
+  deleteJob,
+  listJobRuns,
+  listJobs,
+  listUsageByThread,
+  runJobNow,
+  upsertJob,
+} from '@/api/client';
+import type { JobRecord, JobRun } from '@/api/types';
+import { useOptionalShell } from '@/app/shell-context';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
 import {
@@ -44,10 +53,13 @@ import {
   threadOutcomes,
 } from '@/lib/harness/harness-glances';
 import { isTransientFailure } from '@/lib/harness/harness-health';
-import { jobOrigin, missingSources, reportProblem, takeoverQuestion } from '@/lib/harness/job-origin';
+import {
+  jobOrigin,
+  missingSources,
+  reportProblem,
+  takeoverQuestion,
+} from '@/lib/harness/job-origin';
 import { parseSchedule, scheduleLabel } from '@/lib/harness/job-schedule';
-import { useOptionalShell } from '@/app/shell-context';
-import type { JobRecord, JobRun } from '@/api/types';
 
 /**
  * Scheduled-jobs workbench — the `/jobs` registry as a `/harness` page. A job is a

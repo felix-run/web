@@ -2,9 +2,9 @@
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 import { Conversation, ConversationItem } from '../src/components/chat/conversation';
 import { announceViewChange } from '../src/lib/navigation/view-change';
-import { ShellProvider, type ShellValue } from '../src/app/shell-context';
 
 /**
  * The transcript's rows, which the scroller reads. Two rules are easy to break

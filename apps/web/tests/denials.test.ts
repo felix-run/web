@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ApprovalRequest, ToolCall, Turn } from '../src/api/types';
 import {
   askAgainText,
   askableDenials,
@@ -10,7 +11,6 @@ import {
   rememberDecidedHere,
   waitLength,
 } from '../src/lib/conversation/denials';
-import type { ApprovalRequest, ToolCall, Turn } from '../src/api/types';
 
 /**
  * Who denied a call, and when, is on the approval row, not on the tool result.

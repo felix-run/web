@@ -15,6 +15,8 @@ import {
   restoreMemory,
   searchMemories,
 } from '@/api/client';
+import type { MemoryHit, MemoryRecord } from '@/api/types';
+import { useShell } from '@/app/shell-context';
 import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { keepAgent } from '@/components/harness/harness-agent';
@@ -30,8 +32,6 @@ import { WhyDisabled } from '@/components/why-disabled';
 import { usePoll } from '@/hooks/use-poll';
 import { endTruncate, middleTruncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useShell } from '@/app/shell-context';
-import type { MemoryHit, MemoryRecord } from '@/api/types';
 
 /**
  * What the agent has stored across sessions, and how to get rid of it.

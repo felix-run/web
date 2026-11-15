@@ -1,5 +1,7 @@
 import { listAudit } from '@/api/client';
+import type { AuditEvent } from '@/api/types';
 import { useSharedPoll } from '@/hooks/use-shared-poll';
+import type { FailureTally } from '@/lib/conversation/ledger';
 import {
   ACTIVITY_FETCH,
   AUDIT_ERRORS_POLL_KEY,
@@ -8,8 +10,6 @@ import {
   mergeReads,
   recentFailures,
 } from '@/lib/harness/harness-glances';
-import type { FailureTally } from '@/lib/conversation/ledger';
-import type { AuditEvent } from '@/api/types';
 
 /**
  * The newest `ACTIVITY_FETCH` audit events, on the one shared 30s poll.

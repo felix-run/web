@@ -1,5 +1,13 @@
 import { isClosedApproval } from '@felix/client';
 import { cancelWorkflowRun, decideApproval } from '@/api/client';
+import type {
+  WorkflowProblem,
+  WorkflowRecord,
+  WorkflowRun,
+  WorkflowRunStatus,
+  WorkflowStepDef,
+} from '@/api/types';
+import { useOptionalShell } from '@/app/shell-context';
 import { ApprovalDecision, CodePane } from '@/components/approval/approval-decision';
 import { ConfirmButton } from '@/components/confirm-button';
 import { CutId } from '@/components/cut-id';
@@ -10,14 +18,6 @@ import { AuthorshipFact } from '@/components/workflows/authorship';
 import { kindWord, StepStateChip } from '@/components/workflows/step-node';
 import { StepTranscript } from '@/components/workflows/step-transcript';
 import { cn } from '@/lib/utils';
-import { useOptionalShell } from '@/app/shell-context';
-import type {
-  WorkflowProblem,
-  WorkflowRecord,
-  WorkflowRun,
-  WorkflowRunStatus,
-  WorkflowStepDef,
-} from '@/api/types';
 
 export const RUN_LIVE: ReadonlySet<WorkflowRunStatus> = new Set([
   'pending',

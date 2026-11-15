@@ -1,5 +1,6 @@
 import { Skeleton } from '@felix/ui/skeleton';
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { useShell, useShellPick } from '@/app/shell-context';
 import { AgentSheet } from '@/components/agent/agent-sheet';
 import { modelsById } from '@/components/agent-select';
 import { EvalSheet } from '@/components/eval/eval-sheet';
@@ -18,7 +19,6 @@ import { JobsSheet } from '@/components/jobs/jobs-sheet';
 import { ManifestsSheet } from '@/components/manifests/manifests-sheet';
 import { useSkillsAddress } from '@/components/skills/skills-address';
 import { WorkflowsPage } from '@/components/workflows/workflows-page';
-import { useShell, useShellPick } from '@/app/shell-context';
 import { CONNECTIONS_DOCS, GITHUB_DOCS, type HarnessPath } from './harness';
 
 /**

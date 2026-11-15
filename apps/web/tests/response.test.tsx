@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Response } from '../src/components/chat/response';
 import { ShellProvider, type ShellValue } from '../src/app/shell-context';
+import { Response } from '../src/components/chat/response';
 
 /**
  * `Response` renders assistant markdown through a third-party renderer, and the parts

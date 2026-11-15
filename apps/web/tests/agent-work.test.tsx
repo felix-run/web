@@ -5,11 +5,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ToolCall, Turn } from '../src/api/types';
 import App from '../src/app/app';
 import { Message } from '../src/components/chat/message';
 import { MultimodalInput } from '../src/components/chat/multimodal-input';
 import { ThemeProvider } from '../src/components/theme-provider';
-import type { ToolCall, Turn } from '../src/api/types';
 
 /**
  * What the agent does beside its tool calls, drawn in the turn and the composer:

@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
-import { closePaneItem, paneKey, paneState } from '@/lib/navigation/side-pane';
 import { useOptionalShellPick } from '@/app/shell-context';
+import { closePaneItem, paneKey, paneState } from '@/lib/navigation/side-pane';
 import { useLibraryId, useLibraryReadOnly } from './queries';
 
 /**

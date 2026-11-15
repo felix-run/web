@@ -3,7 +3,13 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { StrictMode, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SkillLibrary, SkillLibraryPage } from '../src/components/skills/skill-library';
-import { anyUnsaved, isDirty, openInPane, paneState, resetPanes } from '../src/lib/navigation/side-pane';
+import {
+  anyUnsaved,
+  isDirty,
+  openInPane,
+  paneState,
+  resetPanes,
+} from '../src/lib/navigation/side-pane';
 import {
   expectSameWeight,
   fakeHarness,

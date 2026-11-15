@@ -4,8 +4,8 @@ import { planFromCall, plansInTurn } from '@felix/client';
 import { TooltipProvider } from '@felix/ui/tooltip';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Message } from '../src/components/chat/message';
 import type { ToolCall, Turn } from '../src/api/types';
+import { Message } from '../src/components/chat/message';
 
 /**
  * The agent's plan, drawn in the turn from its own `plan_*` calls. Each call

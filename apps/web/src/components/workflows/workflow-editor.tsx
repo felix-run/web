@@ -6,6 +6,15 @@ import { Textarea } from '@felix/ui/textarea';
 import { PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { listWorkflowTools } from '@/api/client';
+import type {
+  WorkflowDefinition,
+  WorkflowKind,
+  WorkflowPort,
+  WorkflowPortRef,
+  WorkflowRecord,
+  WorkflowStepDef,
+  WorkflowTool,
+} from '@/api/types';
 import { AgentSelect } from '@/components/agent-select';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ErrorNotice } from '@/components/error-notice';
@@ -34,15 +43,6 @@ import {
   wouldCycle,
 } from '@/lib/workflows/workflow-draft';
 import { nodeIdsOf, stepsOf, TRIGGER } from '@/lib/workflows/workflow-layout';
-import type {
-  WorkflowDefinition,
-  WorkflowKind,
-  WorkflowPort,
-  WorkflowPortRef,
-  WorkflowRecord,
-  WorkflowStepDef,
-  WorkflowTool,
-} from '@/api/types';
 
 type Edit = (change: (def: WorkflowDefinition) => WorkflowDefinition) => void;
 type Wire = (edge: { source: WorkflowPortRef; target: WorkflowPortRef }) => void;

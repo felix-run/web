@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listApprovals } from '@/api/client';
-import { setDenials } from '@/components/chat/denial-context';
-import { askAgainText, askableDenials, deniedCalls, matchDenials } from '@/lib/conversation/denials';
 import type { ApprovalRequest, ToolCall, Turn } from '@/api/types';
+import { setDenials } from '@/components/chat/denial-context';
+import {
+  askAgainText,
+  askableDenials,
+  deniedCalls,
+  matchDenials,
+} from '@/lib/conversation/denials';
 
 /** The most decided rows the route returns; a thread's denials are filtered from these. */
 const DENIED_ROWS = 200;
