@@ -445,7 +445,9 @@ describe('the device flow, off the happy path', () => {
     renderGate();
     fireEvent.click(await screen.findByRole('button', { name: /continue with github/i }));
     await screen.findByText('WDJB-MJHT');
-    fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+    });
     expect(writeText).toHaveBeenCalledWith('WDJB-MJHT');
     // Settle the asynchronous clipboard result before inspecting its React update.
     await act(async () => {
