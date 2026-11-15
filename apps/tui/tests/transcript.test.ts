@@ -347,6 +347,81 @@ describe('a reply still being written', () => {
 });
 
 describe('a tool card', () => {
+  it.each([
+    ['local_search', { query: 'TODO', path: 'src' }, 'TODO · in src'],
+    ['local_rename', { path: 'old.ts', to_path: 'new.ts' }, 'old.ts → new.ts'],
+    ['local_shell', { command: 'bun test', cwd: 'apps/tui' }, 'bun test · in apps/tui'],
+  ])('shows useful coding context for %s', async (name, input, expected) => {
+    const turn: Turn = {
+      id: 'context',
+      role: 'assistant',
+      content: '',
+      tools: [{ name, input, done: true }],
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [turn] }), {
+      width: 100,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), expected)).toBe(true);
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('previews the end of a shell result so the test summary is visible', async () => {
+    const turn: Turn = {
+      id: 'shell',
+      role: 'assistant',
+      content: '',
+      tools: [
+        {
+          name: 'local_shell',
+          input: { command: 'bun test' },
+          done: true,
+          output: 'Starting tests\nLoading fixtures\n42 pass\n0 fail',
+        },
+      ],
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [turn] }), {
+      width: 80,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), '… 42 pass · 0 fail')).toBe(true);
+      expect(ui.frame()).not.toContain('Loading fixtures');
+    } finally {
+      ui.stop();
+    }
+  });
+
+  it('fits a long live local tool, arguments, and phase on one narrow row', async () => {
+    const turn: Turn = {
+      id: 'narrow',
+      role: 'assistant',
+      content: '',
+      tools: [
+        {
+          name: 'client · local_search',
+          input: { query: 'a long search term', path: 'src/components' },
+          done: false,
+          phase: 'executing',
+        },
+      ],
+    };
+    const ui = await mount(createElement(Transcript, { theme: testTheme, turns: [turn] }), {
+      width: 50,
+      height: 8,
+    });
+    try {
+      expect(shows(ui.frame(), 'local_search')).toBe(true);
+      expect(shows(ui.frame(), 'executing')).toBe(true);
+      expect(lines(ui.frame())).toHaveLength(1);
+    } finally {
+      ui.stop();
+    }
+  });
+
   const withTool = (done: boolean, phase?: string): Turn => ({
     id: 'a2',
     role: 'assistant',

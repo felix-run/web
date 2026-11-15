@@ -198,6 +198,33 @@ describe('slash commands', () => {
     h.restore();
   });
 
+  it('selects the sixth starter by number without sending the number to the model', async () => {
+    const routes = {
+      '/v1/models': {
+        data: [
+          {
+            id: 'quick',
+            felix: {
+              starters: Array.from({ length: 6 }, (_, i) => ({
+                title: `Starter ${i + 1}`,
+                prompt: `Full prompt for starter ${i + 1}`,
+              })),
+            },
+          },
+        ],
+      },
+    };
+    const { ui, h, frame } = await run('6', { routes });
+    await ui.until(() => shows(frame(), 'Full prompt for starter 6'));
+    expect(h.to('/chat/stream')).toHaveLength(0);
+    await ui.keys.pressEnter();
+    await ui.until(() => h.to('/chat/stream').length > 0);
+    const body = h.to('/chat/stream')[0]?.body as { messages?: Array<{ content: string }> };
+    expect(body.messages?.at(-1)?.content).toBe('Full prompt for starter 6');
+    ui.stop();
+    h.restore();
+  });
+
   it('/start out of range names the starters it has', async () => {
     const { ui, h, frame } = await run('/start 9', { routes: MODELS });
     await ui.until(() => shows(frame(), 'usage: /start <1–2>'));
@@ -405,6 +432,21 @@ describe('slash commands', () => {
 });
 
 describe('the keyboard', () => {
+  it('keeps Tab for threads while command suggestions are open', async () => {
+    const { ui, h, frame } = await run('', { routes: { '/chat/sessions': { sessions: [] } } });
+    try {
+      await ui.keys.typeText('/');
+      await ui.until(() => shows(frame(), 'Commands ·'));
+      await ui.keys.pressTab();
+      await ui.until(() => shows(frame(), 'enter open'));
+      expect(shows(frame(), 'Commands ·')).toBe(false);
+      expect(h.to('/chat/stream')).toHaveLength(0);
+    } finally {
+      ui.stop();
+      h.restore();
+    }
+  });
+
   it('opens the thread rail on tab, and closes it again', async () => {
     const h = harness({ '/chat/sessions': { sessions: [] } });
     const { store, history, attention } = doubles();

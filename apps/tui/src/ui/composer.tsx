@@ -27,8 +27,10 @@
  */
 
 import type { KeyBinding, KeyEvent, TextareaRenderable } from '@opentui/core';
-import { useKeyboard, usePaste } from '@opentui/react';
+import { useKeyboard, usePaste, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
+import { commandHints } from '../command-hints.js';
+import { oneLine } from '../text.js';
 import type { Theme } from '../theme.js';
 
 /** Any newline, and any run of them, however the source spelled it. */
@@ -97,11 +99,25 @@ export function Composer({
   const ref = useRef<TextareaRenderable>(null);
   /** The editor owns the terminal while this is true; nothing else may. */
   const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [completionIndex, setCompletionIndex] = useState(0);
+  const [completionDismissed, setCompletionDismissed] = useState(false);
+  const { width, height } = useTerminalDimensions();
   /** Index into `history`, or null while editing the draft. */
   const recalled = useRef<number | null>(null);
   const draft = useRef('');
 
   const active = !disabled && !editing;
+  const completions = active && height >= 10 && !completionDismissed ? commandHints(draftText) : [];
+  const selectedCompletion = Math.min(completionIndex, Math.max(0, completions.length - 1));
+  const completionRows = Math.max(1, Math.min(3, height - 10));
+  const completionStart = Math.max(
+    0,
+    Math.min(
+      selectedCompletion - Math.floor(completionRows / 2),
+      completions.length - completionRows,
+    ),
+  );
   const read = () => ref.current?.plainText ?? '';
   /**
    * Replace the field and leave the cursor at the end, the way a shell leaves a
@@ -114,6 +130,7 @@ export function Composer({
   const write = (text: string) => {
     ref.current?.setText(text);
     ref.current?.gotoBufferEnd();
+    setDraftText(text);
   };
 
   // Keyed on `n` alone: the text is read when it changes, and re-filling on an
@@ -146,6 +163,30 @@ export function Composer({
    */
   useKeyboard((key: KeyEvent) => {
     if (!active) return;
+    if (completions.length && !key.ctrl && !key.meta && !key.shift) {
+      if (key.name === 'escape') {
+        key.preventDefault();
+        // This Escape belongs to the menu. Stop the parent's global handler
+        // too, so dismissing suggestions during a run does not abort it.
+        key.stopPropagation();
+        setCompletionDismissed(true);
+        return;
+      }
+      if (key.name === 'up' || key.name === 'down') {
+        key.preventDefault();
+        setCompletionIndex(
+          (selectedCompletion + (key.name === 'up' ? -1 : 1) + completions.length) %
+            completions.length,
+        );
+        return;
+      }
+      if (key.name === 'return' || key.name === 'kpenter') {
+        key.preventDefault();
+        const choice = completions[selectedCompletion];
+        if (choice) write(`${choice.name}${choice.args ? ' ' : ''}`);
+        return;
+      }
+    }
     if (key.ctrl && key.name === 'e') {
       key.preventDefault();
       if (!onEdit) return;
@@ -197,36 +238,74 @@ export function Composer({
   });
 
   return (
-    // Framed, because an unframed prompt does not read as somewhere you type —
-    // it reads as the last line of the transcript. The border also gives the
-    // hint somewhere to live that is not a row of its own: `bottomTitle` costs
-    // nothing vertically, where the old inline hint cost a line the
-    // conversation could have had.
-    <box
-      flexDirection="row"
-      // Never give ground to the transcript. The transcript grows to fill, and
-      // with a conversation longer than the screen it will take these rows too:
-      // the input line vanishes and the marker is squashed into the bottom
-      // border, leaving a box you cannot type in and no sign of why.
-      flexShrink={0}
-      border
-      borderStyle="rounded"
-      borderColor={active ? theme.ready : theme.rule}
-      bottomTitle={hint ?? ''}
-      bottomTitleAlignment="left"
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      <text fg={streaming ? theme.running : theme.ready}>{streaming ? '⇥ ' : '> '}</text>
-      <textarea
-        ref={ref}
-        focused={active}
-        flexGrow={1}
-        height={2}
-        wrapMode="word"
-        keyBindings={CHAT_BINDINGS}
-        onSubmit={submit}
-      />
+    <box flexDirection="column" flexShrink={0}>
+      {completions.length ? (
+        <box flexDirection="column" paddingLeft={2} marginBottom={1}>
+          <text fg={theme.faint}>
+            {oneLine(
+              width < 72
+                ? `${selectedCompletion + 1}/${completions.length} · ↑↓ · enter insert · esc close`
+                : `Commands · ${selectedCompletion + 1}/${completions.length} · ↑↓ choose · enter insert · esc close`,
+              Math.max(0, width - 6),
+            )}
+          </text>
+          {completions
+            .slice(completionStart, completionStart + completionRows)
+            .map((choice, index) => (
+              <text key={choice.name}>
+                <span
+                  fg={completionStart + index === selectedCompletion ? theme.ready : theme.accent}
+                >
+                  {`${completionStart + index === selectedCompletion ? '›' : ' '} ${choice.name}`}
+                </span>
+                <span
+                  fg={theme.faint}
+                >{`  ${oneLine(choice.description, Math.max(0, width - choice.name.length - 10))}`}</span>
+              </text>
+            ))}
+        </box>
+      ) : null}
+      {/* The frame and its hint use the existing editor rows. */}
+      <box
+        flexDirection="row"
+        // Never give ground to the transcript. The transcript grows to fill, and
+        // with a conversation longer than the screen it will take these rows too:
+        // the input line vanishes and the marker is squashed into the bottom
+        // border, leaving a box you cannot type in and no sign of why.
+        flexShrink={0}
+        border
+        borderStyle="rounded"
+        borderColor={active ? (streaming ? theme.running : theme.ready) : theme.rule}
+        title={active ? (streaming ? ' Steer the agent ' : ' Ask Felix ') : undefined}
+        bottomTitle={hint ?? ''}
+        bottomTitleAlignment="left"
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <text fg={streaming ? theme.running : theme.ready}>{streaming ? '⇥ ' : '> '}</text>
+        <textarea
+          ref={ref}
+          focused={active}
+          flexGrow={1}
+          height={2}
+          wrapMode="word"
+          placeholder={
+            active
+              ? streaming
+                ? 'Add a correction or next step…'
+                : 'Describe a task, paste an error, or /help'
+              : ''
+          }
+          placeholderColor={theme.faint}
+          onContentChange={() => {
+            setDraftText(read());
+            setCompletionIndex(0);
+            setCompletionDismissed(false);
+          }}
+          keyBindings={CHAT_BINDINGS}
+          onSubmit={submit}
+        />
+      </box>
     </box>
   );
 }

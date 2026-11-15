@@ -708,10 +708,18 @@ export function App({
       // paragraph, and a shell does not filter its history either.
       history.add(text);
       setRecent(history.entries());
-      if (text.startsWith('/')) command(text);
+      const selection = text.trim();
+      if (
+        turns.length === 0 &&
+        !streaming &&
+        /^[1-9]\d*$/.test(selection) &&
+        entry?.starters?.[Number(selection) - 1]
+      ) {
+        command(`/start ${selection}`);
+      } else if (text.startsWith('/')) command(text);
       else send(text);
     },
-    [command, engine, history, send],
+    [command, engine, entry, history, send, streaming, turns.length],
   );
 
   // The first message from argv, once the engine exists — and once the lease has

@@ -132,7 +132,7 @@ function frameCodeBlocks(borderColor: ColorInput): MarkdownOptions['renderNode']
 function Prose({ text, streaming, theme }: { text: string; streaming: boolean; theme: Theme }) {
   // Rebuilt only when the border colour does, because `renderNode` changing
   // identity makes the markdown renderable rebuild every block it owns.
-  const renderNode = useMemo(() => frameCodeBlocks(theme.rule), [theme.rule]);
+  const renderNode = useMemo(() => frameCodeBlocks(theme.accent), [theme.accent]);
   if (!text) return null;
   return (
     <markdown
@@ -217,11 +217,17 @@ export function spinnerTicking(): boolean {
 function useTraceWidths() {
   const { width } = useTerminalDimensions();
   const arg = Math.max(24, width - 12);
-  return { arg, result: arg - 2, planTitle: Math.max(16, width - 24) };
+  return {
+    arg,
+    header: Math.max(12, width - 6),
+    result: arg - 2,
+    planTitle: Math.max(16, width - 24),
+  };
 }
 
 /**
- * What a tool call did, in at most two lines — dim, unless it went wrong.
+ * What a tool call did, in at most two lines, with state-coloured names and
+ * quieter output. Names, arguments, and activity share one width budget.
  *
  * The second line is the *result*, which this client did not draw at all until
  * now — every tool ran and returned into silence, so a spilled-output marker was
@@ -240,15 +246,30 @@ function ToolCard({ tool, spill, theme }: { tool: ToolCall; spill?: Spill; theme
   // A `task` call is a child agent's job: named by the agent and what it was
   // handed, and running as that agent. A background child is started, not done.
   const child = subagentOf(tool);
-  const arg = child
-    ? childSummary(child.agent, tool.input, widths.arg)
-    : summarize(tool.input, widths.arg);
   const spinner = useSpinner(!tool.done);
   // The call a working child is in the middle of (`subagent_tool`), so a child making
   // progress reads differently from one stuck on its first call. Live only.
   const childCall = tool.done
     ? undefined
     : [...(child?.calls ?? [])].reverse().find((c) => !c.done);
+  const activity =
+    !tool.done && child
+      ? ` · ${child.agent} working${childCall ? ` · ${childCall.name}` : ''}`
+      : !tool.done && tool.phase
+        ? ` · ${tool.phase}`
+        : '';
+  const label = oneLine(name, widths.header - 2);
+  const suffix = oneLine(
+    `${kind ? ` · ${kind}` : ''}${activity}`,
+    Math.max(0, widths.header - label.length - 3),
+  );
+  const argWidth = Math.max(
+    0,
+    Math.min(widths.arg, widths.header - label.length - suffix.length - (suffix ? 4 : 3)),
+  );
+  const arg = child
+    ? childSummary(child.agent, tool.input, argWidth)
+    : summarize(tool.input, argWidth);
   // A spill's preview is the part the harness kept inline; everything else is
   // the output as it stands.
   const body = spill ? spill.ref.preview : typeof tool.output === 'string' ? tool.output : '';
@@ -256,38 +277,44 @@ function ToolCard({ tool, spill, theme }: { tool: ToolCall; spill?: Spill; theme
   // `[tool error/permission_denied] …` marker is what the model reads; a person
   // reading it saw a tool that ran and printed a bracket, and then nothing.
   const issue = tool.done ? classifyToolResult(tool.name, tool.output) : null;
+  const artifactHint = spill ? ` · ${sizeLabel(spill.ref.chars)} more [a${spill.handle}]` : '';
   const result = oneLine(
     issue
       ? `${issue.label}: ${issue.message}`
       : child?.state === 'background'
         ? `working in the background${child.taskId ? ` as task ${child.taskId}` : ''}`
-        : body,
-    widths.result,
+        : !spill && ['local_shell', 'bash', 'shell', 'exec_command'].includes(name)
+          ? shellPreview(body)
+          : body,
+    Math.max(0, widths.result - artifactHint.length),
   );
   // A failed or refused call is the one most likely to need someone, so it is
   // the one card that is not dim: the failed colour and a cross, on both
-  // lines. A denial is not a failure — a person or a rule said no, which is
-  // what approvals are for — so it is the plain foreground, like chat-ui's
-  // neutral `denied`: above the dim trace, below red.
+  // lines. A denial keeps its explanation neutral and its marker amber;
+  // successful tools use green and live calls use the running colour.
   const broken = issue && issue.kind !== 'denied';
-  const tone = broken ? { fg: theme.failed } : issue?.kind === 'denied' ? {} : { attributes: DIM };
+  const tone = broken ? { fg: theme.failed } : { fg: theme.faint };
   return (
     <box>
       <text {...tone}>
-        {tool.done ? (broken ? '✗ ' : '⎿ ') : `${spinner} `}
-        {name}
+        <span
+          fg={
+            broken ? theme.failed : !tool.done ? theme.running : issue ? theme.blocked : theme.ready
+          }
+        >
+          {tool.done ? (broken ? '✗ ' : '⎿ ') : `${spinner} `}
+        </span>
+        <span fg={broken ? theme.failed : tool.done && !issue ? theme.ready : theme.accent}>
+          {label}
+        </span>
         {arg ? ` ${arg}` : ''}
-        {kind ? ` · ${kind}` : ''}
-        {!tool.done && child
-          ? ` · ${child.agent} working${childCall ? ` · ${childCall.name}` : ''}`
-          : ''}
-        {!tool.done && !child && tool.phase ? ` · ${tool.phase}` : ''}
+        {suffix ? ` ${suffix}` : ''}
       </text>
       {tool.done && (result || spill) ? (
-        <text {...tone}>
+        <text {...tone} attributes={broken ? undefined : DIM}>
           {'  '}
           {result || '(no output)'}
-          {spill ? ` · ${sizeLabel(spill.ref.chars)} more [a${spill.handle}]` : ''}
+          {spill ? <span fg={theme.accent}>{artifactHint}</span> : null}
         </text>
       ) : null}
     </box>
@@ -306,12 +333,33 @@ function summarize(input: unknown, width: number): string {
   if (typeof input === 'string') return oneLine(input, width);
   try {
     const obj = input as Record<string, unknown>;
+    if (typeof obj.command === 'string') {
+      return oneLine(
+        `${obj.command}${typeof obj.cwd === 'string' && obj.cwd !== '.' ? ` · in ${obj.cwd}` : ''}`,
+        width,
+      );
+    }
+    if (typeof obj.path === 'string' && typeof obj.to_path === 'string') {
+      return oneLine(`${obj.path} → ${obj.to_path}`, width);
+    }
+    if (typeof obj.query === 'string' && typeof obj.path === 'string') {
+      return oneLine(`${obj.query} · in ${obj.path}`, width);
+    }
     const first = obj.command ?? obj.path ?? obj.target ?? obj.query;
     if (typeof first === 'string') return oneLine(first, width);
     return oneLine(JSON.stringify(obj), width);
   } catch {
     return '';
   }
+}
+
+/** Build and test summaries usually arrive after setup chatter. */
+function shellPreview(output: string): string {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length > 1 ? `… ${lines.slice(-2).join(' · ')}` : output;
 }
 
 /**
@@ -388,8 +436,8 @@ function Reasoning({ text, live, theme }: { text: string; live: boolean; theme: 
     elapsed === null ? `reasoning · ${count}` : `thought for ${formatElapsed(elapsed)} · ${count}`;
   const room = widths.arg - measure.length - 3;
   return (
-    <text attributes={DIM}>
-      {measure}
+    <text fg={theme.faint}>
+      <span fg={theme.agent}>{measure}</span>
       {room > 8 ? <span attributes={DIM_ITALIC}>{` · ${oneLine(text, room)}`}</span> : null}
     </text>
   );
@@ -452,8 +500,12 @@ function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
   return (
     <box flexDirection="column" marginBottom={1}>
       <text>
-        <b>{plan.title || 'Plan'}</b>
-        <span attributes={DIM}>{`  ${done} of ${plan.steps.length} done`}</span>
+        <span fg={theme.accent}>
+          <b>{plan.title || 'Plan'}</b>
+        </span>
+        <span
+          fg={done === plan.steps.length ? theme.ready : theme.faint}
+        >{`  ${done} of ${plan.steps.length} done`}</span>
         {/* A person changed it by hand: steps the agent did not write never read as its own. */}
         {plan.edited ? <span attributes={DIM}>{' · edited'}</span> : null}
       </text>
@@ -463,7 +515,9 @@ function PlanBlock({ plan, theme }: { plan: PlanState; theme: Theme }) {
           <span fg={tone(step.state) ?? (step.state === 'done' ? theme.ready : undefined)}>
             {`  ${STEP_GLYPH[step.state]} `}
           </span>
-          {oneLine(step.title || `Step ${i + 1}`, widths.planTitle)}
+          <span fg={step.state === 'done' ? theme.ready : tone(step.state)}>
+            {oneLine(step.title || `Step ${i + 1}`, widths.planTitle)}
+          </span>
           <span attributes={DIM}>{step.state === 'done' ? '' : ` · ${step.status}`}</span>
         </text>
       ))}
@@ -491,7 +545,13 @@ function AssistantTurn({
   const tail = segments.length - 1;
   const plans = plansInTurn(turn.tools);
   return (
-    <box flexDirection="column" marginBottom={1}>
+    <box
+      flexDirection="column"
+      marginBottom={1}
+      border={['left']}
+      borderColor={turn.runStatus ? theme.running : theme.agent}
+      paddingLeft={1}
+    >
       {segments.map((segment, i) => {
         if (segment.kind === 'tool') {
           if (plans.folded.has(segment.index)) return null;
@@ -580,7 +640,7 @@ function UserTurn({ turn, theme, branch }: { turn: Turn; theme: Theme; branch?: 
   return (
     <box flexDirection="column" marginBottom={1}>
       <box flexDirection="row">
-        <text fg={theme.ready}>{'› '}</text>
+        <text fg={theme.input}>{'› '}</text>
         <text>{turn.content}</text>
       </box>
       {branch ? (
