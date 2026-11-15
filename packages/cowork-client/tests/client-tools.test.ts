@@ -10,6 +10,23 @@ beforeEach(() => {
 });
 
 describe('executeClientTool', () => {
+  it('reports virtual files and emulation without opening or reading files', async () => {
+    const read = vi.spyOn(vfs, 'read');
+    try {
+      const result = await executeClientTool({ id: 'info', name: 'local_info', args: {} }, vfs);
+      expect(result.error).not.toBe(true);
+      const info = JSON.parse(result.content);
+      expect(info.client).toBe('browser');
+      expect(info.workspace).toEqual({ kind: 'virtual' });
+      expect(info.shell.mode).toBe('emulated');
+      expect(info.shell.commands).toContain('cat');
+      expect(info.shell.commands).not.toContain('npm');
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   it('runs a shell command against the tab VFS', async () => {
     vfs.write('notes/todo.md', 'one\n');
     const result = await executeClientTool(

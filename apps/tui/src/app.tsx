@@ -899,6 +899,7 @@ export function App({
         <Transcript
           turns={turns}
           streaming={streaming}
+          showWorkspaceResults={manifest === 'code'}
           scrollRef={scrollRef}
           theme={theme}
           branches={branches}

@@ -52,6 +52,7 @@ import { handlesByTool, type Spill, sizeLabel } from '../artifacts.js';
 import { syntaxStyle } from '../syntax.js';
 import { oneLine } from '../text.js';
 import { DIM, DIM_ITALIC, type Theme } from '../theme.js';
+import { WorkspaceResults } from './workspace-summary.js';
 
 /**
  * Fenced code, in a frame with its language on it.
@@ -529,12 +530,14 @@ function AssistantTurn({
   live,
   theme,
   handles,
+  workspaceResults,
 }: {
   turn: Turn;
   live: boolean;
   theme: Theme;
   /** Handle numbers are assigned across the whole transcript, not per turn. */
   handles: Map<ToolCall, Spill>;
+  workspaceResults: boolean;
 }) {
   const segments = interleaveTurn(turn.content, turn.tools, turn.reasoning as ReasoningBlock[]);
   // Only the tail of a live turn is still being written. An earlier segment was
@@ -588,6 +591,9 @@ function AssistantTurn({
           {turn.stop.limit === undefined ? '' : ` (${turn.stop.limit})`} with tool calls still
           pending
         </text>
+      ) : null}
+      {workspaceResults && !live && !turn.runStatus ? (
+        <WorkspaceResults turn={turn} theme={theme} />
       ) : null}
       {turn.usage ? (
         <text attributes={DIM}>
@@ -649,6 +655,7 @@ function UserTurn({ turn, theme, branch }: { turn: Turn; theme: Theme; branch?: 
 export function Transcript({
   turns,
   streaming = false,
+  showWorkspaceResults = false,
   scrollRef,
   theme,
   greeting,
@@ -656,6 +663,7 @@ export function Transcript({
 }: {
   turns: Turn[];
   streaming?: boolean;
+  showWorkspaceResults?: boolean;
   /**
    * Handed to `App` so the page keys can drive the box without taking focus
    * from the composer. The alternative — focusing the scrollbox so its own
@@ -722,6 +730,7 @@ export function Transcript({
             live={streaming && turn.id === turns[turns.length - 1]?.id}
             theme={theme}
             handles={handles}
+            workspaceResults={showWorkspaceResults}
           />
         ),
       )}

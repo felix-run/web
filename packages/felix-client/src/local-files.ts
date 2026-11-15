@@ -46,7 +46,7 @@ export function fileToolOp(toolName: string): FileToolOp | null {
 
 /** True for a client tool this module answers. */
 export function isLocalFileTool(name: string): boolean {
-  return name.startsWith('local_') && name in OPS;
+  return name === 'local_instructions' || (name.startsWith('local_') && name in OPS);
 }
 
 export interface LocalEntry {
@@ -63,8 +63,16 @@ export interface LocalFs {
   /** Direct entries of a directory (`''` or `.` is the root). */
   list(path: string): Promise<LocalEntry[]>;
   read(path: string): Promise<string>;
-  /** Create or replace a file, creating parent directories. May throw a refusal. */
-  write(path: string, content: string, opts: { append: boolean; summary: string }): Promise<void>;
+  /**
+   * Create or replace a file, creating parent directories. May throw a refusal.
+   * When expected is supplied, refuse if the current contents differ before
+   * writing (after any confirmation) or committing a staged browser write.
+   */
+  write(
+    path: string,
+    content: string,
+    opts: { append: boolean; summary: string; expected?: string },
+  ): Promise<void>;
   /**
    * Delete one file — never a directory. May throw a refusal. Absent from a
    * filesystem that cannot, which `local_delete` then reports as an error.
@@ -158,6 +166,57 @@ async function read(fs: LocalFs, args: Record<string, unknown>): Promise<string>
   return `${slice}\n[… characters ${offset}–${end} of ${text.length}; pass offset=${end} to read on]`;
 }
 
+/** Read only instruction files governing a target, never unrelated subtrees. */
+async function instructions(fs: LocalFs, args: Record<string, unknown>): Promise<string> {
+  const raw = str(args.path) ?? '';
+  const normalized = raw.replace(/\\/g, '/');
+  if (normalized.startsWith('/') || /^[a-z]:/i.test(normalized) || normalized.includes('\0'))
+    throw new Error('path must be a file relative to the workspace root');
+  const parts = normalized.split('/').filter((part) => part && part !== '.');
+  if (parts.includes('..')) throw new Error('instruction paths cannot contain ..');
+  if (parts.length > 33) throw new Error('instruction path exceeds 32 directories');
+  // An omitted path asks for root instructions; otherwise path names a target file.
+  const parents = parts.slice(0, -1);
+  const found: Array<{ path: string; content: string; truncated: boolean; next_offset: number }> =
+    [];
+  let remaining = 48_000;
+  let directory = '';
+  let entries = await fs.list(directory);
+  for (let depth = 0; depth <= parents.length; depth++) {
+    for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+      const path = directory ? `${directory}/${name}` : name;
+      if (!entries.some((entry) => entry.path === path && entry.type === 'file')) continue;
+      // A listed but unreadable instruction is an error, not an absent instruction.
+      const text = await fs.read(path);
+      if (text.includes('\0')) throw new Error(`${path} is not a text instruction file`);
+      const content = text.slice(0, Math.min(16_000, remaining));
+      remaining -= content.length;
+      found.push({
+        path,
+        content,
+        truncated: content.length < text.length,
+        next_offset: content.length,
+      });
+    }
+    const next = parents[depth];
+    if (next === undefined) break;
+    const path = directory ? `${directory}/${next}` : next;
+    const entry = entries.find((candidate) => candidate.path === path);
+    // A new directory has no nested instructions yet; its existing ancestors still apply.
+    if (!entry) break;
+    if (entry.type !== 'dir') throw new Error(`${path} is not a directory`);
+    directory = path;
+    entries = await fs.list(directory);
+  }
+  return JSON.stringify({
+    target: parts.join('/'),
+    instructions: found,
+    complete: found.every((file) => !file.truncated),
+    guidance:
+      'Read in order. Deeper instructions govern their subtree. Use local_read with offset=next_offset for truncated files before editing.',
+  });
+}
+
 /** A regular expression the model wrote, or a literal match; never throws. */
 function matcher(query: string, regex: boolean): ((line: string) => boolean) | string {
   if (!regex) return (line) => line.includes(query);
@@ -242,6 +301,7 @@ async function edit(fs: LocalFs, args: Record<string, unknown>): Promise<string>
     : text.replace(oldString, () => newString);
   await fs.write(path, next, {
     append: false,
+    expected: text,
     summary: `edit (${found} replacement${found === 1 ? '' : 's'})`,
   });
   return JSON.stringify({ path, replacements: all ? found : 1 });
@@ -280,6 +340,7 @@ export async function runLocalFileTool(
 ): Promise<ClientToolResult> {
   const args = req.args ?? {};
   try {
+    if (req.name === 'local_instructions') return { content: await instructions(fs, args) };
     let content: string;
     switch (fileToolOp(req.name)) {
       case 'list':

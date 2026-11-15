@@ -431,7 +431,13 @@ describe('the device flow, off the happy path', () => {
   it('selects the code for the keyboard when the clipboard refuses', async () => {
     routes['/api/auth/github/token'] = () =>
       json({ error: 'authorization_pending', message: 'pending', interval: 5 }, 428);
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    let refuseCopy!: (reason: Error) => void;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuseCopy = reject;
+        }),
+    );
     vi.stubGlobal('navigator', {
       ...navigator,
       clipboard: { writeText },
@@ -443,7 +449,11 @@ describe('the device flow, off the happy path', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
     });
     expect(writeText).toHaveBeenCalledWith('WDJB-MJHT');
-    expect(await screen.findByRole('button', { name: /could not copy/i })).toBeTruthy();
+    // Settle the asynchronous clipboard result before inspecting its React update.
+    await act(async () => {
+      refuseCopy(new Error('denied'));
+    });
+    expect(screen.getByRole('button', { name: /could not copy/i })).toBeTruthy();
     expect(window.getSelection()?.toString()).toBe('WDJB-MJHT');
   });
 

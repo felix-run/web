@@ -62,6 +62,98 @@ describe('fileToolOp', () => {
   });
 });
 
+describe('local_instructions', () => {
+  it('reads root and applicable nested instructions in order without changing files', async () => {
+    const { fs, writes } = memoryFs({
+      'AGENTS.md': 'root',
+      'CLAUDE.md': 'root commands',
+      'src/AGENTS.md': 'source',
+      'src/lib/AGENTS.md': 'library',
+      'other/AGENTS.md': 'unrelated',
+      'src/lib/code.ts': 'code',
+    });
+    expect(isLocalFileTool('local_instructions')).toBe(true);
+    const result = await run(fs, 'local_instructions', { path: 'src/lib/code.ts' });
+    expect(result.error).not.toBe(true);
+    const out = JSON.parse(result.content);
+    expect(out.instructions.map((file: { path: string }) => file.path)).toEqual([
+      'AGENTS.md',
+      'CLAUDE.md',
+      'src/AGENTS.md',
+      'src/lib/AGENTS.md',
+    ]);
+    expect(out.complete).toBe(true);
+    expect(writes).toEqual([]);
+  });
+
+  it('finds instructions for a file in directories that do not exist yet', async () => {
+    const { fs } = memoryFs({ 'AGENTS.md': 'root', 'src/AGENTS.md': 'source' });
+    const out = JSON.parse(
+      (await run(fs, 'local_instructions', { path: 'src/new/deep/file.ts' })).content,
+    );
+    expect(out.instructions.map((file: { content: string }) => file.content)).toEqual([
+      'root',
+      'source',
+    ]);
+  });
+
+  it('asks only for root instructions when no target is given', async () => {
+    const { fs } = memoryFs({ 'AGENTS.md': 'root', 'src/AGENTS.md': 'nested' });
+    const out = JSON.parse((await run(fs, 'local_instructions', {})).content);
+    expect(out.instructions).toHaveLength(1);
+    expect(out.instructions[0].path).toBe('AGENTS.md');
+  });
+
+  it('reports an empty instruction set explicitly', async () => {
+    const { fs } = memoryFs({ 'README.md': 'project' });
+    const out = JSON.parse((await run(fs, 'local_instructions', {})).content);
+    expect(out.instructions).toEqual([]);
+    expect(out.complete).toBe(true);
+  });
+
+  it.each([
+    '../secret.ts',
+    '/etc/file',
+    'C:\\secret.ts',
+    'src/../../file',
+    'src\\..\\file',
+    `${'a/'.repeat(34)}file`,
+  ])('refuses unsafe or excessive paths: %s', async (path) => {
+    const { fs } = memoryFs({ 'AGENTS.md': 'root' });
+    expect((await run(fs, 'local_instructions', { path })).error).toBe(true);
+  });
+
+  it('does not silently ignore an unreadable instruction', async () => {
+    const { fs } = memoryFs({ 'AGENTS.md': 'root' });
+    fs.read = async () => {
+      throw new Error('permission denied');
+    };
+    const result = await run(fs, 'local_instructions', {});
+    expect(result.error).toBe(true);
+    expect(result.content).toContain('permission denied');
+  });
+
+  it('bounds the combined text and tells the caller where to continue every truncated file', async () => {
+    const { fs } = memoryFs({
+      'AGENTS.md': 'a'.repeat(20_000),
+      'CLAUDE.md': 'b'.repeat(20_000),
+      'src/AGENTS.md': 'c'.repeat(20_000),
+      'src/CLAUDE.md': 'd'.repeat(20_000),
+    });
+    const out = JSON.parse((await run(fs, 'local_instructions', { path: 'src/code.ts' })).content);
+    expect(out.complete).toBe(false);
+    expect(out.instructions.map((file: { next_offset: number }) => file.next_offset)).toEqual([
+      16_000, 16_000, 16_000, 0,
+    ]);
+    expect(out.instructions.every((file: { truncated: boolean }) => file.truncated)).toBe(true);
+    const more = await run(fs, 'local_read', {
+      path: out.instructions[0].path,
+      offset: out.instructions[0].next_offset,
+    });
+    expect(more.content).toContain('a'.repeat(4_000));
+  });
+});
+
 describe('local_list', () => {
   it('lists direct entries, directories ending in a slash', async () => {
     const { fs } = memoryFs({ 'README.md': '', '.github/ci.yml': '', 'src/a.ts': '' });

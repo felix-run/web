@@ -8,6 +8,7 @@ import {
   realpathSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,6 +50,96 @@ const call = (name: string, args: Record<string, unknown>) => ({ id: 'c1', name,
 const allow = async () => true;
 /** A workspace that would say yes — so a refusal in a test is never the prompt's. */
 const permissive = () => createWorkspace({ root, confirm: allow });
+
+describe('local_info', () => {
+  it.each([false, true])('reports native execution only with shell=%s', async (shell) => {
+    const confirm = vi.fn(async () => true);
+    const workspace = createWorkspace({ root, shell, confirm });
+    const result = await workspace.execute(call('local_info', {}));
+    expect(result.error).not.toBe(true);
+    const info = JSON.parse(result.content);
+    expect(info.client).toBe('terminal');
+    expect(info.workspace).toEqual({ kind: 'directory', root });
+    expect(info.shell.mode).toBe(shell ? 'native' : 'emulated');
+    if (shell) {
+      expect(info.shell.confirmation).toBe('always');
+      expect(info.shell.sandboxed).toBe(false);
+      expect(info.shell.interpreter).toBe('/bin/sh');
+    } else {
+      expect(info.shell.commands).not.toContain('git');
+      expect(info.shell.commands).toContain('cat');
+    }
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe('edits while confirmation is pending', () => {
+  it('preserves a newer edit and permits a fresh retry', async () => {
+    const file = join(root, 'src', 'api.ts');
+    let changed = false;
+    const workspace = createWorkspace({
+      root,
+      confirm: async () => {
+        if (!changed) {
+          writeFileSync(file, 'export const x = 3;\n');
+          changed = true;
+        }
+        return true;
+      },
+    });
+    const stale = await workspace.execute(
+      call('local_edit', { path: 'src/api.ts', old_string: '1', new_string: '2' }),
+    );
+    expect(stale.error).toBe(true);
+    expect(stale.content).toContain('changed since it was read');
+    expect(readFileSync(file, 'utf8')).toBe('export const x = 3;\n');
+    const retry = await workspace.execute(
+      call('local_edit', { path: 'src/api.ts', old_string: '3', new_string: '4' }),
+    );
+    expect(retry.error).not.toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe('export const x = 4;\n');
+  });
+
+  it('does not recreate a file deleted while confirmation was pending', async () => {
+    const file = join(root, 'src', 'api.ts');
+    const workspace = createWorkspace({
+      root,
+      confirm: async () => {
+        await import('node:fs/promises').then((fs) => fs.unlink(file));
+        return true;
+      },
+    });
+    const result = await workspace.execute(
+      call('local_edit', { path: 'src/api.ts', old_string: '1', new_string: '2' }),
+    );
+    expect(result.error).toBe(true);
+    expect(existsSync(file)).toBe(false);
+  });
+});
+
+describe('local_instructions', () => {
+  it('reads applicable instructions from the real project without confirmation', async () => {
+    writeFileSync(join(root, 'AGENTS.md'), 'root instructions');
+    writeFileSync(join(root, 'src', 'CLAUDE.md'), 'source instructions');
+    const confirm = vi.fn(async () => true);
+    const result = await createWorkspace({ root, confirm }).execute(
+      call('local_instructions', { path: 'src/new.ts' }),
+    );
+    expect(result.error).not.toBe(true);
+    expect(
+      JSON.parse(result.content).instructions.map((file: { content: string }) => file.content),
+    ).toEqual(['root instructions', 'source instructions']);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('refuses an instruction file symlink outside the workspace', async () => {
+    writeFileSync(join(outside, 'instructions.md'), 'outside instructions');
+    symlinkSync(join(outside, 'instructions.md'), join(root, 'AGENTS.md'));
+    const result = await permissive().execute(call('local_instructions', {}));
+    expect(result.error).toBe(true);
+    expect(result.content).not.toContain('outside instructions');
+  });
+});
 
 describe('resolveWithin', () => {
   it('resolves a relative path under the root', async () => {
@@ -326,6 +417,58 @@ describe('the local_* file tools', () => {
 });
 
 describe('local_delete and local_rename on the working directory', () => {
+  it('never overwrites a destination created during rename confirmation', async () => {
+    const workspace = createWorkspace({
+      root,
+      confirm: async () => {
+        writeFileSync(join(root, 'new.ts'), 'newer destination');
+        return true;
+      },
+    });
+    const result = await workspace.execute(
+      call('local_rename', { path: 'src/api.ts', to_path: 'new.ts' }),
+    );
+    expect(result.error).toBe(true);
+    expect(readFileSync(join(root, 'new.ts'), 'utf8')).toBe('newer destination');
+    expect(readFileSync(join(root, 'src', 'api.ts'), 'utf8')).toBe('export const x = 1;\n');
+  });
+
+  it.each([
+    'local_delete',
+    'local_rename',
+  ])('preserves a changed source during %s confirmation', async (name) => {
+    const file = join(root, 'src', 'api.ts');
+    const workspace = createWorkspace({
+      root,
+      confirm: async () => {
+        writeFileSync(file, 'newer user work');
+        return true;
+      },
+    });
+    const result = await workspace.execute(call(name, { path: 'src/api.ts', to_path: 'new.ts' }));
+    expect(result.error).toBe(true);
+    expect(result.content).toContain('changed while awaiting approval');
+    expect(readFileSync(file, 'utf8')).toBe('newer user work');
+    expect(existsSync(join(root, 'new.ts'))).toBe(false);
+  });
+
+  it('refuses a source replaced by a symlink during delete confirmation', async () => {
+    const file = join(root, 'src', 'api.ts');
+    writeFileSync(join(outside, 'secret.ts'), 'outside');
+    const workspace = createWorkspace({
+      root,
+      confirm: async () => {
+        unlinkSync(file);
+        symlinkSync(join(outside, 'secret.ts'), file);
+        return true;
+      },
+    });
+    const result = await workspace.execute(call('local_delete', { path: 'src/api.ts' }));
+    expect(result.error).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe('outside');
+    expect(readFileSync(join(outside, 'secret.ts'), 'utf8')).toBe('outside');
+  });
+
   it('delete removes a file after a yes that names it absolutely, and nothing without one', async () => {
     writeFileSync(join(root, 'gone.md'), 'x');
     const asked: string[] = [];

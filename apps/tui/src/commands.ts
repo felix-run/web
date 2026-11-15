@@ -38,6 +38,7 @@ import { BINDINGS } from './keys.js';
 import { skillReport, skillsOverview } from './skill-report.js';
 import { oneLine } from './text.js';
 import type { ThreadStore } from './threads.js';
+import { workReport } from './work-report.js';
 
 const THINKING: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -64,6 +65,7 @@ const COMMANDS: ReadonlyArray<[label: string, commands: string]> = [
   ['agent', '/manifest [name] /start <n>'],
   ['history', '/rewind [n] /version <n> /search <text> /open <n|thread-id>'],
   ['$PAGER', '/artifact <n> [file] · /skills /skill <name> (read-only)'],
+  ['coding', '/work · recorded operations and latest plan (read-only)'],
   ['client', '/refresh the thread list · /quit'],
 ];
 
@@ -163,6 +165,13 @@ export function runCommand(ctx: CommandContext, line: string): void {
   const [name, ...rest] = line.slice(1).split(/\s+/);
   const arg = rest.join(' ').trim();
   switch (name) {
+    case 'work':
+      if (arg) {
+        setNotice('usage: /work');
+        return;
+      }
+      ctx.show(workReport(engine.state.turns, threadIdRef.current), 'Coding work');
+      return;
     case 'new':
       newThread();
       return;

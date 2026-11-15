@@ -52,11 +52,15 @@ class MockFileHandle {
   }
 
   async createWritable() {
+    let staged = this.content;
     return {
       write: async (data: string) => {
-        this.content = data;
+        staged = data;
       },
-      close: async () => {},
+      close: async () => {
+        this.content = staged;
+      },
+      abort: async () => {},
     };
   }
 }
@@ -126,6 +130,17 @@ afterEach(() => {
 });
 
 describe('mount lifecycle', () => {
+  it('reports mount changes without claiming native shell access', async () => {
+    const request = { id: 'info', name: 'local_info', args: {} };
+    const vfs = getVfs('mount-info');
+    const mounted = JSON.parse((await executeClientTool(request, vfs)).content);
+    expect(mounted.workspace).toEqual({ kind: 'directory', label: 'project' });
+    expect(mounted.shell.mode).toBe('emulated');
+    clearMount();
+    const cleared = JSON.parse((await executeClientTool(request, vfs)).content);
+    expect(cleared.workspace).toEqual({ kind: 'virtual' });
+  });
+
   it('reports the picked folder', () => {
     expect(hasMount()).toBe(true);
     expect(getMountLabel()).toBe('project');
@@ -418,6 +433,53 @@ describe('folders in the mount', () => {
     expect(await mountRead('pkg/src/a.ts')).toBe('A');
     await expect(mountRead('src/a.ts')).rejects.toThrow();
   });
+});
+
+it('keeps a rename source edited while the destination is being written', async () => {
+  const source = await root.getFileHandle('source.ts', { create: true });
+  source.content = 'original';
+  const getFile = root.getFileHandle.bind(root);
+  vi.spyOn(root, 'getFileHandle').mockImplementation(async (name, opts) => {
+    const file = await getFile(name, opts);
+    if (name === 'destination.ts' && opts?.create) {
+      const create = file.createWritable.bind(file);
+      vi.spyOn(file, 'createWritable').mockImplementation(async () => {
+        const stream = await create();
+        source.content = 'newer source work';
+        return stream;
+      });
+    }
+    return file;
+  });
+  await expect(mountRename('source.ts', 'destination.ts')).rejects.toThrow(/source changed/);
+  expect(await mountRead('source.ts')).toBe('newer source work');
+  expect(await mountRead('destination.ts')).toBe('original');
+});
+
+it('preserves a concurrent edit instead of committing a stale replacement', async () => {
+  const file = await root.getFileHandle('code.ts', { create: true });
+  file.content = 'before';
+  const original = file.createWritable.bind(file);
+  vi.spyOn(file, 'createWritable').mockImplementation(async () => {
+    const stream = await original();
+    file.content = 'newer user edit';
+    return stream;
+  });
+  await expect(mountWrite('code.ts', 'replacement', false, () => {}, 'before')).rejects.toThrow(
+    /changed since it was read/,
+  );
+  expect(file.content).toBe('newer user edit');
+});
+
+it('refuses a stale edit before opening a writable stream', async () => {
+  const file = await root.getFileHandle('code.ts', { create: true });
+  file.content = 'newer user edit';
+  const open = vi.spyOn(file, 'createWritable');
+  await expect(mountWrite('code.ts', 'replacement', false, () => {}, 'before')).rejects.toThrow(
+    /changed since it was read/,
+  );
+  expect(open).not.toHaveBeenCalled();
+  expect(file.content).toBe('newer user edit');
 });
 
 it('aborts an uncommitted write when the request is stopped', async () => {

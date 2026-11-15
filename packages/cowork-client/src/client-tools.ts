@@ -126,10 +126,14 @@ export function workspaceFs(vfs: VirtualFs, check: () => void = () => {}): Local
     list: async (path) =>
       checked(() => (hasMount() ? mountList(path || '.') : vfs.list(path || '.'))),
     read: async (path) => checked(() => (hasMount() ? mountRead(path) : vfs.read(path))),
-    write: async (path, content, { append }) => {
+    write: async (path, content, { append, expected }) => {
       check();
-      if (hasMount()) await mountWrite(path, content, append, check);
-      else vfs.write(path, content, append);
+      if (hasMount()) await mountWrite(path, content, append, check, expected);
+      else {
+        if (expected !== undefined && vfs.read(path) !== expected)
+          throw new Error(`${path} changed since it was read; read it again before editing`);
+        vfs.write(path, content, append);
+      }
     },
     // Files only, never overwriting — the same rules the operator's pane
     // follows, through the same helpers, gated by the same approval rule.
@@ -206,6 +210,20 @@ async function runClientTool(
 ): Promise<ClientToolResult> {
   try {
     check();
+    if (req.name === 'local_info') {
+      return {
+        content: JSON.stringify({
+          client: 'browser',
+          workspace: hasMount()
+            ? { kind: 'directory', label: getMountLabel() }
+            : { kind: 'virtual' },
+          shell: {
+            mode: 'emulated',
+            commands: ['pwd', 'ls', 'cat', 'echo', 'mkdir', 'touch', 'tree', 'help'],
+          },
+        }),
+      };
+    }
     if (isLocalFileTool(req.name)) return await runLocalFileTool(req, workspaceFs(vfs, check));
     if (req.name === 'local_shell') {
       const command = asString(req.args.command);

@@ -85,6 +85,26 @@ function context(client: Partial<FelixClient>, spills: Spill[] = []) {
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
+describe('/work', () => {
+  it('opens a local report without contacting the harness or writing a project file', () => {
+    const { ctx, shown, written } = context({});
+    Object.assign(ctx.engine, { state: { turns: [] } });
+    runCommand(ctx, '/work');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.name).toBe('Coding work');
+    expect(shown[0]?.body).toContain('Thread: t1');
+    expect(written.size).toBe(0);
+  });
+
+  it('rejects arguments instead of treating them as an export path', () => {
+    const { ctx, shown, notices, written } = context({});
+    runCommand(ctx, '/work output.txt');
+    expect(notices).toContain('usage: /work');
+    expect(shown).toEqual([]);
+    expect(written.size).toBe(0);
+  });
+});
+
 describe('/skills', () => {
   it('pages the review queue and the skills in use', async () => {
     const t = context({
