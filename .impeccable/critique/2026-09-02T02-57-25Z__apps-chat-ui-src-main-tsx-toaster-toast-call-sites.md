@@ -28,7 +28,7 @@ Re-run after five merged PRs (#112, #113, #114, #115, #116). Same target, same s
 
 **LLM assessment.** The register clash is gone. The toast reads as part of this app: its own state tokens, its own font and radius, 200ms motion, and a surface sitting 1.29:1 above the page rather than 18.97:1. The previous verdict was that this layer was *undesigned* rather than AI-generated; it is now designed, and the reasoning is in the file rather than in a PR description.
 
-**Deterministic scan.** `detect.mjs --json apps/chat-ui/src` returns **3 findings, all in `index.css`, and all three are false positives**:
+**Deterministic scan.** `detect.mjs --json apps/web/src` returns **3 findings, all in `index.css`, and all three are false positives**:
 
 - `flat-type-hierarchy` (12/14/16px, 1.3:1) reads the token block. The product register asks for 1.125–1.2 between steps in app UI; 1.3 already exceeds it. Wrong register applied to a product surface.
 - `em-dash-overuse` (210) counts **CSS comments**, not copy. This file is deliberately heavy on prose comments and that is the house style.

@@ -30,7 +30,7 @@ Scoped to the notification layer (the `<Toaster>` in `main.tsx` and the 30 `toas
 
 The specific failure is the register clash. `approval-decision.tsx` is careful work: the comments argue about button emphasis, fold thresholds, and reading order. Three files away, the app's most attention-grabbing element is a vendor default.
 
-**Deterministic scan.** `detect.mjs --json` over `apps/chat-ui/src` returned `[]`, exit 0. Clean, and correctly so. It is also structurally blind here: the entire visual surface of the toast lives in `node_modules/sonner/dist/styles.css`, which no repo-scoped scan will reach. This is worth naming as a pattern. The repo has four bespoke guards for contracts that fail silently (`check-api-drift`, `check-protocol-parity`, `check-payload-shapes`, `check-tailwind-sources`), and the toast layer is the same failure shape with no guard: it compiles, lints, passes every check, and renders wrong.
+**Deterministic scan.** `detect.mjs --json` over `apps/web/src` returned `[]`, exit 0. Clean, and correctly so. It is also structurally blind here: the entire visual surface of the toast lives in `node_modules/sonner/dist/styles.css`, which no repo-scoped scan will reach. This is worth naming as a pattern. The repo has four bespoke guards for contracts that fail silently (`check-api-drift`, `check-protocol-parity`, `check-payload-shapes`, `check-tailwind-sources`), and the toast layer is the same failure shape with no guard: it compiles, lints, passes every check, and renders wrong.
 
 **Browser evidence.** Live measurement in Chrome against a real harness, dark theme active:
 

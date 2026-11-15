@@ -4,7 +4,7 @@
  *
  * The harness's own `/docs` sits behind its credential, so the public reference
  * lives here, at `/reference/`. It has to describe what `api.felix.run` serves —
- * not a checkout, and not `apps/chat-ui/harness-openapi.json`, which records a
+ * not a checkout, and not `apps/web/harness-openapi.json`, which records a
  * checkout for `check-api-drift` and is routinely ahead of the deployment. So:
  *
  *   GET  $FELIX_ORIGIN/health                         → {"version": "0.4.0"}

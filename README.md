@@ -10,7 +10,7 @@ in `packages/ui` (`@felix/ui`).
 
 | Path | Role |
 |------|------|
-| `apps/chat-ui` | Streaming chat + inspector (Vite → CF Workers) |
+| `apps/web` | Streaming chat + inspector (Vite → CF Workers) |
 | `apps/tui` | Full-screen terminal client (OpenTUI → Bun) — [README](apps/tui/README.md) |
 | `apps/docs` | Starlight docs site (`@felix/docs`) → CF Workers |
 | `packages/ui` | Shared [shadcn/ui](https://ui.shadcn.com/) components |
@@ -28,7 +28,7 @@ the known, unaddressed work, with the evidence for each item recorded beside it.
 
 ```bash
 pnpm install
-pnpm chat:dev          # Vite → proxies /api to Python Felix :8080
+pnpm web:dev          # Vite → proxies /api to Python Felix :8080
 pnpm tui:dev           # terminal client, straight to FELIX_ORIGIN (needs Bun)
 pnpm docs:dev
 pnpm build             # turbo run build
@@ -48,7 +48,7 @@ Every dependency used by **more than one** workspace package is declared once in
 `package.json` with the `catalog:` protocol:
 
 ```jsonc
-// apps/chat-ui/package.json
+// apps/web/package.json
 "react": "catalog:",
 "wrangler": "catalog:",
 ```
@@ -88,7 +88,7 @@ no ids; for your own deployment change its `routes` and chat-ui's `vars.FELIX_OR
 From a machine with `wrangler login`:
 
 ```bash
-pnpm chat:deploy
+pnpm web:deploy
 pnpm docs:deploy
 ```
 

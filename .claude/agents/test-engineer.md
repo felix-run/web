@@ -11,7 +11,7 @@ defect, and you say plainly what remains unverified.
 
 ## What is covered today, and what is not
 
-Vitest 4, two configs, no root config: `apps/chat-ui/vitest.config.ts` and
+Vitest 4, two configs, no root config: `apps/web/vitest.config.ts` and
 `packages/cowork-client/vitest.config.ts`. `pnpm test` runs both through turbo — deliberately with **no** `dependsOn`, so a failing dependency can never silently
 skip a package's tests.
 
@@ -29,8 +29,8 @@ Packages with no `test` script at all: `@felix/ui`, `@felix/protocol`, `@felix/d
 ## Where a test belongs
 
 - **A contract that outlives its caller goes in `packages/test-kit/src/`**, exported through the
-  `exports` map and called from `apps/chat-ui/tests/`. The suites are parameterized on purpose — see
-  `apps/chat-ui/tests/sse.test.ts`: the suite takes an injected `run`, the caller supplies the
+  `exports` map and called from `apps/web/tests/`. The suites are parameterized on purpose — see
+  `apps/web/tests/sse.test.ts`: the suite takes an injected `run`, the caller supplies the
   implementation. That indirection is what lets the Worker and reader contracts be stated once,
   independently of who satisfies them.
 - **A component test** opens with a `/** @vitest-environment happy-dom */` docblock. The configs

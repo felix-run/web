@@ -69,7 +69,7 @@ Non-negotiables in this repo:
 - **Silent when there is nothing to say.** A hook that fires on every edit trains people to ignore it.
 - **Test before wiring**, by piping realistic JSON:
   ```bash
-  echo '{"tool_input":{"file_path":"apps/chat-ui/src/api.ts"},"cwd":"'"$PWD"'"}' \
+  echo '{"tool_input":{"file_path":"apps/web/src/api/client.ts"},"cwd":"'"$PWD"'"}' \
     | .claude/hooks/impact-reminder.sh
   ```
 - `chmod +x` the script, use `"$CLAUDE_PROJECT_DIR"` for paths, and remember that a blocking gate

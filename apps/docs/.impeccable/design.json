@@ -37,7 +37,7 @@
         "role": "primary",
         "displayName": "Running",
         "canonical": "oklch(0.443 0.11 240.79)",
-        "note": "Hex frozen in @felix/design STATE_*; oklch canonical in apps/chat-ui/src/index.css, enforced by check-state-palette."
+        "note": "Hex frozen in @felix/design STATE_*; oklch canonical in apps/web/src/styles/index.css, enforced by check-state-palette."
       },
       "state-done": {
         "role": "primary",

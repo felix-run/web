@@ -8,7 +8,7 @@ browser cannot do rather than about the chat:
 - **No proxy, no sign-in.** `/api/*` and the browser's sign-in exist because a page cannot reach
   the harness (no CORS, no static assets). This process calls `FELIX_ORIGIN` directly with
   `Authorization: Bearer`, resolved by `src/config.ts` narrowest first: flag, environment, the
-  checkout's `apps/chat-ui/.dev.vars`, then `~/.config/felix/config.json`. `.dev.vars` is in that
+  checkout's `apps/web/.dev.vars`, then `~/.config/felix/config.json`. `.dev.vars` is in that
   list on purpose — it is the repo's *one* local secrets file, and a second client ignoring it made
   that three. It is found from the module's own path, never by walking up from `cwd`, which would
   read whatever credentials an unrelated parent directory happened to hold.

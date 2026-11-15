@@ -15,7 +15,7 @@ packages/harness/src/skills/bundled.ts
 wrangler.jsonc
 # Docs + chat-ui checked-in configs use vars only (no account ids).
 !apps/docs/wrangler.jsonc
-!apps/chat-ui/wrangler.jsonc
+!apps/web/wrangler.jsonc
 
 # Astro / Starlight build cache
 apps/docs/.astro/
@@ -46,4 +46,4 @@ apps/docs/public/api-version.txt
 .impeccable/critique/
 
 # Written and removed by scripts/check-tailwind-sources.mjs; only survives a killed run.
-apps/chat-ui/src/.check-tailwind-sources.tmp.css
+apps/web/src/styles/.check-tailwind-sources.tmp.css

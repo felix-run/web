@@ -53,7 +53,7 @@ A config file covers the common case — `~/.config/felix/config.json` (or under
 { "origin": "https://felix.example.com", "apiKey": "sk-felix-…", "manifest": "deep" }
 ```
 
-**Running from a checkout needs no configuration at all.** `apps/chat-ui/.dev.vars` is this repo's
+**Running from a checkout needs no configuration at all.** `apps/web/.dev.vars` is this repo's
 one local secrets file — `wrangler dev` reads it, the Vite dev proxy reads it, and so does this
 client — so `pnpm tui:dev` picks up the key `make up` generated. It reads `FELIX_API_KEY`,
 `FELIX_AUTH_API_KEYS` (the harness's own spelling) and `FELIX_ORIGIN`, and ignores everything else

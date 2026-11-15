@@ -1,6 +1,6 @@
 name: Deploy
 
-# Deploys the two Workers: docs.felix.run (apps/docs) and make.felix.run (apps/chat-ui).
+# Deploys the two Workers: docs.felix.run (apps/docs) and make.felix.run (apps/web).
 #
 #   - After CI passes on a push to main: both, from exactly the commit CI checked.
 #   - On `felix-deployed` from felix-run/ops, sent after it rolls api.felix.run to a new
@@ -28,7 +28,7 @@ on:
       app:
         description: Which Worker to deploy
         type: choice
-        options: [both, docs, chat-ui]
+        options: [both, docs, web]
         default: both
 
 permissions:
@@ -49,7 +49,7 @@ jobs:
           ${{ fromJSON(
             github.event_name == 'repository_dispatch' && '["docs"]' ||
             (github.event_name == 'workflow_dispatch' && inputs.app != 'both') && format('["{0}"]', inputs.app) ||
-            '["docs", "chat-ui"]'
+            '["docs", "web"]'
           ) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15

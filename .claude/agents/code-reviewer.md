@@ -20,7 +20,7 @@ pre-existing code unless the diff makes it newly wrong.
 
 ## This repo's real failure modes — check these first
 
-1. **Proxy contract divergence.** `apps/chat-ui/worker/index.ts` and the `/api` rewrite in
+1. **Proxy contract divergence.** `apps/web/worker/index.ts` and the `/api` rewrite in
    `vite.config.ts` are two copies of the same contract. A change in one and not the other makes dev
    and production behave differently, and nothing reports it.
 2. **Silently unhandled SSE events.** `StreamEvent` ends in an open `{ event: string; … }` arm, so a

@@ -39,7 +39,7 @@ import { argv, cwd, exit } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_STYLESHEET = 'apps/chat-ui/src/index.css';
+const DEFAULT_STYLESHEET = 'apps/web/src/styles/index.css';
 
 /**
  * Every source outside the app root that ships Tailwind classes.
@@ -60,7 +60,7 @@ export const GUARDED = [
   },
   {
     label: 'streamdown',
-    path: 'apps/chat-ui/node_modules/streamdown/dist',
+    path: 'apps/web/node_modules/streamdown/dist',
     // Renders every assistant message. Both canaries are pure Streamdown: the
     // first carries Shiki's dark palette onto highlighted tokens, the second sizes
     // the line-number gutter. The gutter's `before:content-[counter(line)]` used to

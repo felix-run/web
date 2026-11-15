@@ -4,7 +4,7 @@ import { createFelixClient } from '../src/transport';
 /**
  * The management surface, driven the way a terminal client drives it.
  *
- * These routes lived in `apps/chat-ui/src/api.ts` until they moved here, and
+ * These routes lived in `apps/web/src/api/client.ts` until they moved here, and
  * every test they had went through `baseUrl: '/api'` with a shared key. That is
  * exactly the half of the arrangement a second client does *not* have: it points
  * at a real origin and sends a bearer token. So what is asserted below is the

@@ -3,7 +3,7 @@
  * Fail CI when the state ramp's two copies stop agreeing.
  *
  * `blocked` / `done` / `running` / `failed` exist twice on purpose, and the
- * duplication is not the kind deleting fixes. `apps/chat-ui/src/index.css`
+ * duplication is not the kind deleting fixes. `apps/web/src/styles/index.css`
  * authors them as `oklch()` because that is what CSS wants and because the
  * lightness is *tuned* — the comments there carry the contrast reasoning, and
  * `--state-failed` is a different value from `--destructive` for a stated
@@ -35,7 +35,7 @@ import { argv, exit } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const STYLESHEET = join(REPO, 'apps/chat-ui/src/index.css');
+const STYLESHEET = join(REPO, 'apps/web/src/styles/index.css');
 const TOKENS = join(REPO, 'packages/design/src/tokens.ts');
 
 /**

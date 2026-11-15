@@ -35,7 +35,7 @@ import {
 import { DARK, NEUTRAL } from '../src/tokens';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const chatPublic = join(root, 'apps/chat-ui/public');
+const chatPublic = join(root, 'apps/web/public');
 const docsPublic = join(root, 'apps/docs/public');
 const docsAssets = join(root, 'apps/docs/src/assets');
 

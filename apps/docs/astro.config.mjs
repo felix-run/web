@@ -94,7 +94,7 @@ export default defineConfig({
       // a deployment, then the pages you look things up in, then how it works.
       // Starlight's prev/next follows this order, so Start reads as a sequence.
       // Slugs are unchanged — chat-ui links into these pages and
-      // `apps/chat-ui/tests/docs-links.test.ts` checks every one.
+      // `apps/web/tests/docs-links.test.ts` checks every one.
       sidebar: [
         {
           label: 'Start',

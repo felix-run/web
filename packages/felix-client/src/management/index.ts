@@ -4,7 +4,7 @@
  * too large to inline, and the tenant's skill library — the one area here with a
  * full write surface, since reviewing a skill an agent drafted is the point of it.
  *
- * This half lived only in `apps/chat-ui/src/api.ts` until now, which made it
+ * This half lived only in `apps/web/src/api/client.ts` until now, which made it
  * browser-only by accident rather than by design: a terminal client could drive
  * the whole conversation and then had no way to ask why a run did what it did.
  * Nothing here assumes a browser — the origin and the credentials come from the

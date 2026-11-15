@@ -11,7 +11,7 @@ Delegated by description; invoke explicitly by name when you want a specific one
 | Agent | Use it for |
 |---|---|
 | `workers-engineer` | The two proxy Workers, wrangler config, the `/api/*` contract, bindings and secrets |
-| `ui-engineer` | React/Vite/Tailwind work in `apps/chat-ui`, streaming UI, `@felix/ui` |
+| `ui-engineer` | React/Vite/Tailwind work in `apps/web`, streaming UI, `@felix/ui` |
 | `python-harness-engineer` | Python work on the harness (felix-run/felix); requires that checkout in scope |
 | `postgres-engineer` | Harness schema, migrations, indexing, query plans, tenant-scoped access |
 | `devops-engineer` | CI, turbo/pnpm pipeline, wrangler deploys, secrets, release verification |
@@ -78,7 +78,7 @@ Hooks fail open — every script exits 0 unless it is deliberately blocking. Tes
 JSON before wiring it:
 
 ```bash
-echo '{"tool_input":{"file_path":"'"$PWD"'/apps/chat-ui/src/api.ts"}}' | .claude/hooks/impact-reminder.sh
+echo '{"tool_input":{"file_path":"'"$PWD"'/apps/web/src/api/client.ts"}}' | .claude/hooks/impact-reminder.sh
 ```
 
 **Editing `settings.json` requires a session restart.** Skills, agents, and rules hot-reload.
